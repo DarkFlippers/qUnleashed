@@ -9,6 +9,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+/// The project a test reports to, which no test reads back.
+const String _testDsn = 'https://key@o0.ingest.sentry.io/0';
+
 /// A transport that accepts everything and sends nothing.
 class NowhereTransport implements Transport {
   @override
@@ -26,7 +29,7 @@ class NowhereTransport implements Transport {
 Future<List<SentryTransaction>> captureTransactions() async {
   final sent = <SentryTransaction>[];
   await Sentry.init((options) {
-    options.dsn = 'https://key@o0.ingest.sentry.io/0';
+    options.dsn = _testDsn;
     options.tracesSampleRate = 1.0;
     options.transport = NowhereTransport();
     options.beforeSendTransaction = (transaction, hint) {
@@ -77,4 +80,67 @@ extension CapturedTransaction on SentryTransaction {
     for (final span in (_json['spans'] as List<dynamic>? ?? const []))
       (span as Map<String, dynamic>)['op'] as String,
   ];
+}
+
+/// Everything the other three channels handed over while a test ran.
+///
+/// Metrics, issues and breadcrumbs, which sentry 9 routes to three different
+/// hooks - so a test that cares which channel a thing went down has to watch
+/// all three at once or it cannot tell "counted" from "raised".
+class CapturedSignals {
+  final List<SentryMetric> metrics = [];
+  final List<SentryEvent> events = [];
+  final List<Breadcrumb> crumbs = [];
+
+  /// The one counter, for the ordinary case of expecting exactly one.
+  SentryMetric get metric => metrics.single;
+
+  /// [metric]'s attributes as the wire carries them.
+  ///
+  /// A subset is what to assert against: the SDK adds `os.name`,
+  /// `sentry.sdk.version` and `sentry.environment` on the way past, so an
+  /// equality would break on an SDK bump that gave us more of them for free.
+  Map<String, Object?> get attributes =>
+      metric.attributes.map((key, value) => MapEntry(key, value.value));
+}
+
+/// Brings a hub up with metrics, issues and breadcrumbs kept instead of sent.
+///
+/// The counterpart of [captureTransactions], and separate from it because the
+/// hooks are: `beforeSendMetric` runs inside the metric capture pipeline,
+/// *before* the in-memory buffer, so a test reads a counter without waiting on
+/// a flush.
+Future<CapturedSignals> captureSignals() async {
+  final seen = CapturedSignals();
+  await Sentry.init((options) {
+    options.dsn = _testDsn;
+    options.transport = NowhereTransport();
+    options.beforeSendMetric = (metric) {
+      seen.metrics.add(metric);
+      return metric;
+    };
+    options.beforeSend = (event, hint) {
+      seen.events.add(event);
+      return event;
+    };
+    options.beforeBreadcrumb = (crumb, hint) {
+      if (crumb != null) seen.crumbs.add(crumb);
+      return crumb;
+    };
+  });
+  addTearDown(Sentry.close);
+  return seen;
+}
+
+/// Lets the SDK finish what the app handed it, then closes the hub.
+///
+/// Both halves earn their place, for opposite reasons. `Sentry.metrics.count`
+/// and `captureException` are **unawaited** by the code under test - the
+/// telemetry guard hands the SDK a future and returns, which is what keeps
+/// reporting off a path where a user is waiting - so a case that closed
+/// straight away would assert against a pipeline still in flight. The close is
+/// then what drains the buffers.
+Future<void> settleAndClose() async {
+  await Future<void>.delayed(Duration.zero);
+  await Sentry.close();
 }

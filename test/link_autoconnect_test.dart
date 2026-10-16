@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/services/connection/connect_report.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
 import 'package:qunleashed/services/connection/known_devices.dart';
 import 'package:qunleashed/services/connection/link_service.dart';
@@ -9,6 +10,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'sentry_capture.dart';
+import 'telemetry_sinks.dart';
 
 /// When the app dials a Flipper nobody asked it to.
 ///
@@ -147,6 +149,11 @@ class FakeDialClient implements FlipperClient {
     Duration timeout = FlipperClient.bleAddressConnectTimeout,
   }) async {
     dialled.add('ble:$address');
+    // Honours [parkConnect] like `connect` does, and it has to: the remembered
+    // dial is the one path that reaches `_autoDial`'s catch on a cancel, so a
+    // case cannot press Disconnect mid-dial without it.
+    final park = parkConnect;
+    if (park != null) return park.future;
     if (connectThrows != null) throw connectThrows!;
     return ble(address);
   }
@@ -315,6 +322,78 @@ void main() {
       expect(client.dialled, [
         'usb:A',
       ], reason: 'and the existing behaviour is unchanged');
+    });
+  });
+
+  // What the automatic paths hand ADR 0013 §2's counter, which the metric's
+  // own test cannot see: it drives the hook directly, so every derivation at a
+  // call site - the transport, the attempt, and whether a cancel reports at
+  // all - is invisible to it. Deleting the whole `reportConnectFailure` block
+  // from `_autoDial` left the entire suite green before this group.
+  group('what a failed automatic link counts', () {
+    /// One line per call the production hook made, as `attempt/transport/kind`.
+    late List<String> counted;
+
+    setUp(() {
+      counted = [];
+      connectFailureSink =
+          (kind, error, stack, {required attempt, required isBle}) => counted
+              .add('${attempt.name}/${transportLabel(isBle)}/${kind.name}');
+    });
+
+    tearDown(resetTelemetrySinks);
+
+    test(
+      'a remembered dial that failed is one auto attempt over ble',
+      () async {
+        links = await serviceWith(bleAuto: true);
+        await KnownDevicesStore.instance.remember(ble('B1'));
+        client.connectThrows = StateError('connection timed out');
+
+        client.plugged();
+        await settle();
+
+        expect(counted, ['auto/ble/deviceUnreachable']);
+      },
+    );
+
+    test('a cable the app dialled and lost is one auto attempt over usb', () async {
+      // The other derivation, and the pair is the point: `_autoDial` reads the
+      // transport off the enum it was handed, not off the device, because a
+      // `KnownDevice` carries no link. Inverting it mislabels every automatic
+      // failure, and the dimension it mislabels is the one the whole analysis
+      // splits on.
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+      client.connectThrows = StateError('port busy');
+
+      client.plugged();
+      await settle();
+
+      expect(counted, ['auto/usb/unknown']);
+    });
+
+    test('a remembered dial the user calls off counts nowhere', () async {
+      // The regression this group exists for: the remembered dial sets no
+      // activity, so the abort reaches its catch like any other failure and
+      // filed an issue per cancel. `LinkService._recordAutoFailure` has the
+      // mechanism and ADR 0013 the decision.
+      links = await serviceWith(bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('B1'));
+      final park = client.parkConnect = Completer<FlipperDevice>();
+
+      client.plugged();
+      await settle();
+      final pressed = links.disconnectDevice(
+        ble('B1'),
+        id: 'B1',
+        link: FlipperLink.ble,
+      );
+      park.completeError(StateError('BLE connect aborted'));
+      await pressed;
+      await settle();
+
+      expect(counted, isEmpty);
     });
   });
 

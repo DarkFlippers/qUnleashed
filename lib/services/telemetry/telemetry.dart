@@ -1,9 +1,11 @@
-import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel;
+import 'package:flipperlib/flipperlib.dart'
+    show FlipperConnectErrorKind, FlipperLogLevel;
 import 'package:flutter/widgets.dart' show NavigatorObserver, Widget;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../build_identity.dart';
+import '../connection/connect_report.dart';
 import '../guarded.dart';
 import '../http/app_http.dart';
 import '../logging.dart';
@@ -20,9 +22,11 @@ import 'settings.dart';
 /// classifier; this turns what they already record into events.
 ///
 /// Phases 1 and 2 of the rollout - errors, crashes, Sentry Logs, breadcrumbs
-/// and tracing - and the replay half of phase 3: `onErrorSampleRate` behind
-/// §1's second switch, `sessionSampleRate` at zero, and §6.4's gate opened
-/// with four masking rules rather than stepped over. Still no metrics.
+/// and tracing - and phase 3 apart from §3's flipperlib observer: replay with
+/// `onErrorSampleRate` behind §1's
+/// second switch, `sessionSampleRate` at zero and §6.4's gate opened with four
+/// masking rules rather than stepped over, plus the one metric §2 asks for in
+/// [_reportConnectFailure].
 ///
 /// This paragraph has now said the opposite twice, each time because a phase
 /// landed and made it false.
@@ -128,7 +132,7 @@ class Telemetry {
   /// the event queue is never reached, no timer ever fires - a test's own
   /// `Timeout` cannot fire either - and the UI isolate is wedged for good. On
   /// Windows and Linux every cycle also pays the synchronous
-  /// `sentry_close()` described on [_keptSinceStart].
+  /// `sentry_close()` described on [_batchedSinceStart].
   ///
   /// So a restart is attempted once per value. The latch is dropped as soon as
   /// the switch and [_runningWithReplay] agree, which is both what a successful
@@ -349,9 +353,9 @@ class Telemetry {
     }
   }
 
-  /// Puts the four hooks on or takes them off, in one place.
+  /// Puts the five hooks on or takes them off, in one place.
   ///
-  /// One list rather than two mirrored ones, because adding a fifth sink meant
+  /// One list rather than two mirrored ones, because adding a sink meant
   /// remembering two methods - and the ordering constraint below was stated in
   /// a comment on only one of them.
   ///
@@ -364,6 +368,7 @@ class Telemetry {
     LogService.keptSink = on ? _reportKept : null;
     LogService.breadcrumbSink = on ? _dropCrumb : null;
     AppHttp.exchangeSink = on ? _recordExchange : null;
+    connectFailureSink = on ? _reportConnectFailure : null;
     LogService.attachFlipperlibSink();
   }
 
@@ -414,11 +419,11 @@ class Telemetry {
   /// means nothing starts a *new* one.
   Future<void> closeForExit() async {
     _closedForExit = true;
-    if (!_running || !_keptSinceStart) return;
+    if (!_running || !_batchedSinceStart) return;
     await _tearDown();
   }
 
-  /// Whether a kept line has been handed to the SDK since it came up.
+  /// Whether anything the SDK batches has been handed to it since it came up.
   ///
   /// The gate on [closeForExit], and not a micro-optimisation: on Windows and
   /// Linux `NativeSdkIntegration.close()` is a **synchronous** FFI call into
@@ -430,10 +435,18 @@ class Telemetry {
   /// and skipping it leaves the exit exactly as it was before the flush
   /// existed.
   ///
-  /// Only kept lines can be waiting: transactions are not batched
+  /// Kept lines and metrics are what can be waiting. Both go through the SDK's
+  /// one `TelemetryProcessor` and then into a buffer each - `logBuffer` and
+  /// `metricBuffer` are separate, with their own counters and their own
+  /// timer - and each holds its items until 100 of them, a megabyte, or five
+  /// seconds (9.30.1, unchanged in 10.0.0-rc.1). `close()` flushes both, which
+  /// is why one flag over the two is enough. Transactions are not batched
   /// (`traceLifecycle` is `static`, so `finish` sends), breadcrumbs ride on
-  /// the next event, and no metrics are emitted.
-  bool _keptSinceStart = false;
+  /// the next event, and an issue queues its own send.
+  ///
+  /// A connect that failed as the user quit is the one this would otherwise
+  /// have lost.
+  bool _batchedSinceStart = false;
 
   /// Closes the SDK and takes the hooks off. **Never throws.**
   ///
@@ -547,9 +560,10 @@ class Telemetry {
   /// `_guard` is what keeps a rejected send from reaching the zone as an
   /// unlabelled `[uncaught]`.
   void _reportKept(KeptLevel level, String body) {
-    // The one thing that can leave something in the batcher, so the one thing
-    // that makes the exit flush worth paying for. See [closeForExit].
-    _keptSinceStart = true;
+    // One of the two things that can leave something in the SDK's buffers, so
+    // one of the two that make the exit flush worth paying for - §2's connect
+    // counter is the other. See [closeForExit].
+    _batchedSinceStart = true;
     final text = Scrub.outbound(body);
     _guard('a kept log line was not sent', () async {
       final logger = Sentry.logger;
@@ -733,6 +747,170 @@ class Telemetry {
     );
   }
 
+  /// Turns one classified connect failure into a count, or into an issue.
+  ///
+  /// §2's `classifyConnectError` row, and the metrics half of phase 3. The
+  /// kinds the classifier knows are a counter and a breadcrumb: nobody needs
+  /// an issue per Bluetooth-is-off, and what is worth knowing about them is a
+  /// shape - which kinds users actually hit, on which transport, and whether
+  /// the app dialled or they did. `unknown` over BLE is the opposite and goes
+  /// to [_reportUnknownConnect]: one issue per platform string the classifier
+  /// has not learned yet, each of them a sentence shown to a user that was
+  /// wrong.
+  ///
+  /// **`unknown` over USB is counted, not raised**, which amends §2's row and
+  /// is the one place this departs from it. The classifier's needles were
+  /// written against BLE stacks, and the ones that are generic enough to catch
+  /// a USB failure - `timeout`, `not found`, `disconnected`, `unauthorized` -
+  /// file it under a kind named for Bluetooth; what is left matches nothing.
+  /// So an issue per unmatched USB string would be an issue per replug, since
+  /// `LinkService._autoTriedUsb` re-arms on one, in the list §2 keeps for
+  /// strings the classifier can *learn* - and there is nothing to learn into:
+  /// USB needles are a flipperlib change, not a line here. The volume shape is
+  /// the one that has already cost this project real errors. They stay a
+  /// counter, at `kind: unknown`, and a kept log line at the call site.
+  ///
+  /// Nothing is awaited, like the sinks above - and here the SDK does not even
+  /// offer the choice: `Sentry.metrics.count` returns void and unawaits its own
+  /// capture internally. So `_guard` covers a synchronous throw out of the
+  /// hub, not a failed send; a dropped metric is reported by Sentry's own
+  /// client reports rather than by this app.
+  void _reportConnectFailure(
+    FlipperConnectErrorKind kind,
+    Object error,
+    StackTrace stack, {
+    required ConnectAttempt attempt,
+    required bool isBle,
+  }) {
+    final transport = transportLabel(isBle);
+    if (kind == FlipperConnectErrorKind.unknown && isBle) {
+      _reportUnknownConnect(error, stack, attempt: attempt);
+      return;
+    }
+
+    _batchedSinceStart = true;
+    _guard(
+      'a connect failure was not counted',
+      () async => Sentry.metrics.count(
+        'device.connect.failed',
+        1,
+        attributes: {
+          'kind': SentryAttribute.string(kind.name),
+          'transport': SentryAttribute.string(transport),
+          'attempt': SentryAttribute.string(attempt.name),
+        },
+      ),
+    );
+
+    // `category: 'connection'` rather than `'flipperlib'`, so §4's timeline
+    // and this are distinguishable in an event that carries both - and not
+    // through `_dropCrumb`, which is the library's sink and would label it as
+    // if the library had said it.
+    //
+    // Unscrubbed on purpose, and the only sink here that can say so: every
+    // part of this message is one of the three closed vocabularies above.
+    // Nothing from the device, the file system or the thrown object reaches
+    // it - the thrown object's own text is already a kept log line.
+    _guard(
+      'a connect breadcrumb was not added',
+      () => Sentry.addBreadcrumb(
+        Breadcrumb(
+          message:
+              'connect failed: ${kind.name} on $transport (${attempt.name})',
+          category: 'connection',
+          level: SentryLevel.warning,
+        ),
+      ),
+    );
+  }
+
+  /// The one connect failure that becomes an issue: a string nothing knows.
+  ///
+  /// §2 asks for this list by name, and the grouping is the whole of the
+  /// request. Sentry's default groups on the stack, which here says which of
+  /// the handful of catch sites saw the failure rather than what the platform
+  /// said - so one string arriving from two sites would be two issues, and two
+  /// strings from one site one. The fingerprint therefore carries the message,
+  /// which is the field grouping usually treats as noise and is here the
+  /// entire finding.
+  ///
+  /// BLE only, for the reason [_reportConnectFailure] gives about USB.
+  ///
+  /// [_connectSignature] is what keeps that from going the other way. The
+  /// message holds a BLE address or a serial often enough, and without it the
+  /// same unseen string from two Flippers is two issues - a list of devices
+  /// where §2 asked for a list of strings.
+  ///
+  /// The message is scrubbed before it reaches either the fingerprint or the
+  /// context, because `scrubEvent` walks neither. Built inside the guard, so
+  /// an object whose `toString()` throws - which `guarded` documents as real -
+  /// is one unreported error rather than a throw inside a `catch` block.
+  void _reportUnknownConnect(
+    Object error,
+    StackTrace stack, {
+    required ConnectAttempt attempt,
+  }) {
+    _guard('an unclassified connect error was not captured', () {
+      final message = Scrub.outbound('$error');
+      return Sentry.captureException(
+        error,
+        stackTrace: stack,
+        withScope: (scope) {
+          scope.fingerprint = [
+            'device.connect',
+            error.runtimeType.toString(),
+            _connectSignature(message),
+          ];
+          scope.setContexts('connect', {
+            'kind': FlipperConnectErrorKind.unknown.name,
+            // Constant, because the one caller is the BLE arm.
+            'transport': transportLabel(true),
+            'attempt': attempt.name,
+            'message': message,
+          });
+        },
+      );
+    });
+  }
+
+  /// What makes two unclassified connect errors the same issue.
+  ///
+  /// Identifiers out, error codes left in, and the asymmetry is the point: a
+  /// BLE address, a serial or an iOS peripheral identifier varies per device
+  /// and per pairing and says nothing about the cause, while a code usually
+  /// *is* the cause - Android's `status 133` and `status 22` are different
+  /// failures and must not merge into one issue. A *service* UUID is a
+  /// constant and identical on every Flipper; it is the peripheral identifier
+  /// CoreBluetooth hands out instead of a MAC that varies, and it is why the
+  /// UUID rule is here at all.
+  ///
+  /// **Where the line falls is twelve characters, and it was eight.** Eight
+  /// took `0x80070005` and `0x8007048F` down to one `0x<id>` - two different
+  /// Windows HRESULTs, which `universal_ble`'s Windows plugin produces by
+  /// stringifying `hresult_error::code()`. Two causes in one issue, titled
+  /// after whichever arrived first, and the second never learned: the exact
+  /// inversion of what this is for. The case below it could not see that,
+  /// because `133` and `22` are too short to reach the boundary either way.
+  /// Twelve loses nothing the rule is for - a separator-less BLE address is
+  /// twelve hex characters and a serial is longer.
+  static String _connectSignature(String message) =>
+      message.replaceAll(_identifier, '<id>');
+
+  static final RegExp _identifier = RegExp(
+    // A MAC or a BLE address: four or more colon-separated pairs, so a clock
+    // or a timeout written `12:30` in a message is left alone.
+    r'[0-9a-f]{2}(?::[0-9a-f]{2}){3,}'
+    // A UUID. Its position used to be load-bearing - at eight characters the
+    // bare-run rule below took its first group and left the rest - and at
+    // twelve it is not, because a UUID's leading group is eight hex and then a
+    // hyphen.
+    r'|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}'
+    // A separator-less address, a serial, a handle: twelve hex characters or
+    // more. Not eight - the boundary paragraph above is why.
+    r'|[0-9a-f]{12,}',
+    caseSensitive: false,
+  );
+
   /// Follows the switch after the first start.
   ///
   /// A listener rather than the setter calling in, so the dependency runs one
@@ -761,7 +939,7 @@ class Telemetry {
       //
       // Not where replay cannot run at all. `NativeSdkIntegration.close` is a
       // synchronous FFI `sentry_close()` on the desktop targets, which
-      // `_keptSinceStart` already documents as uninterruptible under its own
+      // `_batchedSinceStart` already documents as uninterruptible under its
       // two-second timeout - so restarting for a rate no recorder will read
       // would freeze the UI isolate with the crash handler down, in exchange
       // for nothing. The Diagnostics row is hidden there for the same reason.
@@ -777,7 +955,7 @@ class Telemetry {
           DiagnosticsSettings.replaySupported &&
           settings.shareReplay != _replayRestartAimedAt) {
         _replayRestartAimedAt = settings.shareReplay;
-        // The restart is a reporting blackout: all four sinks come off and the
+        // The restart is a reporting blackout: all five sinks come off and the
         // native handler goes down for a native close plus a native init, a
         // `BuildIdentity.resolve()` and a platform channel. A crash lost in
         // that window is indistinguishable from no crash, so the gap is named

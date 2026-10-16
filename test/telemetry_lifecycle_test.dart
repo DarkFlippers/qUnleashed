@@ -19,6 +19,7 @@
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/widgets.dart' show SizedBox, Widget;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/services/connection/connect_report.dart';
 import 'package:qunleashed/services/guarded.dart';
 import 'package:qunleashed/services/http/app_http.dart';
 import 'package:qunleashed/services/logging.dart';
@@ -41,7 +42,7 @@ import 'telemetry_sinks.dart';
 ///    which is exactly what the no-DSN and switch-off cases must show. Hence
 ///    [keptRecorder]: the predicates below discount it, so the recorder can
 ///    stay installed and still be told apart from a sink `Telemetry` wired.
-///  * `Telemetry.stop()` clears all four hooks, so by the time a failed close
+///  * `Telemetry.stop()` clears all five hooks, so by the time a failed close
 ///    is logged the recorder is gone. That one case reads the console, and
 ///    [onConsole] is there so it does not silently become vacuous if this file
 ///    is ever added to CI's quiet job.
@@ -108,12 +109,13 @@ class _FakeSdk {
 bool get telemetryKeptSinkInstalled =>
     LogService.keptSink != null && LogService.keptSink != keptRecorder;
 
-/// Whether any of the four hooks is installed.
+/// Whether any of the five hooks is installed.
 bool get anySinkInstalled =>
     guardedFailureSink != null ||
     telemetryKeptSinkInstalled ||
     LogService.breadcrumbSink != null ||
-    AppHttp.exchangeSink != null;
+    AppHttp.exchangeSink != null ||
+    connectFailureSink != null;
 
 /// The masking rules the options block added, §6.4's gate, as
 /// `'<type>: <decision>'`.
@@ -174,12 +176,13 @@ Iterable<String> maskingRules(SentryFlutterOptions options) =>
             const <dynamic>[])
         .cast<String>();
 
-/// Whether all four are.
+/// Whether all five are.
 bool get allSinksInstalled =>
     guardedFailureSink != null &&
     telemetryKeptSinkInstalled &&
     LogService.breadcrumbSink != null &&
-    AppHttp.exchangeSink != null;
+    AppHttp.exchangeSink != null &&
+    connectFailureSink != null;
 
 void main() {
   setUp(recordKeptLines);
@@ -206,7 +209,7 @@ void main() {
   );
 
   group('coming up', () {
-    test('installs all four hooks and raises the library pin', () async {
+    test('installs all five hooks and raises the library pin', () async {
       // The pin is derived from whether `breadcrumbSink` is set, and
       // `attachFlipperlibSink()` has to run after the assignment. Swap the two
       // and §4's whole breadcrumb timeline is silently empty - nothing else
@@ -365,7 +368,7 @@ void main() {
   });
 
   group('going down', () {
-    test('clears all four hooks and lowers the pin', () async {
+    test('clears all five hooks and lowers the pin', () async {
       final telemetry = build();
       await telemetry.start();
 
@@ -389,7 +392,7 @@ void main() {
         sdk.closeThrows = StateError('close refused');
 
         // The console, and the only case that needs it: `stop()` clears all
-        // four hooks before this is logged, so the recorder is not there to
+        // five hooks before this is logged, so the recorder is not there to
         // hear it. `onConsole` rather than 1 so a quiet build reads as "not
         // observable here" instead of silently asserting nothing.
         final lines = await printedAsync(telemetry.stop);

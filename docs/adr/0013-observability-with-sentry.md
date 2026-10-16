@@ -58,11 +58,11 @@ span; a ufbt `error` or `critical` now reaches the log rather than only the
 Assembler console; and `traced` covers all six operations §2 names, plus the
 ufbt job.
 
-**Phase 3 is half built.** Replay is on for errors with §6.4's surfaces masked
-by type, the second switch is on the Diagnostics screen, and
-`SentryScreenshotWidget` wraps the app at `runApp` - without it the recorder
-finds no render object and skips every frame after one log line that release
-builds do not carry.
+**Phase 3 is built apart from the flipperlib observer.** Replay is on for
+errors with §6.4's surfaces masked by type, the second switch is on the
+Diagnostics screen, and `SentryScreenshotWidget` wraps the app at `runApp` -
+without it the recorder finds no render object and skips every frame after one
+log line that release builds do not carry.
 
 `SentryScreenshotWidget` and **not** `SentryWidget`, which every SDK example
 reaches for. `SentryWidget` also mounts `SentryUserInteractionWidget`, which is
@@ -76,6 +76,48 @@ transaction per tap at `tracesSampleRate: 1.0`, on all six platforms - the same
 envelope pressure this document uses to justify `sessionSampleRate: 0`. Both
 flags are pinned off in `options.dart` so a later swap back to `SentryWidget`
 costs a failing diff rather than reopening either quietly.
+
+**Metrics are wired, as one counter.** §2's `classifyConnectError` row is the
+whole of them: a kind the classifier knows becomes `device.connect.failed`,
+carrying the kind, the transport and whether the app dialled or the user did,
+plus a breadcrumb in a `connection` category of its own. An unknown string over
+BLE goes the other way, to an issue fingerprinted on that string with device
+identifiers taken out of it - so the list is one entry per unlearned string
+rather than one per Flipper, which is what makes it the classifier's to-do
+list. The identifier rule stops at twelve characters and not eight, because
+eight merged two Windows HRESULTs into one issue and the second cause would
+never have been learned.
+
+`connectFailureSink` is the fifth hook `_wireSinks` installs, and it is filled
+from the `catch` of every connect attempt the app makes rather than from one
+place: the picker's scan and its two dials, the CLI page's channel and
+`LinkService`'s CLI restore, both auto-dials, and the home-screen widget's cold
+link - which reports at all only because `Telemetry.start` runs in `_initCore`
+rather than `_runApp`. **Not** from `showConnectionFailedDialog`, which looks
+like the chokepoint and is not: it is skipped when the widget is gone and no
+auto path reaches it. And not from `AutoConnectHintCard`, which classifies
+inside `build`, where a report would fire on every rebuild (#135/#136).
+
+**A cancel is not a failure, and one path had to be taught that.** `connect`
+and `_open` set an activity, so `disconnectDevice` marks the key cancelled and
+they swallow the abort; the remembered-BLE dial goes straight to
+`connectBleAddress` and sets none, so flipperlib's own `BLE connect aborted`
+arrived in `_autoDial`'s catch like any other failure - and being a string no
+needle matches, it filed an issue per cancel in the list above. `_autoDial`
+now checks `_userDisconnectedKey`, the same signal `_maybeAutoConnect` refuses
+to re-dial on. A review caught this; no test would have.
+
+Two gaps worth knowing rather than smoothing over. A counter that does not
+fire reads as a zero, so the two windows where the hooks outlive a live hub -
+a `_tearDown` whose close threw, and the replay-switch restart this document
+already calls a blackout - show as *no connect failures* rather than as a gap.
+And the SDK swallows its own send failures into `options.log`, which is gated
+on `debug`, which is `LogService.printing`, which is false in a release build:
+a dropped metric is recorded nowhere but Sentry's own client reports. An
+`options.logger` bridge into `caught` would fix that for every channel at
+once and is not in this phase.
+
+What is left of the phase is the `FlipperRpcObserver` PR in flipperlib, §3.
 
 Three things about it are uncomfortable and are written down rather than
 smoothed over. `privacy.mask<T>()` is `@experimental` in 9.30.1, so every call
@@ -259,7 +301,7 @@ as it does now.
 | `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why the fold coalesces them. That coalescing was not visible from `_emit` - `_remember` returned `void` and folded silently - so it has to report whether the line was new. With the buffer gone under §1's amendment the fold *is* that answer, and `_isNewLine` is all that is left of it. |
 | `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures a release build keeps no record of today, §5. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
-| `classifyConnectError` | `unknown` becomes an issue; every other kind is a metric and a breadcrumb. The issue list is then exactly the platform strings the classifier does not know yet. |
+| `classifyConnectError` | `unknown` over BLE becomes an issue; every other kind, and `unknown` over USB, is a metric and a breadcrumb. The issue list is then the BLE platform strings the classifier has not learned yet. USB is counted instead because the needles were written against BLE stacks: a USB failure either matches one of the generic ones (`timeout`, `not found`, `unauthorized`) and lands under a Bluetooth-flavoured kind, or matches nothing - and an issue per unmatched string is one per replug, in a list there is no USB vocabulary to learn it into. Giving the classifier that vocabulary is a flipperlib change, §3. A cancel is neither a count nor an issue: a dial the user called off is not a failure. |
 | `AppHttp` | Hand-made spans. Nothing instruments `dart:io` `HttpClient`, and the map's tile client is left out: URLs and query strings are always sent, and tile URLs carry the Carto key. |
 
 A `traced(name, ...)` helper in the same folder covers the operations a user
@@ -697,7 +739,10 @@ analyzer and the suite are green across the downgrade. 10 changes that
 constraint, so the move also undoes this.
 
 Code is written so that 10 is close to a version bump: no SDK profiling, and
-no `enableMetrics`. It is not quite free any more - phase 2 sets
+no `enableMetrics` - phase 3's counter does not want one. `Sentry.metrics` is
+the same three calls in both majors, and the option gates only what the SDK's
+own integrations capture by themselves, which is nothing here; 10 drops it
+altogether. It is not quite free any more - phase 2 sets
 `options.enableLogs = true`, which this major needs and 10 configures
 differently, so the move has that one line to revisit. One line with a comment
 pointing here is the whole delta, which is a different thing from the rewrite
@@ -826,7 +871,11 @@ most of them are expected.
   wanted before store submission and the repository has none, but §1's notice
   no longer waits on it: it carries the substance and gains the link when
   there is one.
-- **Kept log lines are batched, and only the desktop exit drains them.**
+- **Kept log lines and metrics are batched, and only the desktop exit drains
+  them.** Both go through one `TelemetryProcessor`, which keeps a buffer per
+  kind - `logBuffer` and `metricBuffer`, each with its own counters and its own
+  timer - and `close()` flushes both, which is why `Telemetry.closeForExit`
+  gates its single drain on either kind having been handed over.
   Sentry buffers logs five seconds behind the line that produced them
   (`defaultFlushTimeout`), the only public drain is `Sentry.close()`, and
   nothing in sentry 9.30.1 - or 10.0.0-rc.1 - lets the app shorten that window:
@@ -834,7 +883,11 @@ most of them are expected.
   `flushTimeoutMillis` TODO. `AppShutdown` closes the SDK before the window
   goes, so a desktop quit gets its last lines out. Nothing else does: a mobile
   exit has no hook worth hanging it off (`paused` comes back, `detached` is not
-  reliably delivered), and the headless isolate `widgetMain()` starts never
+  reliably delivered) - and note that `SentryWidgetsBindingObserver` *would*
+  flush on `inactive`, but only `if (!_isNavigatorObserverCreated())`, so
+  installing `SentryNavigatorObserver` (§2) is the only reason that sentence is
+  still true; dropping the observer would quietly start draining on mobile -
+  and the headless isolate `widgetMain()` starts never
   reaches `_runApp`, so it has no flush on any platform. Issues are unbatched
   and unaffected.
 - Desktop gets no crash-free rate and no offline cache. Mobile carries
