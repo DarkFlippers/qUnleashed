@@ -152,7 +152,7 @@ class GitSource {
     UfbtLogger logger, {
     bool quiet = false,
   }) async {
-    if (!quiet) logger.build('GIT', args.join(' '));
+    if (!quiet) logger.build('GIT', args.map(quotedArgument).join(' '));
     final result = await Process.run('git', args);
     final out = '${result.stdout}';
     final err = '${result.stderr}';
@@ -162,8 +162,16 @@ class GitSource {
       }
     }
     if (result.exitCode != 0) {
+      // The exit code, always: a git that exits non-zero having written to
+      // neither stream used to end this message at the colon, and the lines
+      // above are `raw` - console only, never a bug report. What ran goes in
+      // the message too, where the quoting matters, because a checkout path
+      // under a profile directory with a space in it reads as two arguments.
+      final said = err.trim().isEmpty ? out.trim() : err.trim();
       throw GitSourceException(
-        'git ${args.first} failed: ${err.trim().isEmpty ? out.trim() : err.trim()}',
+        'git ${args.first} failed with exit code ${result.exitCode}'
+        '${said.isEmpty ? ', and said nothing' : ': $said'}'
+        '\n${quotedCommandLine('git', args)}',
       );
     }
     return out;

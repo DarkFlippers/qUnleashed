@@ -5,6 +5,7 @@
 - Diagnostics: **Screen replays show the interface again** - the SDK's blanket text mask was greying out every button, tab and title, so a recording of a failure showed nothing anybody could read (by @mishamyte | PR #334 | Closes #331)
 - Settings: a setting that does not persist is recorded instead of lost in silence, and the home-screen widget stops showing a look that was never saved (by @mishamyte | PR #335 | Closes #313)
 ## Other changes
+- Flibler: a build or a checkout that fails now says what it was doing - which tool, the exit code, the folder it ran in and the full command - instead of a bare "failed with exit code 1" that named neither the file nor anything to try, and a tool that fails without printing anything says that too (by @mishamyte | PR #356 | Closes #355)
 - Tools: MIFARE key recovery leaves beta - the attack set is complete, it works on all six platforms, and every fault filed against it is fixed, so the tools list no longer marks it Beta (by @mishamyte | PR #349 | Closes #348)
 - Diagnostics: a connect attempt that fails is now counted in the reports sent to the developers - which kind of failure it was, over Bluetooth or USB, and whether the app or you started it - and a message nothing recognises is reported in full, so the next build can name it instead of showing a generic sentence (by @mishamyte | PR #347)
 - Tools: MIFARE key recovery no longer stalls for seconds at a time while a hardnested attack runs, and the recovered key list now follows a language or theme change (by @mishamyte | PR #346)
