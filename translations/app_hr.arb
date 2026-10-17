@@ -6822,6 +6822,22 @@
   "@commonNameDotEdge": {
     "description": "Shown when a typed file name begins or ends with a period."
   },
+  "commonFileTooLarge": "Ta datoteka ima {size}. Odaberite manju od {limit}.",
+  "@commonFileTooLarge": {
+    "description": "Shown when a file chosen in a picker is too big for the app to read into memory. TRANSLATORS: {size} and {limit} arrive already formatted and already in English units - '115.8 MB', '2.0 MB' - so place them, do not try to inflect around them. {limit} differs between screens, so do not hard-code it in the translation. The sentence states the size rather than calling the file invalid, because the file is fine and it is this importer that will not take it; the second half says what to do instead, since the user is standing in front of a picker.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "commonPickFailed": "Odabirnik sustava javio je pogrešku i ništa nije odabrano",
+  "@commonPickFailed": {
+    "description": "Toast shown when the operating system's file or folder picker answered with an error instead of a selection, so the operation did not start. TRANSLATORS: 'the system picker' is the operating system's own dialog, not a screen of this app. It deliberately says neither 'file' nor 'folder': one of the four screens that show this is choosing files to upload and the other three are choosing a folder to save into, so a word for either would be wrong somewhere - pick a noun that covers both, or drop it. The app also cannot say why the dialog failed, which is why the sentence does not try to. The second half is there because the user has just been in that dialog and needs to know the pick did not half-happen: nothing was uploaded, saved or exported."
+  },
   "seedReplaceTitle": "Zamijeniti datoteku?",
   "@seedReplaceTitle": {
     "description": "Title of the dialog shown when the chosen file name is already taken."
@@ -6957,5 +6973,133 @@
   "seedEngineBrokenHint": "Ništa što učinite s ovom snimkom neće pomoći: pogon za oporavak u ovoj verziji ne radi. Molimo prijavite to.",
   "@seedEngineBrokenHint": {
     "description": "Hint shown when the recovery engine in this build is not working: it failed its own checks, is missing from the build, or answered something this build cannot read. TRANSLATORS: the point is that nothing the user does with this capture will help."
+  },
+  "permissionOpenSettings": "Otvori postavke",
+  "@permissionOpenSettings": {
+    "description": "Button on a permission notice. Opens this app's page in the system settings, which is the only place any of these permissions can be changed. TRANSLATORS: 'settings' means the phone's own Settings app, not this app's settings screen."
+  },
+  "permissionDismiss": "Sakrij",
+  "@permissionDismiss": {
+    "description": "Button that puts an informational permission notice away for good on this install. Only offered where nothing the user asked for has failed."
+  },
+  "permissionContinue": "Nastavi",
+  "@permissionContinue": {
+    "description": "Confirms the storage explainer dialog and opens the system settings screen."
+  },
+  "permissionNotNow": "Ne sada",
+  "@permissionNotNow": {
+    "description": "Declines the storage explainer dialog. Everything except local files keeps working."
+  },
+  "permissionRecheckedOnReturn": "Provjerava se ponovno kada se vratite u aplikaciju.",
+  "@permissionRecheckedOnReturn": {
+    "description": "Footnote on the blocking permission screen, telling the user they do not need to restart the app after granting access in system settings."
+  },
+  "permissionStorageTitle": "Pristup pohrani",
+  "@permissionStorageTitle": {
+    "description": "Title of the dialog that explains what storage access is for, shown before the system settings screen opens."
+  },
+  "permissionStorageWhy": "qUnleashed drži vaše ključeve, dumpove i biblioteku daljinskih u Documents/qUnleashed, kako bi im upravitelj datoteka mogao pristupiti i kako biste ih sami mogli sigurnosno kopirati.",
+  "@permissionStorageWhy": {
+    "description": "Why the app wants access to shared storage. TRANSLATORS: 'Documents/qUnleashed' is a literal folder path and is not translated. 'dumps' are saved copies of NFC/RFID card contents."
+  },
+  "permissionStorageStepsTitle": "Android pita na vlastitom zaslonu",
+  "@permissionStorageStepsTitle": {
+    "description": "Heading above the three steps. Warns the user that what opens next is a system screen listing every installed app, not a simple yes/no prompt."
+  },
+  "permissionStorageStepFind": "Pronađite qUnleashed na popisu",
+  "@permissionStorageStepFind": {
+    "description": "First step on the Android all-files-access settings screen. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+  "permissionStorageStepAllow": "Uključite \"Dopusti pristup za upravljanje svim datotekama\"",
+  "@permissionStorageStepAllow": {
+    "description": "Second step. TRANSLATORS: the quoted text is Android's own wording for this switch - please use the wording your platform uses in this language rather than translating it literally."
+  },
+  "permissionStorageStepReturn": "Vratite se – ponovno pokretanje nije potrebno",
+  "@permissionStorageStepReturn": {
+    "description": "Third step. The app re-reads the permission when it is resumed."
+  },
+  "permissionStorageDeclineNote": "Ako odbijete, sve osim lokalnih datoteka nastavlja raditi.",
+  "@permissionStorageDeclineNote": {
+    "description": "Reassurance under the storage explainer: refusing is a feature gate, not a broken app."
+  },
+  "permissionStorageDeniedTitle": "Nema pristupa pohrani",
+  "@permissionStorageDeniedTitle": {
+    "description": "Heading of the notice shown where a denied storage permission has consequences. Says what is out of reach rather than naming the permission."
+  },
+  "permissionStorageDeniedIrLibrary": "Vaša biblioteka možda već jest u Documents/qUnleashed, ali ova aplikacija ne može pročitati mapu pa to ne može znati.",
+  "@permissionStorageDeniedIrLibrary": {
+    "description": "Body of the storage notice in the infrared library dialog. The specific harm: the dialog offers to download a library that is already on disk, because the listing is refused. TRANSLATORS: 'Documents/qUnleashed' is a literal folder path."
+  },
+  "permissionStorageDeniedIrStillWorks": "Pregledavanje vašeg Flippera i slanje datoteka još rade – samo je kopija na ovom telefonu nedostupna.",
+  "@permissionStorageDeniedIrStillWorks": {
+    "description": "Names what still works, so a denial does not read as a broken app."
+  },
+  "permissionStorageDeniedSizes": "Veličine mapa ne mogu se pročitati pa se prikazuju kao prazne. Vaše datoteke nisu izgubljene.",
+  "@permissionStorageDeniedSizes": {
+    "description": "Body of the storage notice on the Settings - Storage page, which reported 0 B for every folder. TRANSLATORS: the reassurance is the point - the user's files still exist."
+  },
+  "permissionStorageDeniedArchive": "Spremljeni ključevi i dumpovi na ovom telefonu ne mogu se pročitati. Ono što je na vašem Flipperu nije dirano.",
+  "@permissionStorageDeniedArchive": {
+    "description": "Body of the storage notice on the Archive page."
+  },
+  "permissionStorageGrant": "Dopusti pristup",
+  "@permissionStorageGrant": {
+    "description": "Button on a storage notice. Opens the explainer, then the system settings screen."
+  },
+  "permissionBluetoothDeniedTitle": "Pristup Bluetoothu odbijen",
+  "@permissionBluetoothDeniedTitle": {
+    "description": "Heading shown in the device picker when the Bluetooth permission was refused. Replaces 'No devices found.', which blamed the hardware."
+  },
+  "permissionBluetoothDeniedPicker": "Ništa se ne može tražiti dok to ne dopustite. Flipper možete i priključiti USB-C kabelom.",
+  "@permissionBluetoothDeniedPicker": {
+    "description": "Body shown in the device picker on Android, where USB-OTG is still a route to the device. TRANSLATORS: naming the USB alternative is the point - the app is still usable."
+  },
+  "permissionBluetoothBlockedTitle": "Potreban je pristup Bluetoothu",
+  "@permissionBluetoothBlockedTitle": {
+    "description": "Title of the blocking screen on iOS, where a refused Bluetooth permission leaves the app with no way to reach a Flipper at all."
+  },
+  "permissionBluetoothBlockedBody": "qUnleashed dolazi do vašeg Flippera putem Bluetootha. iPhone nema USB mogućnost pa nema što prikazati dok pristup nije dopušten.",
+  "@permissionBluetoothBlockedBody": {
+    "description": "Body of the iOS blocking screen. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+  "permissionBluetoothBlockedHint": "Postavke > qUnleashed > Bluetooth",
+  "@permissionBluetoothBlockedHint": {
+    "description": "Where the switch is, so the user does not hunt for it. TRANSLATORS: please use the names iOS itself uses for these screens in this language. qUnleashed is the app name and is not translated."
+  },
+  "permissionPushDeniedTitle": "Obavijesti su isključene",
+  "@permissionPushDeniedTitle": {
+    "description": "Heading on Settings - Push when the notification permission was refused. Replaces 'This build is not signed for push', which asserted the wrong cause."
+  },
+  "permissionPushDeniedBody": "Obavijesti su isključene za qUnleashed pa vas odavde ništa ne može doseći. Sve ostalo radi kao i inače.",
+  "@permissionPushDeniedBody": {
+    "description": "Body of the push notice. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+  "permissionPushTurnOn": "Uključi",
+  "@permissionPushTurnOn": {
+    "description": "Button on the push notice. Opens the system settings page where notifications can be re-enabled."
+  },
+  "permissionServiceNotificationTitle": "Veza u pozadini može se prekinuti",
+  "@permissionServiceNotificationTitle": {
+    "description": "Heading of the notice for a refused foreground-service notification permission. Android needs the ongoing notification for the service to exist, so without it the connection dies when the screen sleeps."
+  },
+  "permissionServiceNotificationBody": "Android mora prikazivati trajnu obavijest kako bi veza ostala živa dok je zaslon ugašen. Bez nje veza pada kad telefon zaspi.",
+  "@permissionServiceNotificationBody": {
+    "description": "Body of the foreground-service notification notice."
+  },
+  "permissionServiceLocationTitle": "Veza u pozadini manje je pouzdana",
+  "@permissionServiceLocationTitle": {
+    "description": "Heading of the notice for a missing location permission on the foreground service. The service starts without its location type, which Android may treat more harshly."
+  },
+  "permissionServiceLocationBody": "Bez pristupa lokaciji usluga u pozadini radi s manje jamstava pa je Android može zaustaviti ranije. Sama veza ne treba vašu lokaciju.",
+  "@permissionServiceLocationBody": {
+    "description": "Body of the foreground-service location notice. TRANSLATORS: the last sentence matters - the app is not tracking the user."
+  },
+  "irSearchPartial": "Neke mape nije bilo moguće pretražiti pa je ovaj popis možda nepotpun.",
+  "@irSearchPartial": {
+    "description": "Shown under infrared search results when one or more folders failed to list. Before this, a failure mid-search silently pruned a subtree and the short result was presented as complete."
+  },
+  "permissionSettingsOpenFailed": "Nije bilo moguće otvoriti postavke sustava. Otvorite Postavke, pronađite qUnleashed i promijenite to tamo.",
+  "@permissionSettingsOpenFailed": {
+    "description": "Shown when the button on a permission notice could not launch the system settings screen. Tells the user how to get there by hand, because on a non-dismissible notice that button is the only way forward. TRANSLATORS: qUnleashed is the app name and is not translated."
   }
 }
