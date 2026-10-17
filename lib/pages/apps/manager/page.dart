@@ -308,12 +308,16 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               children: [
                 const Icon(Icons.manage_search, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  context.l10n.managerTitle,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    context.l10n.managerTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

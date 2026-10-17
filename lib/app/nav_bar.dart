@@ -74,27 +74,26 @@ class FlipperRootScaffold extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.only(top: 6, bottom: 8),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _BottomTab(
+                _BottomTabSlot(
                   icon: const _NavIcon(asset: 'assets/ic/device/flipper.svg'),
                   label: deviceLabel,
                   selected: currentTab == FlipperRootTab.device,
                   onTap: () => onTabSelected(FlipperRootTab.device),
                 ),
-                _BottomTab(
+                _BottomTabSlot(
                   icon: const _NavIcon(asset: 'assets/ic/app/files.svg'),
                   label: context.l10n.navArchive,
                   selected: currentTab == FlipperRootTab.archive,
                   onTap: () => onTabSelected(FlipperRootTab.archive),
                 ),
-                _BottomTab(
+                _BottomTabSlot(
                   icon: const _NavIcon(asset: 'assets/ic/app/apps.svg'),
                   label: context.l10n.navApps,
                   selected: currentTab == FlipperRootTab.apps,
                   onTap: () => onTabSelected(FlipperRootTab.apps),
                 ),
-                _BottomTab(
+                _BottomTabSlot(
                   icon: const _NavIcon(asset: 'assets/ic/appcat/tools.svg'),
                   label: context.l10n.navTools,
                   selected: currentTab == FlipperRootTab.tools,
@@ -209,6 +208,36 @@ class FlipperRailIcon extends StatelessWidget {
   }
 }
 
+/// One quarter of the bottom bar. The tabs are given equal slots rather than
+/// their natural widths: the device tab's label is a connection state, and a
+/// long one - German's "Verbindung wird hergestellt" - used to push the bar
+/// past the edge of the screen.
+class _BottomTabSlot extends StatelessWidget {
+  const _BottomTabSlot({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Widget icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: _BottomTab(
+        icon: icon,
+        label: label,
+        selected: selected,
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
 class _BottomTab extends StatelessWidget with VisibleSurface {
   const _BottomTab({
     required this.icon,
@@ -242,6 +271,9 @@ class _BottomTab extends StatelessWidget with VisibleSurface {
               const SizedBox(height: 4),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,

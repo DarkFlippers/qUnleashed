@@ -273,21 +273,34 @@ class _CatalogViewState extends State<CatalogView> {
         children: [
           Row(
             children: [
-              Text(
-                context.l10n.catalogTitle,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: colors.textPrimary,
+              // The title group takes the room the buttons leave, and the
+              // title itself gives way first: a translated catalogTitle is
+              // half again as long as the English one and overflowed the row
+              // by 140px at 310px wide.
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        context.l10n.catalogTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    CatalogModeBadge(
+                      mode: _ctrl.mode.value,
+                      deviceApi: _ctrl.deviceApi,
+                      catalogApi: _ctrl.compatApi ?? _ctrl.serverApi,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              CatalogModeBadge(
-                mode: _ctrl.mode.value,
-                deviceApi: _ctrl.deviceApi,
-                catalogApi: _ctrl.compatApi ?? _ctrl.serverApi,
-              ),
-              const Spacer(),
               IconButton(
                 icon: Icon(Icons.manage_search, color: colors.textPrimary),
                 tooltip: context.l10n.catalogManageTooltip,

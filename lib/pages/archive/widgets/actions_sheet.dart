@@ -165,15 +165,21 @@ class _ActionTile extends StatelessWidget {
           children: [
             Icon(action.icon, color: color, size: 22),
             const SizedBox(height: 5),
-            Text(
-              action.label,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+            // Two lines, because one holds about 13 characters at this size
+            // and English is the only language that fits every label in 13:
+            // "Reveal" is "Mostrar en el gestor de archivos" in Spanish. The
+            // Flexible keeps a two-line label from overflowing the 72px tile.
+            Flexible(
+              child: Text(
+                action.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
