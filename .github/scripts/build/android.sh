@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 APP_NAME="qunleashed"
 
+# shellcheck source-path=SCRIPTDIR
 # shellcheck source=../android_abis.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/android_abis.sh"
 DIST_DIR="$ROOT_DIR/dist"
@@ -37,9 +38,19 @@ mkdir -p "$DIST_DIR"
 echo "Using Flutter: $FLUTTER_BIN"
 read -r -a FLUTTER_BUILD_ARGS <<< "${QUNLEASHED_FLUTTER_BUILD_ARGS:-}"
 
-echo "Building Android universal APK..."
-(cd "$ROOT_DIR" && "$FLUTTER_BIN" build apk --release "${FLUTTER_BUILD_ARGS[@]}")
+# One build, all four APKs. `--split-per-abi` enables AGP's ABI splits and
+# `android/app/build.gradle.kts` turns the universal output back on, so this
+# emits the three per-ABI APKs and the universal one from a single R8 run -
+# which means a single `mapping.txt` and a single UUID for every artifact in
+# the release. Building twice made those two things come from different passes.
+# #361.
+echo "Building Android APKs..."
+(cd "$ROOT_DIR" && "$FLUTTER_BIN" build apk --release --split-per-abi "${FLUTTER_BUILD_ARGS[@]}")
 
+# Flutter names what it copies into `flutter-apk/` after the output's ABI
+# filter, and the universal output has none - so it keeps the plain
+# `app-release.apk` it had when it was its own build, rather than AGP's
+# `app-universal-release.apk` from the directory underneath.
 UNIVERSAL_APK="$ROOT_DIR/build/app/outputs/flutter-apk/app-release.apk"
 if [[ ! -f "$UNIVERSAL_APK" ]]; then
   echo "Expected universal APK not found: $UNIVERSAL_APK" >&2
@@ -47,9 +58,6 @@ if [[ ! -f "$UNIVERSAL_APK" ]]; then
 fi
 
 cp "$UNIVERSAL_APK" "$DIST_DIR/${APP_NAME}_${VERSION_NAME}_android_universal.apk"
-
-echo "Building Android ABI APKs..."
-(cd "$ROOT_DIR" && "$FLUTTER_BIN" build apk --release --split-per-abi "${FLUTTER_BUILD_ARGS[@]}")
 
 for abi in "${ANDROID_ABIS[@]}"; do
   apk="$ROOT_DIR/build/app/outputs/flutter-apk/app-${abi}-release.apk"

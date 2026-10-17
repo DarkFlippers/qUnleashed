@@ -70,6 +70,52 @@ android {
         }
     }
 
+    // One invocation, four APKs, one R8 run - which is the point, rather than
+    // the minute it saves. `build/android.sh` used to build the whole release
+    // twice, once for the universal APK and once with `--split-per-abi`, and R8
+    // wrote over `mapping.txt` on the second pass. So the mapping that got
+    // uploaded came from one build and the UUID it was filed under came from
+    // the other's APK, which is correct only while R8 is deterministic across
+    // the two. It is, and nothing made it so. Now there is one mapping and one
+    // UUID because there is one R8 run. #361.
+    //
+    // Only `isUniversalApk` here. Flutter's plugin owns the rest: with
+    // `--split-per-abi` it sets `isEnable`, calls `reset()` and hardcodes
+    // `isUniversalApk = false` inside its own `apply`, so flipping this one
+    // value afterwards works with the grain and leaves the split set Flutter's.
+    //
+    // Inert unless splits are on, so `flutter run` and a plain
+    // `flutter build apk` are unaffected.
+    splits {
+        abi {
+            isUniversalApk = true
+        }
+    }
+
+    defaultConfig {
+        // The ABI floor the universal APK would otherwise lose. Flutter sets
+        // these itself, but only on the branch where splits are *off* - so
+        // asking for splits above took them away, and the universal APK came
+        // back carrying `lib/x86/` from six third-party dependencies with no
+        // `libflutter.so` and no `libapp.so` beside them. That is the exact
+        // shape Flutter's own comment warns about: Play reads the APK as
+        // supporting x86, installs it on an x86 device, and the app dies at
+        // launch with no engine to start. `verify_apks.sh` refuses it, which is
+        // how it was caught.
+        //
+        // Flutter's own list rather than a third copy of the names. It is a
+        // `@JvmStatic val` on a public object and the plugin is already on this
+        // build's classpath; if a Flutter upgrade moves it, this stops
+        // compiling, which is the loud failure rather than a silently narrowed
+        // APK. It also keeps matching the split set by construction - AGP only
+        // objects to `abiFilters` beside splits when the two disagree, and they
+        // cannot, because this is where Flutter's splits get their ABIs too.
+        ndk {
+            abiFilters.clear()
+            abiFilters.addAll(com.flutter.gradle.FlutterPluginConstants.PLATFORM_ABI_LIST)
+        }
+    }
+
     signingConfigs {
         if (hasReleaseSigningConfig) {
             create("release") {
