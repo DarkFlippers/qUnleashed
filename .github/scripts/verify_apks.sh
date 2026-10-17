@@ -164,14 +164,20 @@ for abi in "${ANDROID_ABIS[@]}"; do
 done
 
 # One mapping is uploaded, so one UUID has to be what every artifact points at.
-# `android.sh` builds twice - once universal, once --split-per-abi - and R8
-# writes over the same `mapping.txt` both times. The UUID is derived from the
-# mapping's contents, so the two runs agree as long as R8 is deterministic
-# across them; that holds today and nothing enforces it. If it ever stops
-# holding, the upload sends one mapping and the APKs built by the other run
-# carry a UUID with nothing behind it - and the ones that do resolve resolve
-# against a mapping describing different bytes, which deobfuscates to confident
-# wrong names. Worse than `w2.r.k`, because a wrong name is believed.
+#
+# `android.sh` builds once now, so all four APKs take their UUID from the same
+# R8 run and this should be true by construction (#361). It is checked anyway,
+# because the shape it guards against is cheap to reintroduce and silent when
+# it happens: `android.sh` used to build twice, R8 wrote over the same
+# `mapping.txt` both times, and the upload sent one of them under a UUID read
+# out of an APK built by the other. Then the artifacts from the losing run
+# carry a UUID with nothing behind it, and the ones that do resolve resolve
+# against a mapping describing different bytes - confident wrong names, which
+# are worse than `w2.r.k` because a wrong name is believed.
+#
+# So this is what would notice a second build coming back, or a stale
+# `app-release.apk` left in `build/` by an earlier local run being copied in
+# beside freshly built splits.
 if (( ${#seen_uuid[@]} > 1 )); then
   fault "The artifacts in $dir carry ${#seen_uuid[@]} different R8 mapping UUIDs (${!seen_uuid[*]}); only one mapping is uploaded, so the rest could not deobfuscate."
 fi
