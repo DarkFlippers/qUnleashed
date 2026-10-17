@@ -35,22 +35,13 @@ inputs:
 # the job summary or it is invisible on a green run. That is what the
 # failure branch below is for.
 #
-# The Android R8 mapping is the one thing the Dart plugin cannot carry, and
-# not for the reason it looks like: `build/app/outputs` is the first root it
-# hands over, so the mapping is inside a directory sentry-cli searches. What
-# excludes it is the command - `debug-files upload` builds its type list as
-# `DifType::all_names().filter(|name| name != "proguard")`, so a mapping only
-# moves through `upload-proguard`, under a UUID. Hence the second step below,
-# with its own sentry-cli. It is gated on R8 having left a mapping, which is a
-# property of the build rather than of the platform, so a job that never
-# minified skips the step without naming itself.
-#
-# It is here rather than in the build for the reason
-# `android/app/build.gradle.kts` records at length: the Gradle plugin's upload
-# throws from an action that file does not own, and it is a finalizer of
-# `assembleRelease`, so an unreachable Sentry would discard APKs that were
-# already built. Here, the same fault costs a warning. #343. ADR 0013
-# Consequences holds the full inventory and is the copy to update first.
+# The Android R8 mapping is the one thing the Dart plugin cannot carry, for a
+# reason that is not the obvious one - `.github/scripts/upload_r8_mapping.sh`
+# is where that is written down, along with why the send is here rather than in
+# the build. The step below runs on every platform and leaves immediately where
+# R8 left no mapping, which is the script's own first decision rather than a
+# condition on the step. #343. ADR 0013 Consequences holds the full inventory
+# and is the copy to update first.
 runs:
   using: composite
   steps:

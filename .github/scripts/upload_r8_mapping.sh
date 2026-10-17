@@ -50,19 +50,27 @@ pubspec="${3:-$ROOT/pubspec.yaml}"
 # Two things to re-check when this pin moves. `--uuid` is hidden and marked
 # `[DEPRECATED]` in 3.8.0's `proguard upload` - which is itself the modern
 # spelling, `upload-proguard` surviving only as a hidden legacy alias for it -
-# and it works, its own help
-# blesses this use ("you must ensure the UUID is generated deterministically
-# based on the ProGuard mapping", which is what the plugin's
-# `nameUUIDFromBytes` over R8's map hash does) - but the day it goes, the
-# symptom is an unrecognised argument. And a mapping path that does not exist
-# is only a `warning:` to sentry-cli, which then uploads an empty set and exits
-# 0, which is what `--require-one` below is for.
-SENTRY_CLI_VERSION="${SENTRY_CLI_VERSION:-3.8.0}"
-SENTRY_CLI_SHA256="${SENTRY_CLI_SHA256:-13f8cb34ae01a6a272d7d7c22e277a105286615b4020de900ea95a8de47cdbb6}"
-SENTRY_CLI_URL="https://github.com/getsentry/sentry-cli/releases/download/${SENTRY_CLI_VERSION}/sentry-cli-Linux-x86_64"
+# and it works, its own help blessing this use ("you must ensure the UUID is
+# generated deterministically based on the ProGuard mapping", which is what the
+# plugin's `nameUUIDFromBytes` over R8's map hash does); but the day it goes,
+# the symptom is an unrecognised argument. And a mapping path that does not
+# exist is only a `warning:` to sentry-cli, which then uploads an empty set and
+# exits 0, which is what `--require-one` below is for.
+#
+# `readonly`, and read from nothing: an environment variable that lowered
+# either of these would be a pin silently weakened from outside, in the one job
+# that holds the signing key.
+readonly SENTRY_CLI_VERSION="3.8.0"
+readonly SENTRY_CLI_SHA256="13f8cb34ae01a6a272d7d7c22e277a105286615b4020de900ea95a8de47cdbb6"
 
-SENTRY_UUID_ASSET='assets/sentry-debug-meta.properties'
-SENTRY_UUID_RE='[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+# The URL is the exception, and safe to override because the checksum above is
+# not: anything else served here fails verification. That is what lets the
+# suite point it at a stub and cover the download and the mismatch branch.
+SENTRY_CLI_URL="${SENTRY_CLI_URL:-https://github.com/getsentry/sentry-cli/releases/download/${SENTRY_CLI_VERSION}/sentry-cli-Linux-x86_64}"
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=sentry_proguard_uuid.sh
+. "$HERE/sentry_proguard_uuid.sh"
 
 summary() { cat >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"; }
 
@@ -72,11 +80,13 @@ summary() { cat >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"; }
 # read; the summary is what somebody looks at after a release. Three things
 # produced an empty summary before this existed - a good upload, a step that
 # never ran, and a swallowed failure - and only one of them is fine. #310.
-not_uploaded() { # not_uploaded <annotation> <summary-line>
-  echo "::warning::$1"
+# `error` rather than `warning` for the two that are misconfiguration rather
+# than an outage: an unreadable slug, and a checksum that does not match.
+not_uploaded() { # not_uploaded <warning|error> <annotation> <summary-line>
+  echo "::$1::$2"
   {
     echo "### The R8 mapping was not uploaded"
-    echo "$2"
+    echo "$3"
   } | summary
 }
 
@@ -86,11 +96,15 @@ not_uploaded() { # not_uploaded <annotation> <summary-line>
 # already written "Debug symbols uploaded". Absence of a second heading is not
 # a signal anybody reads.
 unplanned_failure() {
-  not_uploaded \
+  not_uploaded warning \
     "The R8 mapping step failed (exit $1) before the upload. Android Java and Kotlin frames from this build will NOT deobfuscate." \
     "The step failed with exit \`$1\` on the Android build of \`${SENTRY_RELEASE:-unknown}\`, before the mapping was sent. The job log has the failing command."
 }
 trap 'unplanned_failure "$?"; exit 0' ERR
+
+# Set once and never restored: every glob below wants to expand to nothing
+# rather than to itself, and this script does nothing after them.
+shopt -s nullglob
 
 # Whether R8 ran, not which platform this is - so a job that never minified
 # leaves without fetching anything. But "no mapping" means two different things
@@ -102,11 +116,9 @@ trap 'unplanned_failure "$?"; exit 0' ERR
 # is what notices. `android/app/build.gradle.kts` derives the same fact rather
 # than naming `release`; this cannot, so it checks.
 if [[ ! -f "$mapping" ]]; then
-  shopt -s nullglob
   android_apks=("$dist"/*_android_*.apk)
-  shopt -u nullglob
   if (( ${#android_apks[@]} > 0 )); then
-    not_uploaded \
+    not_uploaded warning \
       "This job built Android APKs but no R8 mapping was found at ${mapping}. Their Java and Kotlin frames will NOT deobfuscate." \
       "Android APKs were built for \`${SENTRY_RELEASE:-unknown}\`, but there is no mapping at \`${mapping}\`. Either R8 did not run, or its output moved - the variant name is in that path."
   fi
@@ -125,32 +137,25 @@ fi
 # mapping nothing points at. `verify_apks.sh` has already refused the build if
 # this is absent or inconsistent, so a miss here is a miss in whatever changed
 # between the two.
-apk=""
-shopt -s nullglob
-for candidate in "$dist"/*_android_universal.apk; do
-  apk="$candidate"
-  break
-done
-shopt -u nullglob
-
+universal_apks=("$dist"/*_android_universal.apk)
+apk="${universal_apks[0]:-}"
 if [[ -z "$apk" ]]; then
-  not_uploaded \
+  not_uploaded warning \
     "No universal APK in ${dist}, so the R8 mapping's UUID could not be read. Android Java frames from this build will NOT deobfuscate." \
     "R8 wrote a mapping for \`${SENTRY_RELEASE:-unknown}\` but no universal APK was found to read its UUID from, so the mapping was not sent."
   exit 0
 fi
 
-# `|| true` on the read, so a missing entry reaches the branch below instead of
-# the trap: absent and present-but-unusable are one problem with one fix, and
-# both want this message. The pattern is verify_apks.sh's, so a malformed value
-# - or the comma-separated pair the key's plural name allows - is named here
-# rather than inside sentry-cli.
-props="$(unzip -p "$apk" "$SENTRY_UUID_ASSET" 2>/dev/null || true)"
-uuid="$(sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" <<<"$props" | head -n 1)"
+# Absent and present-but-unusable are one problem with one fix, so the shared
+# reader prints nothing for either and this is the single message for both. A
+# malformed value - or the comma-separated pair the key's plural name allows -
+# is therefore named here rather than inside sentry-cli.
+apk_name="${apk##*/}"
+uuid="$(sentry_proguard_uuid "$apk")"
 if [[ -z "$uuid" ]]; then
-  not_uploaded \
-    "$(basename "$apk") carries no usable io.sentry.ProguardUuids, so the R8 mapping has nothing to be filed under. Android Java frames from this build will NOT deobfuscate." \
-    "\`$(basename "$apk")\` carries no usable \`io.sentry.ProguardUuids\`, so the mapping could not be addressed. \`verify_apks.sh\` refuses that, so reaching this means the two disagree."
+  not_uploaded warning \
+    "$apk_name carries no usable io.sentry.ProguardUuids, so the R8 mapping has nothing to be filed under. Android Java frames from this build will NOT deobfuscate." \
+    "\`$apk_name\` carries no usable \`io.sentry.ProguardUuids\`, so the mapping could not be addressed. \`verify_apks.sh\` refuses that, so reaching this means the two disagree."
   exit 0
 fi
 
@@ -172,11 +177,9 @@ read_slug() {
 org="$(read_slug org)"
 project="$(read_slug project)"
 if [[ -z "$org" || -z "$project" ]]; then
-  echo "::error::Could not read both slugs out of ${pubspec}'s sentry: block (org '${org}', project '${project}')."
-  {
-    echo "### The R8 mapping was not uploaded"
-    echo "\`$(basename "$pubspec")\`'s \`sentry:\` block did not yield both slugs - org \`${org:-<empty>}\`, project \`${project:-<empty>}\`. \`sentry_dart_plugin\` reads the same two lines, so this breaks every upload, not only the mapping."
-  } | summary
+  not_uploaded error \
+    "Could not read both slugs out of ${pubspec}'s sentry: block (org '${org}', project '${project}'). They must be bare scalars." \
+    "\`${pubspec##*/}\`'s \`sentry:\` block did not yield both slugs - org \`${org:-<empty>}\`, project \`${project:-<empty>}\`. \`sentry_dart_plugin\` reads the same two lines, so this breaks every upload, not only the mapping."
   exit 1
 fi
 
@@ -189,11 +192,9 @@ if [[ -z "$cli" ]]; then
   # Its own annotation rather than the trap's: a checksum that does not match
   # is not a flaky download and should not read like one.
   if ! echo "${SENTRY_CLI_SHA256}  ${cli}" | sha256sum --check --quiet; then
-    echo "::error::sentry-cli ${SENTRY_CLI_VERSION} did not match its pinned SHA256. Nothing was run and the R8 mapping was not uploaded."
-    {
-      echo "### The R8 mapping was not uploaded"
-      echo "The pinned \`sentry-cli ${SENTRY_CLI_VERSION}\` download did not match \`${SENTRY_CLI_SHA256}\`. It was not executed. Check the release asset before changing the pin."
-    } | summary
+    not_uploaded error \
+      "sentry-cli ${SENTRY_CLI_VERSION} did not match its pinned SHA256. Nothing was run and the R8 mapping was not uploaded." \
+      "The pinned \`sentry-cli ${SENTRY_CLI_VERSION}\` download did not match \`${SENTRY_CLI_SHA256}\`. It was not executed. Check the release asset before changing the pin."
     exit 0
   fi
   chmod +x "$cli"
@@ -205,7 +206,7 @@ fi
 # turned on was the plugin's, one layer up from here.
 if ! "$cli" proguard upload --require-one \
   --uuid "$uuid" --org "$org" --project "$project" "$mapping"; then
-  not_uploaded \
+  not_uploaded warning \
     "Uploading the R8 mapping failed. Android Java and Kotlin frames from this build will NOT deobfuscate until it is re-uploaded." \
     "The Android build of \`${SENTRY_RELEASE:-unknown}\` published **without** it, so its Java and Kotlin frames will not deobfuscate. Dart and native frames are unaffected."
   {

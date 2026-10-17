@@ -106,14 +106,10 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
-// The R8 mapping - the one thing `sentry_dart_plugin` cannot upload. Not for
-// want of looking: `build/app/outputs` is the first directory it hands over,
-// and the mapping is in it. The command is what excludes it, because
-// `sentry-cli debug-files upload` builds its type list as
-// `DifType::all_names().filter(|name| name != "proguard")`, so a mapping moves
-// through `upload-proguard` under a UUID or not at all. Without it every Java
-// and Kotlin frame reaching Sentry is a renamed `w2.r.k`, and only the
-// platform's own frames stay readable. #343.
+// The R8 mapping - the one thing `sentry_dart_plugin` cannot upload, for a
+// reason `.github/scripts/upload_r8_mapping.sh` records rather than this file.
+// Without it every Java and Kotlin frame reaching Sentry is a renamed
+// `w2.r.k`, and only the platform's own frames stay readable. #343.
 //
 // Two halves: the mapping goes to the project under a UUID, and the same UUID
 // ships inside the APK so an event can say which mapping it belongs to. The

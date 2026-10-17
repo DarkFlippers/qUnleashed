@@ -18,6 +18,17 @@ set -Eeuo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/upload_r8_mapping.sh"
+
+# Said once and plainly, because the subject reads an APK through a helper that
+# swallows `unzip`'s own errors on purpose - absence and unreadability are one
+# outcome there - so without this a box with no `unzip` fails six cases with a
+# message about a missing UUID and nothing about the missing tool.
+for tool in unzip python3 sha256sum curl; do
+  if ! command -v "$tool" > /dev/null 2>&1; then
+    echo "::error::$tool is needed to run this suite and is not installed." >&2
+    exit 1
+  fi
+done
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 failures=0
@@ -195,12 +206,39 @@ else
   pass "a pubspec with no sentry block is refused, loudly"
 fi
 
+# --- the download and its checksum -----------------------------------------
+
+# The one branch the `SENTRY_CLI` seam skips past. Only the URL is overridable
+# - the version and the checksum are `readonly`, so a pin cannot be lowered
+# from outside - which means pointing it at anything else is a guaranteed
+# mismatch, and that is exactly the branch worth covering.
+d="$(workspace bad-checksum)"
+printf 'not sentry-cli\n' > "$d/decoy"
+# `cygpath` only when running the suite by hand on Windows: curl there is a
+# native binary and cannot open an MSYS path. CI is ubuntu-only.
+decoy="file://$d/decoy"
+if command -v cygpath > /dev/null 2>&1; then
+  decoy="file:///$(cygpath -m "$d/decoy")"
+fi
+out="$(run "$d" SENTRY_AUTH_TOKEN=sntrys_stub SENTRY_CLI= SENTRY_CLI_URL="$decoy")" && rc=0 || rc=$?
+if [[ "$rc" -ne 0 ]]; then
+  fail "a download that fails its checksum does not fail the step" "exit $rc"
+elif [[ "$out" != *"did not match its pinned SHA256"* ]]; then
+  fail "a download that fails its checksum is reported" "$out"
+elif [[ "$out" != *"::error::"* ]]; then
+  fail "a bad checksum is an error, not a warning" "$out"
+elif [[ -f "$d/argv" ]]; then
+  fail "a download that fails its checksum is not executed" "it ran: $(cat "$d/argv")"
+else
+  pass "a download failing its checksum is an error, is not executed, and does not fail the step"
+fi
+
 # --- the pin ----------------------------------------------------------------
 
 # Catches a half-done version bump, which otherwise fails only on a tagged
 # release. No network: the declarations are read out of the script.
-version="$(sed -nE 's/^SENTRY_CLI_VERSION="\$\{SENTRY_CLI_VERSION:-([^}]+)\}"$/\1/p' "$SCRIPT")"
-sha="$(sed -nE 's/^SENTRY_CLI_SHA256="\$\{SENTRY_CLI_SHA256:-([^}]+)\}"$/\1/p' "$SCRIPT")"
+version="$(sed -nE 's/^readonly SENTRY_CLI_VERSION="([^"]+)"$/\1/p' "$SCRIPT")"
+sha="$(sed -nE 's/^readonly SENTRY_CLI_SHA256="([^"]+)"$/\1/p' "$SCRIPT")"
 url="$(sed -nE 's/^SENTRY_CLI_URL="(.*)"$/\1/p' "$SCRIPT")"
 # The URL is asserted to interpolate the pin rather than to spell a version of
 # its own, which is the half-done bump that would otherwise fetch one version

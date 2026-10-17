@@ -26,6 +26,7 @@
 # moves to bundles (Play requires them), this needs revisiting.
 set -Eeuo pipefail
 
+# shellcheck source-path=SCRIPTDIR
 # shellcheck source=android_abis.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/android_abis.sh"
 
@@ -33,17 +34,28 @@ set -Eeuo pipefail
 # reject an empty or stub file and small enough never to reject a real one.
 MIN_SNAPSHOT_BYTES=1048576
 
-# What the Sentry Android Gradle Plugin injects so an event can name the R8
-# mapping it belongs to. Checked here because nothing else can see it go
-# missing: R8 renames every Java and Kotlin frame whether or not this is
-# present, the build is green either way, and the only other symptom is a
-# crash report that arrives as `w2.r.k` months later - which is #343, three
-# releases long. The plugin skips a variant it does not consider minified and
-# says nothing at all about it - not even at `info` - so "the plugin is
-# configured" and "this APK can be deobfuscated" are different facts, and this
-# is the only place that can tell them apart.
-SENTRY_UUID_ASSET='assets/sentry-debug-meta.properties'
-SENTRY_UUID_RE='[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
+# The identifier that ties an APK to an R8 mapping, shared with
+# `upload_r8_mapping.sh` so the gate and the uploader cannot disagree about it.
+#
+# Checked here because nothing else can see it go missing: R8 renames every
+# Java and Kotlin frame whether or not this is present, the build is green
+# either way, and the only other symptom is a crash report that arrives as
+# `w2.r.k` months later - which is #343, three releases long. The plugin skips
+# a variant it does not consider minified and says nothing at all about it,
+# not even at `info`, so "the plugin is configured" and "this APK can be
+# deobfuscated" are different facts and this is the only place that can tell
+# them apart.
+#
+# One case this refuses that it arguably should not: a build with
+# `-Pshrink=false`, where R8 never runs, so there is nothing to deobfuscate and
+# no UUID to carry. Nothing in CI passes it - `derive_version.sh` puts only
+# `--build-name`, `--build-number` and the dart-defines into
+# `QUNLEASHED_FLUTTER_BUILD_ARGS` - so it takes a person running `android.sh`
+# by hand. Said here rather than taught to the code, which would give a
+# `dist`-only script a second input for one hypothetical.
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=sentry_proguard_uuid.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sentry_proguard_uuid.sh"
 
 dir="${1:-dist}"
 failures=0
@@ -109,13 +121,7 @@ for apk in "${apks[@]}"; do
   if ! grep -qxF -- "$SENTRY_UUID_ASSET" <<<"$listing"; then
     fault "$name has no $SENTRY_UUID_ASSET - nothing ties it to an R8 mapping, so its Java frames will not deobfuscate."
   else
-    # `|| true` because `head` closing the pipe early SIGPIPEs `unzip`, which
-    # `pipefail` turns into a failed assignment and `errexit` into this gate
-    # abandoning the remaining artifacts with no message at all. Today's
-    # properties file is far too small to reach that, and a gate is the last
-    # place to leave it standing. An empty read falls into the fault below.
-    uuid="$(unzip -p "$apk" "$SENTRY_UUID_ASSET" 2>/dev/null \
-      | sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" | head -n 1 || true)"
+    uuid="$(sentry_proguard_uuid "$apk")"
     if [[ -z "$uuid" ]]; then
       fault "$name carries $SENTRY_UUID_ASSET with no io.sentry.ProguardUuids in it."
     else
