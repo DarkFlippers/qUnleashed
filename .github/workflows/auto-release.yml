@@ -191,6 +191,11 @@ jobs:
             printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
           } > android/key.properties
 
+      # No Sentry token here on purpose. R8's mapping is written by this step
+      # and its UUID ships inside these APKs, but the upload is the step below,
+      # where a fault at Sentry costs a warning instead of the release -
+      # `android/app/build.gradle.kts` records why it cannot be the other way
+      # round.
       - name: Build Android release APKs
         run: .github/scripts/build/android.sh
 

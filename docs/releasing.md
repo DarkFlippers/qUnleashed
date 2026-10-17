@@ -429,9 +429,14 @@ environment — `~/.sentryclirc` or a user-level variable — and is only needed
 for uploading debug files, never for checking that an error arrives.
 
 In CI it is a repository secret, read by the `Upload debug symbols to Sentry`
-step in each of the three build jobs. A run without it builds and publishes
-normally and says so in the log; the traces from that build are just not
-symbolicated. That is deliberate — a fork has to be able to build.
+step in each of the three build jobs and by nothing else. No build step gets
+it: on Android the Sentry Gradle Plugin mints the R8 mapping's UUID and ships
+it inside the APK, but the mapping is *sent* by that same upload step
+afterwards, so that a Sentry outage costs a warning rather than the release.
+A run without the token builds and publishes normally and says so in the log
+and the job summary; the traces from that build are just not symbolicated, and
+its Android Java frames are not deobfuscated. That is deliberate — a fork has
+to be able to build.
 
 **The DSN's secret is `SENTRY_DSN`, and the define it becomes is
 `QU_SENTRY_DSN`.** The two spellings are not a typo: the secret is named for
@@ -510,7 +515,6 @@ Honest list, so nobody waits for something that is not coming.
 |---|---|
 | Store uploads | Nothing uploads to TestFlight or the Play internal track. The ADR is shaped for it; the jobs do not exist. |
 | The *decision* in the version bump after a release | `open-next-cycle` proposes a minor bump and opens the pull request; which digit moves is still a person's call (fact 2). |
-| The R8 mapping | `sentry_dart_plugin` uploads dSYMs, PDBs and the Linux and Android native libraries, but not Android's R8 mapping — that wants the Sentry Android Gradle Plugin, which is a change in `android/` that has not been made. Until it is, an obfuscated Android Dart trace is less readable than the other four platforms'. |
 | Release commits in the submodules | Each Sentry release gets the app's commits automatically. [ADR 0013](adr/0013-observability-with-sentry.md) §3 wants flipperlib's and dartufbt's too, so a suspect commit can be found in a submodule; they go as event tags today, not as release commits. |
 | `installerStore` | 0014 §1 wants the actual install source — TestFlight, Play, a sideload — read at runtime and reported. Not read anywhere yet. |
 
@@ -526,4 +530,6 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/release_body.sh` | What a release page says: the whole changelog for a release, what is new since the previous dev build for a dev one. Its tests are beside it. |
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease, the cycle opener and the two milestone jobs. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
+| `android/app/build.gradle.kts` | The Sentry Android Gradle Plugin's configuration: the R8 mapping's UUID, which ships in the APK, and what the plugin is told not to do — including send anything. |
+| `.github/actions/upload-debug-symbols/` | Every debug file that leaves a build job: the Dart plugin's upload, and the R8 mapping with its own pinned `sentry-cli`. Both report into the job summary and neither can fail a release. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |

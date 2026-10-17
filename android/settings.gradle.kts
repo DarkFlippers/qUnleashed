@@ -24,6 +24,9 @@ plugins {
     id("com.google.gms.google-services") version("4.3.15") apply false
     // END: FlutterFire Configuration
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // The R8 mapping and the UUID that ships in the APK; configured in
+    // app/build.gradle.kts, which says why. #343, ADR 0013.
+    id("io.sentry.android.gradle") version "6.24.0" apply false
 }
 
 include(":app")

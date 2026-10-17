@@ -4,6 +4,9 @@
 #
 #   verify_apks.sh [directory]   # default: dist
 #
+# Two things that a green build does not tell you: that the APK can run, and
+# that a crash in it can be read.
+#
 # The build only ever checked that the files exist, and so did the upload. An
 # APK missing lib/<abi>/libapp.so - the Dart snapshot - builds green, installs,
 # and dies at launch. CopyFlutterJniLibsTask in the Flutter SDK documents two
@@ -29,6 +32,16 @@ set -Eeuo pipefail
 # A real snapshot is multiple megabytes. This only has to be large enough to
 # reject an empty or stub file and small enough never to reject a real one.
 MIN_SNAPSHOT_BYTES=1048576
+
+# What the Sentry Android Gradle Plugin injects so an event can name the R8
+# mapping it belongs to. Checked here because nothing else can see it go
+# missing: R8 renames every Java and Kotlin frame whether or not this is
+# present, the build is green either way, and the only other symptom is a
+# crash report that arrives as `w2.r.k` months later - which is #343, three
+# releases long. The plugin skips a variant it does not consider minified and
+# says so in a log line nobody reads, so "the plugin is configured" and "this
+# APK can be deobfuscated" are different facts.
+SENTRY_UUID_ASSET='assets/sentry-debug-meta.properties'
 
 dir="${1:-dist}"
 failures=0
@@ -86,6 +99,16 @@ for apk in "${apks[@]}"; do
     || fault "$name has no AndroidManifest.xml."
   grep -qxF -- 'classes.dex' <<<"$listing" \
     || fault "$name has no classes.dex."
+
+  # Present is not the same as populated here either: the plugin writes the
+  # file whenever any of its features is on, and only the mapping's UUID makes
+  # it mean anything.
+  if ! grep -qxF -- "$SENTRY_UUID_ASSET" <<<"$listing"; then
+    fault "$name has no $SENTRY_UUID_ASSET - nothing ties it to an R8 mapping, so its Java frames will not deobfuscate."
+  elif ! unzip -p "$apk" "$SENTRY_UUID_ASSET" \
+    | grep -qE '^io\.sentry\.ProguardUuids=[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'; then
+    fault "$name carries $SENTRY_UUID_ASSET with no io.sentry.ProguardUuids in it."
+  fi
 
   for abi in "${want[@]}"; do
     if ! grep -qxF -- "lib/$abi/libapp.so" <<<"$listing"; then

@@ -2,8 +2,9 @@ name: Upload debug symbols to Sentry
 description: >
   Uploads the debug files for whatever the calling job has just built, so a
   stack trace names functions and lines rather than addresses. Apple dSYMs,
-  Windows PDBs, and the Linux and Android native libraries. Not a Dart symbol
-  map, and not the Android R8 mapping - see the note below for both.
+  Windows PDBs, the Linux and Android native libraries, and - where R8 left
+  one - the Android mapping that turns a renamed Java frame back into a class
+  and a method. Not a Dart symbol map; see the note below.
 
 inputs:
   auth-token:
@@ -34,9 +35,18 @@ inputs:
 # the job summary or it is invisible on a green run. That is what the
 # failure branch below is for.
 #
-# The Android R8 mapping is still owed and wants the Sentry Android Gradle
-# Plugin. ADR 0013 Consequences holds the full inventory and is the copy to
-# update first.
+# The Android R8 mapping is the one debug file the Dart plugin cannot carry -
+# a mapping is not a debug file and is in none of those directories - so the
+# second step below sends it, with its own sentry-cli. It is gated on R8 having
+# left a mapping, which is a property of the build rather than of the platform,
+# so the three jobs that never run R8 skip the step without naming themselves.
+#
+# It is here rather than in the build for the reason
+# `android/app/build.gradle.kts` records at length: the Gradle plugin's upload
+# throws from an action that file does not own, and it is a finalizer of
+# `assembleRelease`, so an unreachable Sentry would discard APKs that were
+# already built. Here, the same fault costs a warning. #343. ADR 0013
+# Consequences holds the full inventory and is the copy to update first.
 runs:
   using: composite
   steps:
@@ -70,7 +80,7 @@ runs:
           echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
           {
             echo "### Debug symbols were not uploaded"
-            echo "No \`SENTRY_AUTH_TOKEN\` on this \`${RUNNER_OS}\` build, which is expected on a fork or a dispatch without the secret. Native frames from it will not symbolicate."
+            echo "No \`SENTRY_AUTH_TOKEN\` on this \`${RUNNER_OS}\` build, which is expected on a fork or a dispatch without the secret. Nothing from it symbolicates: native frames resolve to addresses, and an R8 mapping, where there was one, was not sent either."
           } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
           exit 0
         fi
@@ -115,4 +125,109 @@ runs:
         {
           echo "### Debug symbols uploaded"
           echo "\`${RUNNER_OS}\` build of \`${SENTRY_RELEASE:-unknown}\`."
+        } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
+
+    # The R8 mapping, which the step above cannot carry. Separate because it is
+    # a separate tool with a separate failure: the Dart plugin's own upload
+    # succeeding says nothing about this one, and the reverse.
+    #
+    # The two addresses come from the artifacts rather than from a second copy
+    # of anything. The UUID is read back out of a built APK, so the mapping is
+    # filed under the identifier events will actually carry - not one
+    # re-derived from a mapping that a later R8 run might have changed. The org
+    # and project come from `pubspec.yaml`'s `sentry:` block, the same two
+    # lines `sentry_dart_plugin` reads above, so there is one place to change
+    # them and no way for the two uploads to disagree about where they are
+    # going.
+    - name: Upload the R8 mapping
+      shell: bash
+      env:
+        SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
+        # Pinned and verified for the reason `lint_workflows.sh` gives about
+        # actionlint: this runs in the same repository whose release job holds
+        # the signing key, so a tool it fetches is not something to take on
+        # trust from a moving tag. 3.8.0 is also the version the Sentry Gradle
+        # plugin bundles, so the mapping is sent by the same code that minted
+        # the UUID for it.
+        SENTRY_CLI_VERSION: "3.8.0"
+        SENTRY_CLI_SHA256: 13f8cb34ae01a6a272d7d7c22e277a105286615b4020de900ea95a8de47cdbb6
+      run: |
+        set -Eeuo pipefail
+
+        # Whether R8 ran, not which platform this is. The three jobs that never
+        # minify have no mapping and leave without fetching anything.
+        mapping="build/app/outputs/mapping/release/mapping.txt"
+        if [ ! -f "$mapping" ]; then
+          exit 0
+        fi
+
+        if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+          # The step above already said this, for the same missing secret.
+          exit 0
+        fi
+
+        # Read from a built APK, which is the only copy that matters: an event
+        # carries the UUID the APK shipped with, so a mapping filed under any
+        # other is a mapping nothing points at. `verify_apks.sh` has already
+        # refused the build if this is absent, so a miss here is a miss in
+        # whatever changed between the two.
+        apk="$(find dist -maxdepth 1 -name '*_android_universal.apk' -print -quit 2>/dev/null || true)"
+        if [ -z "$apk" ]; then
+          echo "::warning::No universal APK in dist/, so the R8 mapping's UUID could not be read. Android Java frames from this build will NOT deobfuscate."
+          {
+            echo "### The R8 mapping was not uploaded"
+            echo "R8 wrote a mapping for \`${SENTRY_RELEASE:-unknown}\` but no universal APK was found to read its UUID from, so the mapping was not sent."
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
+          exit 0
+        fi
+
+        uuid="$(unzip -p "$apk" assets/sentry-debug-meta.properties \
+          | sed -nE 's/^io\.sentry\.ProguardUuids=([0-9a-fA-F-]{36})$/\1/p' | head -n 1)"
+        if [ -z "$uuid" ]; then
+          echo "::warning::$(basename "$apk") carries no io.sentry.ProguardUuids, so the R8 mapping has nothing to be filed under. Android Java frames from this build will NOT deobfuscate."
+          {
+            echo "### The R8 mapping was not uploaded"
+            echo "\`$(basename "$apk")\` carries no \`io.sentry.ProguardUuids\`, so the mapping could not be addressed."
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
+          exit 0
+        fi
+
+        # One source for both slugs. `sentry:` is a top-level block of two
+        # scalars, so the keys are read from inside it rather than from
+        # anywhere in the file that happens to say `project:`.
+        sentry_block="$(sed -n '/^sentry:$/,/^[^[:space:]]/p' pubspec.yaml)"
+        org="$(sed -nE 's/^[[:space:]]+org:[[:space:]]*(\S+)[[:space:]]*$/\1/p' <<<"$sentry_block" | head -n 1)"
+        project="$(sed -nE 's/^[[:space:]]+project:[[:space:]]*(\S+)[[:space:]]*$/\1/p' <<<"$sentry_block" | head -n 1)"
+        if [ -z "$org" ] || [ -z "$project" ]; then
+          echo "::error::pubspec.yaml's sentry: block has no org or no project, so nothing can be uploaded to Sentry at all."
+          exit 1
+        fi
+
+        cli="${RUNNER_TEMP:-/tmp}/sentry-cli"
+        curl -fsSL -o "$cli" \
+          "https://github.com/getsentry/sentry-cli/releases/download/${SENTRY_CLI_VERSION}/sentry-cli-Linux-x86_64"
+        echo "${SENTRY_CLI_SHA256}  ${cli}" | sha256sum --check --quiet
+        chmod +x "$cli"
+
+        # `exit 0` on failure, and loudly, for the reason the step above gives:
+        # the release is built and must not be thrown away over Sentry. Unlike
+        # the Dart plugin, sentry-cli's own exit code is the whole signal - the
+        # swallowing #310 turned on was the plugin's, one layer up from here.
+        if ! "$cli" upload-proguard --uuid "$uuid" --org "$org" --project "$project" "$mapping"; then
+          echo "::warning::Uploading the R8 mapping failed. Android Java and Kotlin frames from this build will NOT deobfuscate until it is re-uploaded."
+          {
+            echo "### The R8 mapping was not uploaded"
+            echo "The Android build of \`${SENTRY_RELEASE:-unknown}\` published **without** it, so its Java and Kotlin frames will not deobfuscate. Dart and native frames are unaffected."
+            echo ""
+            echo "Re-upload the mapping this build produced, from a machine that still has it:"
+            echo '```'
+            echo "sentry-cli upload-proguard --uuid $uuid --org $org --project $project $mapping"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
+          exit 0
+        fi
+
+        {
+          echo "### R8 mapping uploaded"
+          echo "\`$uuid\`, for the Android build of \`${SENTRY_RELEASE:-unknown}\`."
         } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
