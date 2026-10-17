@@ -49,6 +49,49 @@ android {
 
         multiDexEnabled = true
 
+        // The ABI floor the universal APK would otherwise lose. Flutter sets
+        // this itself, but only on the branch where ABI splits are *off* - and
+        // the `splits` block below asks for them, which took it away. The
+        // universal APK then came back carrying `lib/x86/` from six
+        // third-party dependencies with no `libflutter.so` and no `libapp.so`
+        // beside them: Play reads it as supporting x86, installs it on an x86
+        // device, and the app dies at launch with no engine to start. That is
+        // the failure Flutter's comment on `configureAbis` describes, and
+        // `verify_apks.sh` is what refused it. #361.
+        //
+        // Flutter's own list rather than a third copy of the three names: it is
+        // a `@JvmStatic val` on a public object and the plugin is already on
+        // this build's classpath, so if an upgrade moves it this stops
+        // compiling - loud, rather than a silently narrowed APK.
+        //
+        // **This block and `isUniversalApk` below have to change together.**
+        // Flutter's warning that `abiFilters` "would break builds when
+        // --splits-per-abi is used" is exactly right: AGP's
+        // `checkSplitsConflicts` refuses the pair - measured, with the two
+        // lists *identical*, so it is not about them disagreeing - and the one
+        // thing that makes it legal here is that it returns early when
+        // `isUniversalApk` is set. Take the universal APK away and keep this,
+        // and every `--split-per-abi` build dies with "Conflicting
+        // configuration ... in ndk abiFilters cannot be present when splits
+        // abi filters are set".
+        //
+        // Nor is this the same list the splits use, though both derive from
+        // `DEFAULT_PLATFORMS` and so agree whenever `target-platform` is
+        // unset - which is every CI build, since `derive_version.sh` passes
+        // only `--build-name`, `--build-number` and the dart-defines. A local
+        // `--split-per-abi --target-platform=android-arm64` makes the splits
+        // `[arm64-v8a]` against this list's three, which no longer errors and
+        // gives a universal APK wider than its own Flutter libs - the x86 bug
+        // one ABI over. `verify_apks.sh` is what notices, by reading the ABIs
+        // each artifact actually carries.
+        //
+        // Unconditional, where Flutter's own write is gated on
+        // `-Pdisable-abi-filtering`; that escape hatch is inert here, and its
+        // only effect would be to reinstate the crash above.
+        ndk {
+            abiFilters.addAll(com.flutter.gradle.FlutterPluginConstants.PLATFORM_ABI_LIST)
+        }
+
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DANDROID_STL=none")
@@ -67,6 +110,36 @@ android {
         cmake {
             // Top-level CMake builds both qunleashed_mfkey32 and qunleashed_hardnested.
             path = file("../../lib/modules/cpp/CMakeLists.txt")
+        }
+    }
+
+    // One invocation, four APKs, one R8 run - which is the point, rather than
+    // the minute it saves. `build/android.sh` used to build the whole release
+    // twice, once for the universal APK and once with `--split-per-abi`, and R8
+    // wrote over `mapping.txt` on the second pass. So the mapping that got
+    // uploaded came from one build and the UUID it was filed under came from
+    // the other's APK, which is correct only while R8 is deterministic across
+    // the two. It is, and nothing made it so. Now there is one mapping and one
+    // UUID because there is one R8 run. #361.
+    //
+    // Only `isUniversalApk` here. Flutter's plugin owns the rest: with
+    // `--split-per-abi` it sets `isEnable`, calls `reset()` and hardcodes
+    // `isUniversalApk = false` inside its own `apply` - which runs eagerly, so
+    // this block always wins rather than racing it. Flipping this one value
+    // leaves the split set Flutter's.
+    //
+    // It is also what makes `defaultConfig.ndk.abiFilters` above legal at all;
+    // see the paragraph there before removing either. And if a later Flutter
+    // moved `configureAbis` into an `afterEvaluate` this override would
+    // silently lose - `android.sh` hard-fails on the missing `app-release.apk`
+    // rather than publishing three artifacts.
+    //
+    // Inert unless splits are on - AGP reads `isUniversalApk` only when the
+    // filter set is non-empty - so `flutter run` and a plain
+    // `flutter build apk` are unaffected.
+    splits {
+        abi {
+            isUniversalApk = true
         }
     }
 
@@ -121,11 +194,11 @@ dependencies {
 //
 // The UUID is `nameUUIDFromBytes` over R8's own `pg_map_hash` line from the
 // mapping, or over an MD5 of the file if R8 wrote none - a function of the
-// mapping's content either way. So the two `flutter build apk --release` runs
-// in `.github/scripts/build/android.sh` - one universal, one `--split-per-abi`
-// - agree on it, and every APK in a release points at one mapping rather than
-// at two that differ only in which one got uploaded. `verify_apks.sh` holds
-// that invariant rather than trusting it.
+// mapping's content either way. Every APK in a release now carries the same
+// one because `.github/scripts/build/android.sh` runs R8 once, which the
+// `splits` block above is what allows; it used to build twice and lean on R8
+// being deterministic across the two. `verify_apks.sh` still checks they
+// agree, which is now what would catch a regression back to two runs.
 //
 // This file does not send anything, and no release name appears below. The
 // send is `upload-debug-symbols`, after the APKs exist, with the UUID read
