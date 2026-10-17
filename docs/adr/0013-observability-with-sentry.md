@@ -130,10 +130,11 @@ outside this folder and breaks §2. And the first version of this shipped with
 two surfaces masked when seven needed it - see §6.4, which now states the rule
 rather than only the list.
 
-Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
-Android Gradle Plugin, and §3's submodule commits as release commits rather
-than event tags. Facts last checked against the tree 2026-10-15; git holds how
-the decision got here.
+Owed and not in the phase table: §3's submodule commits as release commits
+rather than event tags. The Android R8 mapping is no longer among them - the
+Sentry Android Gradle Plugin mints its UUID in `android/app/build.gradle.kts`
+and `upload-debug-symbols` sends it, #343. Facts last checked against the tree
+2026-10-17; git holds how the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -853,8 +854,8 @@ most of them are expected.
 - A new ratchet: `package:sentry*` imports outside `lib/services/telemetry/`.
 - Every distributed build uploads debug files through `sentry_dart_plugin`:
   dSYMs, PDBs, and the Linux and Android native libraries; the R8 mapping
-  through the Sentry Android Gradle Plugin with auto-install off, which the
-  Dart plugin does not cover. **This bullet was true in the letter and wrong in
+  through a second step in `upload-debug-symbols`, which the Dart plugin does
+  not cover. **This bullet was true in the letter and wrong in
   the substance for three releases.** Uploading was never the hard part - the
   plugin hands whole build directories to `sentry-cli`, which reads any debug
   file in them, and it did upload something for every platform. The hard part
@@ -864,6 +865,26 @@ most of them are expected.
   nearest exported symbol and never to a file and line. Both are fixed in
   their respective `CMakeLists.txt`, and both build scripts now keep the debug
   information out of what ships. #310.
+
+  The R8 mapping was the other half of the same gap, and was wrong in the
+  letter too: the Gradle plugin was named here and never configured, so every
+  Android Java and Kotlin frame arrived renamed and nothing mapped it back.
+  `android/app/build.gradle.kts` now applies `io.sentry.android.gradle` with
+  auto-install off and native symbols off - `sentry_dart_plugin` is the one
+  place that sends those, for all six targets - but it is configured **not to
+  upload at all**. It mints the mapping's UUID and ships it in the APK; the
+  send is a second step in `upload-debug-symbols`, with its own pinned
+  `sentry-cli`, which reads that UUID back out of a built APK and files the
+  mapping under it.
+
+  That split is not fastidiousness. The plugin's upload throws from inside its
+  own `asSentryCliExec` action and is a finalizer of `assembleRelease`, so an
+  unreachable Sentry fails the Android build and `set -e` in `android.sh` then
+  skips the copy into `dist/` - a release discarded over symbolication, which
+  is the one thing every other upload here is arranged to prevent. Uploading
+  afterwards also means the mapping is addressed by the identifier that
+  actually shipped rather than by one re-derived later, and that the APK build
+  needs no token and no network. #343.
 - Store paperwork, and more of it than an opt-in build would need: Google
   Play Data safety declaring crash logs, diagnostics and - because replay is
   on - screen recordings, as collected and optional; App Store privacy labels
