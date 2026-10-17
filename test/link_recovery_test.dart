@@ -159,6 +159,24 @@ class FakeReturnClient implements FlipperClient {
   @override
   Future<List<FlipperDevice>> refreshUsbOnly() async => const [];
 
+  /// Raised by the next `switchToRpcMode`, which is where a link that drops
+  /// under a dial fails: `LinkService.connect` awaits the dial and then the
+  /// switch, and nothing is holding the transport open in between.
+  Object? rpcSwitchThrows;
+
+  @override
+  Future<FlipperDevice> connectBleAddress(
+    String address, {
+    String? name,
+    Duration timeout = FlipperClient.bleAddressConnectTimeout,
+  }) async => ble(address);
+
+  @override
+  Future<void> switchToRpcMode() async {
+    final failure = rpcSwitchThrows;
+    if (failure != null) throw failure;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -371,6 +389,26 @@ void main() {
       await tick();
 
       expect(heardOf('B1'), isTrue);
+    });
+
+    // The drop that happens *during* the dial, which reaches none of the
+    // cases above: no `FlipperConnectionState` is ever published, because the
+    // link came up and died inside `connect`. All the service gets is the
+    // thrown error, and `connect` dims the row only for
+    // `deviceUnreachable` - so until flipperlib learned to classify
+    // `No active transport`, a Flipper that had just gone out of range kept
+    // its "in reach" dot. qUnleashed#363.
+    test('goes back to no when the link drops under the dial', () async {
+      client.reportHeard(ble('B1'));
+      await tick();
+
+      client.rpcSwitchThrows = StateError(noActiveTransportMessage);
+      await expectLater(
+        links.connect(links.entries.firstWhere((e) => e.id == 'B1')),
+        throwsStateError,
+      );
+
+      expect(heardOf('B1'), isFalse);
     });
   });
 }
