@@ -6822,6 +6822,22 @@
   "@commonNameDotEdge": {
     "description": "Shown when a typed file name begins or ends with a period."
   },
+  "commonFileTooLarge": "Цей файл — {size}. Виберіть менший за {limit}.",
+  "@commonFileTooLarge": {
+    "description": "Shown when a file chosen in a picker is too big for the app to read into memory. TRANSLATORS: {size} and {limit} arrive already formatted and already in English units - '115.8 MB', '2.0 MB' - so place them, do not try to inflect around them. {limit} differs between screens, so do not hard-code it in the translation. The sentence states the size rather than calling the file invalid, because the file is fine and it is this importer that will not take it; the second half says what to do instead, since the user is standing in front of a picker.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "commonPickFailed": "Системне вікно вибору завершилося помилкою, і нічого не вибрано",
+  "@commonPickFailed": {
+    "description": "Toast shown when the operating system's file or folder picker answered with an error instead of a selection, so the operation did not start. TRANSLATORS: 'the system picker' is the operating system's own dialog, not a screen of this app. It deliberately says neither 'file' nor 'folder': one of the four screens that show this is choosing files to upload and the other three are choosing a folder to save into, so a word for either would be wrong somewhere - pick a noun that covers both, or drop it. The app also cannot say why the dialog failed, which is why the sentence does not try to. The second half is there because the user has just been in that dialog and needs to know the pick did not half-happen: nothing was uploaded, saved or exported."
+  },
   "seedReplaceTitle": "Замінити файл?",
   "@seedReplaceTitle": {
     "description": "Title of the dialog shown when the chosen file name is already taken."
@@ -6957,5 +6973,133 @@
   "seedEngineBrokenHint": "Із цим захватом нічого не допоможе: рушій відновлення в цій збірці не працює. Будь ласка, повідомте про це.",
   "@seedEngineBrokenHint": {
     "description": "Hint shown when the recovery engine in this build is not working: it failed its own checks, is missing from the build, or answered something this build cannot read. TRANSLATORS: the point is that nothing the user does with this capture will help."
+  },
+  "permissionOpenSettings": "Відкрити налаштування",
+  "@permissionOpenSettings": {
+    "description": "Button on a permission notice. Opens this app's page in the system settings, which is the only place any of these permissions can be changed. TRANSLATORS: 'settings' means the phone's own Settings app, not this app's settings screen."
+  },
+  "permissionDismiss": "Приховати",
+  "@permissionDismiss": {
+    "description": "Button that puts an informational permission notice away for good on this install. Only offered where nothing the user asked for has failed."
+  },
+  "permissionContinue": "Продовжити",
+  "@permissionContinue": {
+    "description": "Confirms the storage explainer dialog and opens the system settings screen."
+  },
+  "permissionNotNow": "Не зараз",
+  "@permissionNotNow": {
+    "description": "Declines the storage explainer dialog. Everything except local files keeps working."
+  },
+  "permissionRecheckedOnReturn": "Перевіряється знову, коли ви повертаєтеся до застосунку.",
+  "@permissionRecheckedOnReturn": {
+    "description": "Footnote on the blocking permission screen, telling the user they do not need to restart the app after granting access in system settings."
+  },
+  "permissionStorageTitle": "Доступ до сховища",
+  "@permissionStorageTitle": {
+    "description": "Title of the dialog that explains what storage access is for, shown before the system settings screen opens."
+  },
+  "permissionStorageWhy": "qUnleashed зберігає ваші ключі, дампи та бібліотеку пультів у Documents/qUnleashed, щоб до них міг дістатися файловий менеджер і ви могли робити резервні копії самостійно.",
+  "@permissionStorageWhy": {
+    "description": "Why the app wants access to shared storage. TRANSLATORS: 'Documents/qUnleashed' is a literal folder path and is not translated. 'dumps' are saved copies of NFC/RFID card contents."
+  },
+  "permissionStorageStepsTitle": "Android питає на власному екрані",
+  "@permissionStorageStepsTitle": {
+    "description": "Heading above the three steps. Warns the user that what opens next is a system screen listing every installed app, not a simple yes/no prompt."
+  },
+  "permissionStorageStepFind": "Знайдіть qUnleashed у списку",
+  "@permissionStorageStepFind": {
+    "description": "First step on the Android all-files-access settings screen. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+  "permissionStorageStepAllow": "Увімкніть «Дозволити доступ для керування всіма файлами»",
+  "@permissionStorageStepAllow": {
+    "description": "Second step. TRANSLATORS: the quoted text is Android's own wording for this switch - please use the wording your platform uses in this language rather than translating it literally."
+  },
+  "permissionStorageStepReturn": "Повернітеся — перезапуск не потрібен",
+  "@permissionStorageStepReturn": {
+    "description": "Third step. The app re-reads the permission when it is resumed."
+  },
+  "permissionStorageDeclineNote": "Якщо відмовитеся, працювати буде все, крім локальних файлів.",
+  "@permissionStorageDeclineNote": {
+    "description": "Reassurance under the storage explainer: refusing is a feature gate, not a broken app."
+  },
+  "permissionStorageDeniedTitle": "Немає доступу до сховища",
+  "@permissionStorageDeniedTitle": {
+    "description": "Heading of the notice shown where a denied storage permission has consequences. Says what is out of reach rather than naming the permission."
+  },
+  "permissionStorageDeniedIrLibrary": "Ваша бібліотека може вже бути в Documents/qUnleashed, але застосунок не може прочитати теку, тому не знає цього.",
+  "@permissionStorageDeniedIrLibrary": {
+    "description": "Body of the storage notice in the infrared library dialog. The specific harm: the dialog offers to download a library that is already on disk, because the listing is refused. TRANSLATORS: 'Documents/qUnleashed' is a literal folder path."
+  },
+  "permissionStorageDeniedIrStillWorks": "Перегляд вашого Flipper і надсилання файлів працюють — недоступна лише копія на цьому телефоні.",
+  "@permissionStorageDeniedIrStillWorks": {
+    "description": "Names what still works, so a denial does not read as a broken app."
+  },
+  "permissionStorageDeniedSizes": "Розміри тек не читаються, тому тут вони показані порожніми. Ваші файли на місці.",
+  "@permissionStorageDeniedSizes": {
+    "description": "Body of the storage notice on the Settings - Storage page, which reported 0 B for every folder. TRANSLATORS: the reassurance is the point - the user's files still exist."
+  },
+  "permissionStorageDeniedArchive": "Збережені ключі та дампи на цьому телефоні не читаються. На те, що є на вашому Flipper, це не впливає.",
+  "@permissionStorageDeniedArchive": {
+    "description": "Body of the storage notice on the Archive page."
+  },
+  "permissionStorageGrant": "Надати доступ",
+  "@permissionStorageGrant": {
+    "description": "Button on a storage notice. Opens the explainer, then the system settings screen."
+  },
+  "permissionBluetoothDeniedTitle": "Доступ до Bluetooth заборонено",
+  "@permissionBluetoothDeniedTitle": {
+    "description": "Heading shown in the device picker when the Bluetooth permission was refused. Replaces 'No devices found.', which blamed the hardware."
+  },
+  "permissionBluetoothDeniedPicker": "Поки ви не дозволите, сканувати нічого не вдасться. Також можна підключити Flipper кабелем USB-C.",
+  "@permissionBluetoothDeniedPicker": {
+    "description": "Body shown in the device picker on Android, where USB-OTG is still a route to the device. TRANSLATORS: naming the USB alternative is the point - the app is still usable."
+  },
+  "permissionBluetoothBlockedTitle": "Потрібен доступ до Bluetooth",
+  "@permissionBluetoothBlockedTitle": {
+    "description": "Title of the blocking screen on iOS, where a refused Bluetooth permission leaves the app with no way to reach a Flipper at all."
+  },
+  "permissionBluetoothBlockedBody": "qUnleashed з''єднується з вашим Flipper через Bluetooth. На iPhone немає варіанта з USB, тому показати нічого, поки доступ не дозволено.",
+  "@permissionBluetoothBlockedBody": {
+    "description": "Body of the iOS blocking screen. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+  "permissionBluetoothBlockedHint": "Налаштування > qUnleashed > Bluetooth",
+  "@permissionBluetoothBlockedHint": {
+    "description": "Where the switch is, so the user does not hunt for it. TRANSLATORS: please use the names iOS itself uses for these screens in this language. qUnleashed is the app name and is not translated."
+  },
+  "permissionPushDeniedTitle": "Повідомлення вимкнено",
+  "@permissionPushDeniedTitle": {
+    "description": "Heading on Settings - Push when the notification permission was refused. Replaces 'This build is not signed for push', which asserted the wrong cause."
+  },
+  "permissionPushDeniedBody": "Повідомлення для qUnleashed вимкнено, тому ніщо звідси до вас не дійде. Усе інше працює як завжди.",
+  "@permissionPushDeniedBody": {
+    "description": "Body of the push notice. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+  "permissionPushTurnOn": "Увімкнути",
+  "@permissionPushTurnOn": {
+    "description": "Button on the push notice. Opens the system settings page where notifications can be re-enabled."
+  },
+  "permissionServiceNotificationTitle": "Фонове з''єднання може зупинитися",
+  "@permissionServiceNotificationTitle": {
+    "description": "Heading of the notice for a refused foreground-service notification permission. Android needs the ongoing notification for the service to exist, so without it the connection dies when the screen sleeps."
+  },
+  "permissionServiceNotificationBody": "Android має показувати постійне повідомлення, щоб підтримувати з''єднання, поки екран вимкнений. Без нього з''єднання обривається, коли телефон засинає.",
+  "@permissionServiceNotificationBody": {
+    "description": "Body of the foreground-service notification notice."
+  },
+  "permissionServiceLocationTitle": "Фонове з''єднання менш надійне",
+  "@permissionServiceLocationTitle": {
+    "description": "Heading of the notice for a missing location permission on the foreground service. The service starts without its location type, which Android may treat more harshly."
+  },
+  "permissionServiceLocationBody": "Без доступу до місцеположення фонова служба працює з меншими гарантіями, тому Android може зупинити її раніше. Самому з''єднанню ваше місцеположення не потрібне.",
+  "@permissionServiceLocationBody": {
+    "description": "Body of the foreground-service location notice. TRANSLATORS: the last sentence matters - the app is not tracking the user."
+  },
+  "irSearchPartial": "Деякі теки не вдалося проглянути, тому цей список може бути неповним.",
+  "@irSearchPartial": {
+    "description": "Shown under infrared search results when one or more folders failed to list. Before this, a failure mid-search silently pruned a subtree and the short result was presented as complete."
+  },
+  "permissionSettingsOpenFailed": "Не вдалося відкрити системні налаштування. Відкрийте Налаштування, знайдіть qUnleashed і змініть це там.",
+  "@permissionSettingsOpenFailed": {
+    "description": "Shown when the button on a permission notice could not launch the system settings screen. Tells the user how to get there by hand, because on a non-dismissible notice that button is the only way forward. TRANSLATORS: qUnleashed is the app name and is not translated."
   }
 }
