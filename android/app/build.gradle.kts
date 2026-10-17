@@ -7,11 +7,12 @@ plugins {
     id("com.google.gms.google-services")
     // END: FlutterFire Configuration
     id("dev.flutter.flutter-gradle-plugin")
-    // After the Flutter plugin, because that is what turns R8 on here: it sets
+    // The Flutter plugin is what turns R8 on here: it sets
     // `isMinifyEnabled = true` on the release build type inside its own
-    // `apply`, and nothing in this file asks for shrinking. The Sentry plugin
-    // skips a variant that is not minified, so it has to be applied after the
-    // line that minifies one.
+    // `apply` (unless `-Pshrink=false`), and nothing in this file asks for
+    // shrinking. Order between these two does not actually matter - the Sentry
+    // plugin reads minification from the AGP variant inside `onVariants`, long
+    // after both `apply`s - but it is written in the order it reads in.
     id("io.sentry.android.gradle")
 }
 
@@ -105,23 +106,30 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
-// The R8 mapping - the one thing `sentry_dart_plugin` cannot upload, because a
-// mapping is not a debug file and is not in the directories it hands to
-// sentry-cli. Without it every Java and Kotlin frame reaching Sentry is a
-// renamed `w2.r.k`, and only the platform's own frames stay readable. #343.
+// The R8 mapping - the one thing `sentry_dart_plugin` cannot upload. Not for
+// want of looking: `build/app/outputs` is the first directory it hands over,
+// and the mapping is in it. The command is what excludes it, because
+// `sentry-cli debug-files upload` builds its type list as
+// `DifType::all_names().filter(|name| name != "proguard")`, so a mapping moves
+// through `upload-proguard` under a UUID or not at all. Without it every Java
+// and Kotlin frame reaching Sentry is a renamed `w2.r.k`, and only the
+// platform's own frames stay readable. #343.
 //
-// Two halves, both of them this plugin's: the mapping goes to the project
-// under a UUID, and the same UUID ships inside the APK so an event can say
-// which mapping it belongs to. The UUID travels as
-// `assets/sentry-debug-meta.properties` rather than as manifest metadata -
-// the plugin cannot hook manifest merging, because the merge is a dependency
-// of the minification its UUID is derived from - and the Android SDK
+// Two halves: the mapping goes to the project under a UUID, and the same UUID
+// ships inside the APK so an event can say which mapping it belongs to. The
+// UUID travels as `assets/sentry-debug-meta.properties`, not as manifest
+// metadata, because a value derived from minification cannot be injected into
+// either asset generation or manifest merging - both run before it exists - so
+// the plugin transforms the finished assets artifact instead. The Android SDK
 // `sentry_flutter` bundles reads it from there.
 //
-// The UUID is `nameUUIDFromBytes` over the mapping's own contents. So the two
-// `flutter build apk --release` runs in `build/android.sh` - one universal,
-// one `--split-per-abi` - agree on it, and every APK in a release points at
-// one mapping rather than at two that differ only in which one got uploaded.
+// The UUID is `nameUUIDFromBytes` over R8's own `pg_map_hash` line from the
+// mapping, or over an MD5 of the file if R8 wrote none - a function of the
+// mapping's content either way. So the two `flutter build apk --release` runs
+// in `.github/scripts/build/android.sh` - one universal, one `--split-per-abi`
+// - agree on it, and every APK in a release points at one mapping rather than
+// at two that differ only in which one got uploaded. `verify_apks.sh` holds
+// that invariant rather than trusting it.
 //
 // This file does not send anything, and no release name appears below. The
 // send is `upload-debug-symbols`, after the APKs exist, with the UUID read
@@ -140,9 +148,11 @@ dependencies {
 // below rather than a catch above.
 sentry {
     // The UUID, and never the upload. `false` makes the plugin pass
-    // `--no-upload` to sentry-cli, which returns before it authenticates - so a
-    // build needs no token, touches no network, and cannot fail here, while the
-    // UUID is still minted and still shipped in the APK. There is deliberately
+    // `--no-upload` to sentry-cli, which returns before it authenticates - so
+    // a build needs no token, touches no network, and nothing about Sentry's
+    // availability can fail it, while the UUID is still minted and still
+    // shipped in the APK. (The task can still fail for its own reasons: an
+    // empty mapping collection is an `error()` inside it.) There is deliberately
     // no `org`, `projectName` or `authToken`: with nothing being sent they
     // would be dead configuration, and a second copy of two slugs that
     // `pubspec.yaml` already holds for `sentry_dart_plugin`.
@@ -152,7 +162,7 @@ sentry {
     // Of the rest, five flip a default that is on, and the mapping is the only
     // reason this plugin is here. `autoInstallation` would add
     // `io.sentry:sentry-android` and its integrations to the APK beside the
-    // 8.56.0 `sentry_flutter` already pulls in. `tracingInstrumentation`
+    // one `sentry_flutter` already pulls in. `tracingInstrumentation`
     // rewrites bytecode for spans nothing opens from Java here, and
     // `runtimeOptimizations` tunes an SDK start-up that happens in Dart.
     // `includeDependenciesReport` ships a list of Java dependencies in the
@@ -174,8 +184,8 @@ sentry {
     // Only a minified variant has a mapping, and on any other the plugin still
     // transforms the assets to inject a UUID that points at nothing. Derived
     // rather than listed, so a build type added later is covered the day it is
-    // added: what decides this is whether R8 ran, not that the two Flutter
-    // creates today happen to be called `debug` and `profile`.
+    // added: what decides this is whether R8 ran, not that the three that
+    // exist today happen to be `debug`, `profile` and `release`.
     ignoredBuildTypes.set(
         provider {
             android.buildTypes.filterNot { it.isMinifyEnabled }.map { it.name }.toSet()

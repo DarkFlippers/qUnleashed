@@ -39,9 +39,11 @@ MIN_SNAPSHOT_BYTES=1048576
 # present, the build is green either way, and the only other symptom is a
 # crash report that arrives as `w2.r.k` months later - which is #343, three
 # releases long. The plugin skips a variant it does not consider minified and
-# says so in a log line nobody reads, so "the plugin is configured" and "this
-# APK can be deobfuscated" are different facts.
+# says nothing at all about it - not even at `info` - so "the plugin is
+# configured" and "this APK can be deobfuscated" are different facts, and this
+# is the only place that can tell them apart.
 SENTRY_UUID_ASSET='assets/sentry-debug-meta.properties'
+SENTRY_UUID_RE='[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
 
 dir="${1:-dist}"
 failures=0
@@ -60,6 +62,7 @@ fi
 
 seen_universal=0
 declare -A seen_abi=()
+declare -A seen_uuid=()
 
 for apk in "${apks[@]}"; do
   name="$(basename "$apk")"
@@ -105,9 +108,19 @@ for apk in "${apks[@]}"; do
   # it mean anything.
   if ! grep -qxF -- "$SENTRY_UUID_ASSET" <<<"$listing"; then
     fault "$name has no $SENTRY_UUID_ASSET - nothing ties it to an R8 mapping, so its Java frames will not deobfuscate."
-  elif ! unzip -p "$apk" "$SENTRY_UUID_ASSET" \
-    | grep -qE '^io\.sentry\.ProguardUuids=[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'; then
-    fault "$name carries $SENTRY_UUID_ASSET with no io.sentry.ProguardUuids in it."
+  else
+    # `|| true` because `head` closing the pipe early SIGPIPEs `unzip`, which
+    # `pipefail` turns into a failed assignment and `errexit` into this gate
+    # abandoning the remaining artifacts with no message at all. Today's
+    # properties file is far too small to reach that, and a gate is the last
+    # place to leave it standing. An empty read falls into the fault below.
+    uuid="$(unzip -p "$apk" "$SENTRY_UUID_ASSET" 2>/dev/null \
+      | sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" | head -n 1 || true)"
+    if [[ -z "$uuid" ]]; then
+      fault "$name carries $SENTRY_UUID_ASSET with no io.sentry.ProguardUuids in it."
+    else
+      seen_uuid["$uuid"]=1
+    fi
   fi
 
   for abi in "${want[@]}"; do
@@ -143,6 +156,19 @@ done
 for abi in "${ANDROID_ABIS[@]}"; do
   [[ -n "${seen_abi[$abi]:-}" ]] || fault "No $abi APK in $dir."
 done
+
+# One mapping is uploaded, so one UUID has to be what every artifact points at.
+# `android.sh` builds twice - once universal, once --split-per-abi - and R8
+# writes over the same `mapping.txt` both times. The UUID is derived from the
+# mapping's contents, so the two runs agree as long as R8 is deterministic
+# across them; that holds today and nothing enforces it. If it ever stops
+# holding, the upload sends one mapping and the APKs built by the other run
+# carry a UUID with nothing behind it - and the ones that do resolve resolve
+# against a mapping describing different bytes, which deobfuscates to confident
+# wrong names. Worse than `w2.r.k`, because a wrong name is believed.
+if (( ${#seen_uuid[@]} > 1 )); then
+  fault "The artifacts in $dir carry ${#seen_uuid[@]} different R8 mapping UUIDs (${!seen_uuid[*]}); only one mapping is uploaded, so the rest could not deobfuscate."
+fi
 
 if (( failures )); then
   echo "::error::$failures problem(s) found; refusing to publish." >&2

@@ -429,7 +429,7 @@ environment — `~/.sentryclirc` or a user-level variable — and is only needed
 for uploading debug files, never for checking that an error arrives.
 
 In CI it is a repository secret, read by the `Upload debug symbols to Sentry`
-step in each of the three build jobs and by nothing else. No build step gets
+step in each of the four build jobs and by nothing else. No build step gets
 it: on Android the Sentry Gradle Plugin mints the R8 mapping's UUID and ships
 it inside the APK, but the mapping is *sent* by that same upload step
 afterwards, so that a Sentry outage costs a warning rather than the release.
@@ -531,5 +531,6 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease, the cycle opener and the two milestone jobs. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `android/app/build.gradle.kts` | The Sentry Android Gradle Plugin's configuration: the R8 mapping's UUID, which ships in the APK, and what the plugin is told not to do — including send anything. |
-| `.github/actions/upload-debug-symbols/` | Every debug file that leaves a build job: the Dart plugin's upload, and the R8 mapping with its own pinned `sentry-cli`. Both report into the job summary and neither can fail a release. |
+| `.github/actions/upload-debug-symbols/` | Every debug file that leaves a build job: the Dart plugin's upload, and `upload_r8_mapping.sh` with its own pinned `sentry-cli`. Both report into the job summary, and neither can fail a release — a Sentry fault must not discard one that is already built. |
+| `.github/scripts/verify_apks.sh` | The opposite trade, deliberately: it *can* fail a release, because what it checks is the APK rather than the upload. A mapping that did not reach Sentry can be sent again from the same commit; an APK that shipped with no UUID in it can never be addressed, so only a rebuild fixes it. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |

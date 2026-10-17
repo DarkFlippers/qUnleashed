@@ -43,6 +43,12 @@ jobs:
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
 
+      # Its subject runs only on a tag push and is written never to fail - a
+      # release must not be discarded over Sentry - so this suite is the only
+      # thing that can turn a regression in it red.
+      - name: Test the R8 mapping upload
+        run: .github/scripts/upload_r8_mapping_test.sh
+
       # The guard's other two modes run on the release path only, and the thing
       # they watch - the build image's GLib - cannot be made to move from here.
       # So this is where their logic is checked: #280 was a published binary

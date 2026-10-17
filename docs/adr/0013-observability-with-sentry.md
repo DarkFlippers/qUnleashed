@@ -854,8 +854,8 @@ most of them are expected.
 - A new ratchet: `package:sentry*` imports outside `lib/services/telemetry/`.
 - Every distributed build uploads debug files through `sentry_dart_plugin`:
   dSYMs, PDBs, and the Linux and Android native libraries; the R8 mapping
-  through the Sentry Android Gradle Plugin with auto-install off, which the
-  Dart plugin does not cover. **This bullet was true in the letter and wrong in
+  through a second step in `upload-debug-symbols`, which the Dart plugin does
+  not cover. **This bullet was true in the letter and wrong in
   the substance for three releases.** Uploading was never the hard part - the
   plugin hands whole build directories to `sentry-cli`, which reads any debug
   file in them, and it did upload something for every platform. The hard part
