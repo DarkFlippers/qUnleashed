@@ -6352,7 +6352,7 @@
   "@archivePlotter": {
     "description": "Button that opens the file in the pulse plotter."
   },
-  "archiveReveal": "Afficher dans le gestionnaire de fichiers",
+  "archiveReveal": "Ouvrir le dossier",
   "@archiveReveal": {
     "description": "Button that shows the file in the system file manager."
   },

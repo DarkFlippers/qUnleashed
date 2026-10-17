@@ -6200,7 +6200,7 @@
   "@archiveFileName": {
     "description": "Placeholder of the rename field."
   },
-  "archiveRestore": "Wiederherstellen",
+  "archiveRestore": "Zurückholen",
   "@archiveRestore": {
     "description": "Button that puts a deleted file back."
   },
@@ -6583,7 +6583,7 @@
       }
     }
   },
-  "homeWidgetPin": "Startbildschirm",
+  "homeWidgetPin": "Startseite",
   "@homeWidgetPin": {
     "description": "Action in the key menu that pins a home-screen widget for this file (Android)."
   },
