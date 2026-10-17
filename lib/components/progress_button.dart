@@ -157,22 +157,29 @@ class _ProgressButtonState extends State<ProgressButton>
                     vertical: widget.verticalPadding,
                   ),
                   child: Center(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      softWrap: false,
-                      textAlign: TextAlign.center,
-                      textHeightBehavior: const TextHeightBehavior(
-                        applyHeightToFirstAscent: false,
-                        applyHeightToLastDescent: false,
+                    // Scaled down rather than cut: the compact catalog button
+                    // is a fixed 92px, and every translation of "Install" is
+                    // longer than the English one - "Installieren" lost its
+                    // last four characters to the clip.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        textHeightBehavior: const TextHeightBehavior(
+                          applyHeightToFirstAscent: false,
+                          applyHeightToLastDescent: false,
+                        ),
+                        style:
+                            (widget.textStyle ??
+                                    ProgressButton.defaultTextStyle)
+                                .copyWith(
+                                  leadingDistribution:
+                                      TextLeadingDistribution.even,
+                                ),
                       ),
-                      style:
-                          (widget.textStyle ?? ProgressButton.defaultTextStyle)
-                              .copyWith(
-                                leadingDistribution:
-                                    TextLeadingDistribution.even,
-                              ),
                     ),
                   ),
                 ),
