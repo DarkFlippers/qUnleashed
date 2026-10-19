@@ -199,6 +199,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   void _exitSelection() {
+    // Guarded for the reason `deleted_page.dart`'s copy spells out
+    // (QUNLEASHED-P): `_bulkUnstar` below hands this to its own continuation
+    // after an await, so the page can be gone by the time it runs.
+    if (!mounted) return;
     setState(() {
       _selectionMode = false;
       _selected.clear();

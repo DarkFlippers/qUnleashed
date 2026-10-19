@@ -173,6 +173,11 @@ class _CategoryPageState extends State<CategoryPage> {
   }
 
   void _exitSelection() {
+    // Guarded for the reason `deleted_page.dart`'s copy spells out
+    // (QUNLEASHED-P): the bulk actions hand this to async code, so the page
+    // can be gone by the time it runs, and the `setState` below would reach a
+    // disposed State. `_bulkDownload` below is this page's instance of it.
+    if (!mounted) return;
     setState(() {
       _selectionMode = false;
       _selected.clear();
@@ -562,8 +567,11 @@ class _CategoryPageState extends State<CategoryPage> {
     if (dir == null) return;
 
     final saved = await saveKeysInto(keys, dir);
-    _exitSelection();
+    // Below the guard, not above it. `_exitSelection` is safe either way now,
+    // but reading it above a `mounted` check invites someone to add a second
+    // guard here instead of trusting the one in the helper.
     if (!context.mounted) return;
+    _exitSelection();
     context.showNotification(
       saved == keys.length
           ? context.l10n.archiveSavedFiles(saved)

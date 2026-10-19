@@ -140,6 +140,19 @@ class _DeletedPageState extends State<DeletedPage> {
   }
 
   void _exitSelection() {
+    // QUNLEASHED-P. Every bulk action on this page hands this method to async
+    // code - a `VoidCallback` on a sheet entry, or its own continuation after
+    // an await - so the page can be gone by the time it runs, and then the
+    // `setState` below reaches a disposed State. In a release build there is
+    // no lifecycle assertion left there and the null check on `_element` is
+    // what throws, as a fatal uncaught `TypeError`.
+    //
+    // Guarded here rather than at each call site because the call sites are
+    // the part that gets forgotten: four of the five that needed it had the
+    // guard one statement away, around the toast beside the exit, and a fifth
+    // in `browser/page.dart` had none. Nothing is lost by returning early -
+    // the selection this clears dies with the State.
+    if (!mounted) return;
     setState(() {
       _selectionMode = false;
       _selected.clear();

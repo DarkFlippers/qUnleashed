@@ -201,6 +201,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   void _exitSelection() {
+    // Guarded for the reason `overview/category/deleted_page.dart`'s copy
+    // spells out (QUNLEASHED-P). This page's instance is `_deleteSelected`,
+    // which calls this after an unbounded loop of remote deletes and then
+    // checks `mounted` two lines further down, for the notification.
+    if (!mounted) return;
     if (!_selectionMode && _selected.isEmpty) return;
     setState(() {
       _selectionMode = false;
