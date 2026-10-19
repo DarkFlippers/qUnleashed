@@ -151,40 +151,70 @@ Future<CapturedSignals> captureSignals() async {
 /// **How many turns that takes is not ours to know**, which is the whole shape
 /// of this function. The metric pipeline awaits a lifecycle dispatch and then
 /// builds the default attributes before it reaches `beforeSendMetric`, and
-/// `captureException` runs a longer chain still. One `Duration.zero` hop was
-/// enough on a warm developer machine and not on CI, where nine cases read an
-/// empty list and the suite was green locally - so this drains the event loop
-/// until nothing new has arrived for [_quietTurns] consecutive turns, instead
-/// of guessing a number.
+/// `captureException` runs a longer chain still.
 ///
-/// A case that expects nothing settles immediately, at zero, which is correct:
-/// the loop is watching for *stability*, not for arrival.
-Future<void> settleAndClose(CapturedSignals seen) async {
+/// [until] is what the caller is waiting for - normally that the channel it
+/// asserts on is no longer empty. **Waiting for stability instead of for
+/// arrival is what made this flaky**, and the comment that replaced said so
+/// without drawing the conclusion: "stability at *zero* is what a case
+/// expecting nothing looks like and also what a case whose first signal has
+/// not arrived yet looks like, and only the floor tells them apart. Twenty
+/// zero-duration timers cost less than a millisecond." A floor measured in
+/// sub-millisecond event-loop hops does not tell them apart on a loaded
+/// runner: the hub closed with the pipeline still in flight, the list was
+/// empty, and `metrics.single` threw `Bad state: No element`. `main` failed
+/// that way on roughly a third of its runs - 39026749284 and 39054542998 -
+/// with a different case each time, which is the signature.
+///
+/// So the wait is against a real clock and for the thing itself, and a case
+/// that never gets it fails here, naming what did arrive, rather than ten
+/// lines later as an empty-list `Bad state`.
+///
+/// Omitting [until] means "nothing should arrive", which cannot be waited for
+/// - that case gets the quiet window alone, and [_quietTicks] of real idleness
+/// is what makes the absence worth asserting. It is also why the quiet window
+/// still runs after [until] is satisfied: a case that asserts one channel is
+/// empty has to give a late signal on that channel the chance to disprove it.
+Future<void> settleAndClose(
+  CapturedSignals seen, {
+  bool Function()? until,
+}) async {
+  final deadline = DateTime.now().add(_deadline);
+  if (until != null) {
+    while (!until() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(_tick);
+    }
+    if (!until()) {
+      await Sentry.close();
+      fail(
+        'Waited $_deadline and what this case asserts on never arrived: '
+        '${seen.metrics.length} metric(s), ${seen.events.length} event(s), '
+        '${seen.crumbs.length} breadcrumb(s). If nothing is meant to arrive, '
+        'call settleAndClose without `until`.',
+      );
+    }
+  }
   var quiet = 0;
-  var last = -1;
-  for (var turn = 0; turn < _maxTurns; turn++) {
-    if (turn >= _minTurns && quiet >= _quietTurns) break;
-    // A zero-duration timer and not `await null`: this has to yield the whole
-    // event loop, not just drain microtasks, because the SDK's own chain
-    // crosses timers.
-    await Future<void>.delayed(Duration.zero);
+  var last = seen.count;
+  while (quiet < _quietTicks && DateTime.now().isBefore(deadline)) {
+    // A real delay and not `Duration.zero`: this has to yield the whole event
+    // loop *and* let wall-clock time pass, because the SDK's own chain crosses
+    // timers and the point is to outlast it rather than to out-hop it.
+    await Future<void>.delayed(_tick);
     quiet = seen.count == last ? quiet + 1 : 0;
     last = seen.count;
   }
   await Sentry.close();
 }
 
-/// Turns with nothing new before the SDK is taken to be done.
-const int _quietTurns = 5;
+/// One step of either wait.
+const Duration _tick = Duration(milliseconds: 2);
 
-/// Turns to drain before the quiet count may end the loop at all.
-///
-/// The floor matters more than the quiet count: stability at *zero* is what a
-/// case expecting nothing looks like and also what a case whose first signal
-/// has not arrived yet looks like, and only the floor tells them apart. Twenty
-/// zero-duration timers cost less than a millisecond.
-const int _minTurns = 20;
+/// Ticks with nothing new before the SDK is taken to be done - 20 ms of real
+/// idleness, against the sub-millisecond total the turn-counting version spent.
+const int _quietTicks = 10;
 
-/// The ceiling, so a hung pipeline fails as a missing signal rather than as a
-/// test that never returns.
-const int _maxTurns = 200;
+/// The ceiling, so a hung pipeline fails as a named missing signal rather than
+/// as a test that never returns. Generous because it is only ever reached on
+/// the way to a failure.
+const Duration _deadline = Duration(seconds: 5);
