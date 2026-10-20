@@ -1620,6 +1620,16 @@
     "description": "Body of the unreachable error over USB."
   },
 
+  "connectServicesMissingTitle": "Flipper services not found",
+  "@connectServicesMissingTitle": {
+    "description": "Title of the connection error when the device connected but offered none of the Flipper Bluetooth services."
+  },
+
+  "connectServicesMissingBody": "The device connected but did not offer the Flipper services. Turn Bluetooth off and on in your system settings, then connect again. If that does not help, forget the device in your system Bluetooth settings and pair it again.",
+  "@connectServicesMissingBody": {
+    "description": "Body of the error when no Flipper services were found on a connected device. Usually a stale Bluetooth service cache, so the two remedies are ordered cheapest first."
+  },
+
   "connectScanFailed": "Could not finish looking for devices",
   "@connectScanFailed": {
     "description": "Toast shown when the device scan in the connection picker fails part-way. The list on screen is short rather than empty, so it needs saying."

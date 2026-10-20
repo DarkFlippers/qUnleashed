@@ -61,6 +61,39 @@ void main() {
     });
   });
 
+  // The app half of why `servicesMissing` is a kind of its own, and the only
+  // half there is: flipperlib asserts that the strings classify, and it
+  // deliberately stopped asserting that these kinds stay apart - two cases
+  // doing that were deleted there for passing whether the kind existed or
+  // not, with a note saying the distinction belongs where it can fail. This
+  // is where. A kind sharing a neighbour's words is #120 with extra steps,
+  // and both neighbours would send somebody after the wrong thing: the device
+  // answered, so "move it closer" is wrong, and the bond is intact, so
+  // "forget it" is premature. QUNLEASHED-Y.
+  group('a device with no Flipper service', () {
+    for (final (name, other) in [
+      ('the unreachable one', FlipperConnectErrorKind.deviceUnreachable),
+      ('a stale pairing', FlipperConnectErrorKind.stalePairing),
+    ]) {
+      test('does not share its sentences with $name', () {
+        // Both sides resolved in the body rather than one of them hoisted
+        // into the group. Under an `isNot`, any difference between two
+        // evaluation contexts satisfies the assertion - two identical
+        // sentences resolved in different locales among them - so hoisting
+        // one side would let this pass for a reason that has nothing to do
+        // with the kinds. The sibling case above resolves both in the body.
+        final missing = describeConnectError(
+          FlipperConnectErrorKind.servicesMissing,
+          isBle: true,
+        );
+        final neighbour = describeConnectError(other, isBle: true);
+
+        expect(missing.$1, isNot(neighbour.$1));
+        expect(missing.$2, isNot(neighbour.$2));
+      });
+    }
+  });
+
   group('every kind', () {
     for (final kind in FlipperConnectErrorKind.values) {
       test('has something to say: $kind', () {

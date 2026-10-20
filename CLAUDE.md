@@ -112,10 +112,14 @@ there and why it was the first thing scheduled.
   declaring one on a fake does nothing, the real body runs. Fake
   `callRpcFrames` and `notificationStream` instead; everything above them goes
   through those two. `test/emulate_start_test.dart` is the worked example.
-- **Connection errors are classified at the boundary**, not typed:
-  `classifyConnectError` → `FlipperConnectErrorKind`, consumed by an exhaustive
-  `switch`. It matches substrings from platform BLE stacks, so a sealed
-  hierarchy is impossible here. [0008](docs/adr/0008-swallowed-errors.md)
+- **Connection errors are classified at the boundary**, and almost none of
+  them are typed: `classifyConnectError` → `FlipperConnectErrorKind`, consumed
+  by an exhaustive `switch`. It matches substrings from platform BLE stacks, so
+  a sealed hierarchy is impossible here. The exception is this library's own
+  throw — `FlipperServicesMissingError` is read by type before any string, with
+  its sentence kept as the fallback, because re-parsing a message flipperlib
+  wrote one frame earlier is not boundary classification.
+  [0008](docs/adr/0008-swallowed-errors.md)
 
 ## Definition of Done
 
