@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/guarded.dart';
 import '../services/logging.dart';
 import '../theme/colors/status.dart';
 import '../theme/theme.dart';
@@ -294,7 +295,26 @@ class _QNotificationCard extends StatelessWidget {
           onTap: () {
             final action = onTap;
             if (action == null) {
-              Clipboard.setData(ClipboardData(text: message));
+              // Named rather than dropped. This write was a bare discarded
+              // future, which is worse than the `unawaited` the ratchet
+              // counts: `unawaited_futures` only fires inside an `async`
+              // body and this closure is not one, so nothing saw it. A
+              // refusal reached the zone as an unlabelled `[uncaught]` and
+              // the user saw the toast close as if it had worked - the exact
+              // shape `copyTextToClipboard` was extracted to retire,
+              // surviving in the one place that cannot call it, because that
+              // helper reports through a `BuildContext` and `onClose()` is
+              // about to take this one out of the tree.
+              //
+              // Android carries a clipboard write over a Binder transaction
+              // capped near a megabyte, so the throw is real and arrives
+              // exactly when the message is longest.
+              unawaited(
+                guarded(
+                  '[QNotification] copying a tapped message',
+                  () => Clipboard.setData(ClipboardData(text: message)),
+                ),
+              );
             } else {
               action();
             }

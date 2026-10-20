@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/clipboard.dart';
+import 'package:qunleashed/services/guarded.dart';
 import 'package:qunleashed/components/notification.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
@@ -138,5 +139,88 @@ void main() {
 
     expect(find.text('Seed copied'), findsOneWidget);
     expect(find.text(l10nGlobal.commonCopied), findsNothing);
+  });
+
+  group('a tapped notification with no action', () {
+    /// A notification on screen, and the text it carries.
+    ///
+    /// `QNotification.show` wants a context under a `MaterialApp` for the
+    /// root overlay, and the card reads the app's colour extension - the same
+    /// two reasons `wrap` above gives.
+    Future<String> showToast(WidgetTester tester) async {
+      const message = 'a payload too big to carry';
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+          home: Scaffold(
+            body: Builder(
+              builder: (c) {
+                ctx = c;
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+      // No `onTap`, which is the branch that copies. A notification carrying
+      // one runs it instead and never touches the clipboard.
+      QNotification.show(ctx, message: message);
+      await tester.pump();
+      return message;
+    }
+
+    // The path `copyTextToClipboard` cannot serve, and so the one place this
+    // app still writes the clipboard by hand. The helper reports through a
+    // `BuildContext`, and tapping a toast closes it - so by the time a refusal
+    // came back there would be no context left to say so through.
+    //
+    // Which is why the write was dropped rather than handled, and why nothing
+    // noticed: `unawaited_futures` fires only inside an `async` body and
+    // `InkWell.onTap` is not one, and `unawaited_budget_test.dart` counts
+    // `unawaited(...)` sites rather than dropped futures. A refused write
+    // reached the zone as an unlabelled `[uncaught]` while the toast closed as
+    // if it had worked.
+    testWidgets('names a refused write instead of dropping it', (tester) async {
+      mockClipboard(
+        tester,
+        refuse: PlatformException(code: 'TransactionTooLargeException'),
+      );
+      final failures = <String>[];
+      guardedFailureSink = (what, verb, error, stack) =>
+          failures.add('$what $verb: $error');
+      addTearDown(() => guardedFailureSink = null);
+
+      final message = await showToast(tester);
+      await tester.tap(find.text(message));
+      await tester.pump();
+
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the rejection must not reach the zone',
+      );
+      expect(failures, hasLength(1));
+      expect(failures.single, contains('[QNotification]'));
+      expect(failures.single, contains('TransactionTooLargeException'));
+    });
+
+    testWidgets('and carries the message when it lands', (tester) async {
+      // The success half, so the case above cannot pass by never copying at
+      // all - which is what a tap handler that lost its clipboard call
+      // entirely would look like to the assertions there.
+      final copied = mockClipboard(tester);
+      final failures = <String>[];
+      guardedFailureSink = (what, verb, error, stack) => failures.add(what);
+      addTearDown(() => guardedFailureSink = null);
+
+      final message = await showToast(tester);
+      await tester.tap(find.text(message));
+      await tester.pump();
+
+      expect(copied, [message]);
+      expect(failures, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
