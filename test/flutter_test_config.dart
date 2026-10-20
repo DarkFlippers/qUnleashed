@@ -14,6 +14,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/components/notification.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/permissions.dart';
 
@@ -25,5 +26,15 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // a test that reaches them leaks a memoised answer, or a stale sink, into
   // every test after it. #351.
   setUp(debugResetStoragePermissionState);
+  // `QNotification._current` is the third of these: the notification on
+  // screen, held as a library static, so a case that shows one leaves a live
+  // handle behind and the next `show()` closes an entry belonging to a
+  // torn-down tree. Harmless only because `OverlayEntry.remove` returns early
+  // on an unmounted overlay - the framework's guarantee, not the component's.
+  //
+  // Every test that shows a notification reaches it, including the ones that
+  // only do so through production code, which is why the reset is here and
+  // not a list of file names kept by hand. QUNLEASHED-S.
+  setUp(QNotification.debugReset);
   await testMain();
 }
