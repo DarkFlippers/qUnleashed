@@ -875,10 +875,11 @@ class Telemetry {
 
   /// What makes two unclassified connect errors the same issue.
   ///
-  /// Identifiers out, error codes left in, and the asymmetry is the point: a
+  /// Frames dropped by [_platformFrames], then identifiers out and error
+  /// codes left in, and that second asymmetry is the point: a
   /// BLE address, a serial or an iOS peripheral identifier varies per device
   /// and per pairing and says nothing about the cause, while a code usually
-  /// *is* the cause - Android's `status 133` and `status 22` are different
+  /// *is* the cause - Android's `status 22` and `status 62` are different
   /// failures and must not merge into one issue. A *service* UUID is a
   /// constant and identical on every Flipper; it is the peripheral identifier
   /// CoreBluetooth hands out instead of a MAC that varies, and it is why the
@@ -890,11 +891,40 @@ class Telemetry {
   /// stringifying `hresult_error::code()`. Two causes in one issue, titled
   /// after whichever arrived first, and the second never learned: the exact
   /// inversion of what this is for. The case below it could not see that,
-  /// because `133` and `22` are too short to reach the boundary either way.
+  /// because `22` and `62` are too short to reach the boundary either way.
   /// Twelve loses nothing the rule is for - a separator-less BLE address is
   /// twelve hex characters and a serial is longer.
-  static String _connectSignature(String message) =>
-      message.replaceAll(_identifier, '<id>');
+  static String _connectSignature(String message) => message
+      .replaceAll(_platformFrames, ' <frames>')
+      .replaceAll(_identifier, '<id>');
+
+  /// A stack trace the platform wrote into the message, where the string is
+  /// all this fingerprint has to group on.
+  ///
+  /// `universal_ble`'s Android plugin stringifies a caught Java exception
+  /// whole - `java.lang.NullPointerException` and then its frames - and hands
+  /// the result over as the error's text. Those frames carry line numbers out
+  /// of the ROM's own framework classes, so `Handler.java:938` on a OnePlus 6
+  /// is a different number on a Xiaomi: one plugin bug arrived as
+  /// QUNLEASHED-X and QUNLEASHED-W, identically titled, differing only in
+  /// their frames - the line numbers, how a frame with no source file is
+  /// spelled, and one extra `Looper` frame - and so in nothing anybody can
+  /// act on. Two issues, each read as a one-off, where the paragraph above
+  /// asks for a list of strings.
+  ///
+  /// Dropped whole rather than masked number by number, because the doc on
+  /// [_reportUnknownConnect] already says why: Sentry's default grouping *is*
+  /// the stack, and this fingerprint exists to group on what the platform
+  /// said instead. A trace smuggled inside the message is that same stack
+  /// arriving by the back door. The marker is left behind so the signature
+  /// still records that there was one, and so two strings that differ only in
+  /// whether they carry a trace stay apart.
+  ///
+  /// Only a frame at the start of its own line, which is how Java writes one.
+  /// A Dart trace is not matched and does not need to be: the VM writes
+  /// `#0  Foo.bar (...)`, the `at` form is dart2js's, and none of the six
+  /// targets is web. A message that says `at` mid-sentence keeps it.
+  static final RegExp _platformFrames = RegExp(r'(?:\r?\n[ \t]*at [^\r\n]*)+');
 
   static final RegExp _identifier = RegExp(
     // A MAC or a BLE address: four or more colon-separated pairs, so a clock

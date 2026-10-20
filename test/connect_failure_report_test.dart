@@ -12,6 +12,7 @@
 // issue - one per string, which is what makes that list a to-do list for the
 // classifier. Which call site reports, with which transport and attempt, is
 // `link_autoconnect_test.dart`'s half; this file drives the hook directly.
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/connection/connect_report.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
@@ -63,6 +64,40 @@ class _ConnectError implements Exception {
   String toString() => text;
 }
 
+/// The message `universal_ble` handed over for QUNLEASHED-X and QUNLEASHED-W.
+///
+/// Structurally as Sentry received it, and that is the point of building it
+/// here rather than writing a trace that suits the regex: the plugin
+/// concatenates `Log.getStackTraceString` whole and nests the result inside
+/// `Message:` and then again inside `Details:`. So there are *two* frame
+/// blocks and neither sits at the end of the string: the first is followed by
+/// a newline and `, Details:`, the second by the newline the string ends on.
+/// A pattern that only handled a trace at end-of-string, or only one per
+/// message, would pass a hand-written fixture and leave these two events as
+/// two issues.
+///
+/// The frame list is trimmed from eleven to four. That is the only liberty
+/// taken, and it is taken for readability.
+///
+/// [noSource] and [handlerLine] are where the two devices differed. R8 spells
+/// a frame with no source file differently between the two builds, and the
+/// framework line numbers come from each ROM - which is the whole reason one
+/// bug was filed twice.
+String _npeMessage({required String noSource, required int handlerLine}) {
+  final frames = <String>[
+    'a2.F0.c($noSource:127)',
+    'io.flutter.plugin.platform.k.a($noSource:24)',
+    'android.os.Handler.handleCallback(Handler.java:$handlerLine)',
+    'android.app.ActivityThread.main(ActivityThread.java:8068)',
+  ].map((frame) => '\n\tat $frame').join();
+  const nested =
+      'UniversalBleException: Code: UniversalBleErrorCode.unknownError, '
+      'Message: java.lang.NullPointerException, Details: Cause: null, '
+      'Stacktrace: java.lang.NullPointerException';
+  return 'UniversalBleException: Code: UniversalBleErrorCode.unknownError, '
+      'Message: $nested$frames\n, Details: $nested$frames\n';
+}
+
 /// An error that cannot be described, which is a shape the app has met.
 class _Hostile implements Exception {
   @override
@@ -83,6 +118,20 @@ void main() {
   Future<List<String>> fingerprintsFor(List<String> messages) async {
     final seen = await _wiredHub();
     for (final message in messages) {
+      // Anchored rather than assumed. Every case here is about how an
+      // *unclassified* string is filed, so a message the classifier has since
+      // learned raises no issue at all - and what that looks like is
+      // `settleAndClose` failing on its five-second deadline naming a count,
+      // with nothing saying why. That is exactly how the GATT 133 needle
+      // announced itself here, and `status 22` and `status 62` below are the
+      // next most likely additions to the same list.
+      expect(
+        classifyConnectError(_ConnectError(message)),
+        FlipperConnectErrorKind.unknown,
+        reason:
+            'the classifier now knows "$message"; this case needs one it '
+            'does not',
+      );
       reportConnectFailure(
         _ConnectError(message),
         StackTrace.empty,
@@ -232,16 +281,80 @@ void main() {
     });
 
     test('while a status code is the cause, and keeps its own issue', () async {
+      // 22 and 62, where this case used to read 133 and 22. 133 is now a
+      // needle in `classifyConnectError` and never reaches an unknown report
+      // again, so asking for its fingerprint here waited for an event that is
+      // no longer raised - which is how that change announced itself. The
+      // pair only has to be two short numeric codes that nothing classifies;
+      // what is being asserted is the signature, not the classifier.
       final prints = await fingerprintsFor([
-        'PlatformException(gatt, status 133)',
         'PlatformException(gatt, status 22)',
+        'PlatformException(gatt, status 62)',
+      ]);
+
+      expect(prints.first, isNot(prints.last));
+    });
+
+    test('while a Java trace inside it is not part of the string', () async {
+      // QUNLEASHED-X and QUNLEASHED-W: one NullPointerException inside
+      // `universal_ble`'s Android plugin, filed as two issues because the
+      // ROM's own framework line numbers ride along inside the message. The
+      // pair below is those two events cut down to the frames that differed -
+      // a OnePlus 6 on Android 11 against a Xiaomi on 16.
+      final onePlus = _npeMessage(noSource: 'Unknown Source', handlerLine: 938);
+      final xiaomi = _npeMessage(noSource: 'SourceFile', handlerLine: 1029);
+      // So that a failure below is read as the fingerprint's and not the
+      // scrubber's. `Scrub.outbound` runs first and has rules that a frame
+      // can trip - its bare-filename allow-list includes `ir`, and a
+      // `1.2345` anywhere becomes a coordinate - neither of which these two
+      // reach.
+      expect(Scrub.outbound(onePlus), onePlus);
+      expect(Scrub.outbound(xiaomi), xiaomi);
+
+      final prints = await fingerprintsFor([onePlus, xiaomi]);
+
+      expect(prints.first, prints.last);
+      expect(prints.first, contains('NullPointerException <frames>'));
+      // Both blocks collapsed, not just the one at the end.
+      expect(
+        RegExp('<frames>').allMatches(prints.first).length,
+        2,
+        reason: 'the nested Message: and Details: blocks are both traces',
+      );
+    });
+
+    test('though prose that merely says "at" is left alone', () async {
+      // The other half of what the pattern promises, and the guard against
+      // the simplification it invites: widening it to `\s*at\s` would
+      // start eating sentences. Nothing else in the suite would notice.
+      //
+      // One message, because `contains` is the whole catch. A second message
+      // asserting the two do not merge would add nothing: merging requires
+      // these words to be eaten, which fails the `contains` first.
+      final prints = await fingerprintsFor([
+        'connect failed at the gatt layer',
+      ]);
+
+      expect(prints.single, contains('at the gatt layer'));
+    });
+
+    test('though carrying one at all still tells them apart', () async {
+      // Why the frames leave a marker instead of collapsing to nothing. The
+      // same sentence with and without a trace behind it is two reports, and
+      // an empty replacement would have merged them - trading the split this
+      // case fixes for a different one.
+      final prints = await fingerprintsFor([
+        'UniversalBleException: java.lang.NullPointerException',
+        'UniversalBleException: java.lang.NullPointerException\n'
+            '\tat android.os.Handler.handleCallback(Handler.java:938)',
       ]);
 
       expect(prints.first, isNot(prints.last));
     });
 
     test('and so does an HRESULT, which eight characters merged', () async {
-      // The boundary the case above cannot reach: `133` and `22` were never
+      // The boundary the `while a status code is the cause` case cannot
+      // reach: `22` and `62` were never
       // long enough for the bare-run rule to touch. These are - eight hex
       // characters, the shape `universal_ble`'s Windows plugin produces - and
       // at the old threshold both became `0x<id>`: one issue, second cause
