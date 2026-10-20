@@ -65,6 +65,17 @@
 // Storage and the infrared page. `promptStorageAccess` wraps its whole
 // body in `guarded`, for this reason and under this rule, so the future
 // those three drop cannot reject either.
+// **What this number is not is the count of dropped futures.** It counts
+// `unawaited(...)` call sites, so it sees only the ones somebody marked. A
+// bare expression statement whose value is a Future is invisible here, and
+// `unawaited_futures` does not catch those either: that lint fires only
+// inside an `async` body, so a future dropped from a synchronous callback is
+// seen by neither. `notification.dart`'s tap-to-copy sat in exactly that
+// blind spot and dropped a `Clipboard.setData` from an `InkWell.onTap` for
+// as long as the component existed - a refused write reached the zone as an
+// unlabelled `[uncaught]` while the toast closed as if it had worked. It goes
+// through `guarded` now, which this file exempts, so fixing it moved the
+// number not at all. Treat the budget as a floor.
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';

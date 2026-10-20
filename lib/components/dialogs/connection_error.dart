@@ -82,6 +82,17 @@ Future<void> showConnectionFailedDialog(
             ? strings.connectUnreachableBleBody
             : strings.connectUnreachableUsbBody,
       );
+    // Not folded into either neighbour, and the switch is exhaustive so the
+    // compiler asked for this the moment the kind existed. The device
+    // answered, so `deviceUnreachable`'s "move it closer" is wrong for a
+    // Flipper sitting on the desk; the bond is intact, so `stalePairing`'s
+    // "forget it" is premature. Both remedies appear here, cheapest first.
+    // QUNLEASHED-Y.
+    case FlipperConnectErrorKind.servicesMissing:
+      return (
+        strings.connectServicesMissingTitle,
+        strings.connectServicesMissingBody,
+      );
     case FlipperConnectErrorKind.unknown:
       return (
         strings.connectFailedTitle,
