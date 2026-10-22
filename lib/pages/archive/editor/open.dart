@@ -48,8 +48,15 @@ Future<bool> openRemoteFileInEditor(
   try {
     localPath = await download();
   } on FlipperCancelledException catch (e) {
+    // Mounted first, and not merely before the notification: [cancelledMessage]
+    // belongs to a State, and the one in the file manager reads `context.l10n`
+    // to word itself. Reading `State.context` after dispose is a null check on
+    // a null `_element` - an assert in a test, a TypeError in the release the
+    // user is running. A download the user walked away from is exactly when
+    // that happens. QUNLEASHED-1F.
+    if (!context.mounted) return false;
     final message = cancelledMessage?.call(e);
-    if (context.mounted && message != null) {
+    if (message != null) {
       context.showNotification(message, type: QNotificationType.warning);
     }
     return false;
