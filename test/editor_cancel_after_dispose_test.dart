@@ -1,16 +1,16 @@
-// Who words a cancelled transfer, and whether anyone is left to hear it.
+// What a cancelled download tells the user, and what it does when there is
+// nobody left to tell.
 //
-// `openRemoteFileInEditor` takes a `cancelledMessage` callback, and the only
-// caller that passes one passes a State method - `_FileManagerPageState.
-// _cancelledMessage`, which reads `context.l10n` to word itself. The catch
-// asked it for the wording first and checked `context.mounted` second, so a
-// download cancelled after the user left the page read `State.context` on a
-// disposed State. The open was abandoned where `guarded` caught it: no
-// notification, and the refresh behind it never ran. QUNLEASHED-1F.
+// `openRemoteFileInEditor` used to take the wording as a callback, and the
+// only caller passed a State method that read `context.l10n`. A cancel that
+// landed after the user left the page therefore read `State.context` on a
+// disposed State, and `guarded` swallowed the throw along with the whole
+// open - no notification, and the refresh behind it never ran. QUNLEASHED-1F.
 //
-// Both halves are here. The disposed case must not ask; the mounted case must
-// still ask and still show, because a guard that never lets go is the same
-// green as a guard that works.
+// It now takes `cancelAcknowledged`, a predicate off the controller, and words
+// the constant here from the context-free `l10n`. These cases pin both ends of
+// that: what is said while the page is there, and that the vanished page costs
+// nothing but the toast.
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/notification.dart';
 import 'package:qunleashed/pages/archive/editor/open.dart';
+import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 /// Themed, because the toast reads `appColors` off a theme extension that a
@@ -29,12 +30,8 @@ Widget wrap(Widget child) => MaterialApp(
 
 /// A page to open a file from, and to dispose while the open is in flight.
 ///
-/// Its [cancelledMessage] stands in for the file manager's: what matters is
-/// that the wording is read off *this State's* `context`, because the
-/// `State.context` getter is the crash - it asserts "This widget has been
-/// unmounted" in debug and dereferences a null `_element` in release. Which
-/// inherited widget is looked up past it is irrelevant; `MediaQuery` only
-/// keeps the stand-in off the app's `Localizations` wiring.
+/// It exists for its [State], whose `context` is the one the cancel used to be
+/// worded off after it had died.
 class _Host extends StatefulWidget {
   const _Host();
 
@@ -43,38 +40,63 @@ class _Host extends StatefulWidget {
 }
 
 class _HostState extends State<_Host> {
-  /// Whether [cancelledMessage] ran at all, which is what the guard is about -
-  /// a null return cannot tell "never asked" from "asked, said nothing".
-  bool asked = false;
-
-  /// What [cancelledMessage] answers. Null is the real one's unacknowledged
-  /// cancel: the transfer leaves the screen, but nothing claims it stopped.
-  String? reply = 'cancelled';
-
-  String? cancelledMessage(FlipperCancelledException e) {
-    // Set before the context read, so it still records that the callback ran
-    // on the path where that read throws.
-    asked = true;
-    MediaQuery.maybeOf(context);
-    return reply;
-  }
-
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 void main() {
   /// Starts an open against [state]'s context and hands back its future.
-  Future<bool> openAgainst(_HostState state, Completer<String?> download) =>
-      openRemoteFileInEditor(
-        state.context,
-        remotePath: '/ext/badge.nfc',
-        download: () => download.future,
-        upload: (_) async => false,
-        cancelledMessage: state.cancelledMessage,
-      );
+  Future<bool> openAgainst(
+    _HostState state,
+    Completer<String?> download, {
+    bool acknowledged = true,
+  }) => openRemoteFileInEditor(
+    state.context,
+    remotePath: '/ext/badge.nfc',
+    download: () => download.future,
+    upload: (_) async => false,
+    cancelAcknowledged: (_) => acknowledged,
+  );
 
-  testWidgets('a cancel that lands after dispose is not worded', (
+  testWidgets('an acknowledged cancel says so', (tester) async {
+    await tester.pumpWidget(wrap(const _Host()));
+    final state = tester.state<_HostState>(find.byType(_Host));
+    final download = Completer<String?>();
+
+    final opened = openAgainst(state, download);
+    download.completeError(FlipperReadCancelledException('/ext/badge.nfc'));
+
+    expect(await opened, isFalse, reason: 'nothing was opened');
+    // Pumped rather than settled: the toast dismisses itself, and settling
+    // runs past its whole lifetime and finds nothing.
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text(l10nGlobal.fmTransferCancelled), findsOneWidget);
+  });
+
+  // The other half of the predicate: the transfer leaves the screen, but
+  // nothing claims it stopped.
+  testWidgets('a cancel the firmware never acknowledged says nothing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const _Host()));
+    final state = tester.state<_HostState>(find.byType(_Host));
+    final download = Completer<String?>();
+
+    final opened = openAgainst(state, download, acknowledged: false);
+    download.completeError(FlipperReadCancelledException('/ext/badge.nfc'));
+
+    expect(await opened, isFalse);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(QNotification), findsNothing);
+  });
+
+  // The reported bug. Before `cancelAcknowledged`, the wording was read off
+  // this State and this threw instead of returning.
+  testWidgets('a cancel that lands after the page has gone is survivable', (
     tester,
   ) async {
     await tester.pumpWidget(wrap(const _Host()));
@@ -93,53 +115,18 @@ void main() {
     // would leave it momentarily unhandled.
     download.completeError(FlipperReadCancelledException('/ext/badge.nfc'));
 
-    expect(await opened, isFalse, reason: 'nothing was opened');
     expect(
-      state.asked,
+      await opened,
       isFalse,
+      reason: 'it returns rather than throwing on the dead context',
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.byType(QNotification),
+      findsNothing,
       reason: 'there is no screen left to say it on',
     );
-  });
-
-  testWidgets('a cancel on a page still there is worded, and shown', (
-    tester,
-  ) async {
-    await tester.pumpWidget(wrap(const _Host()));
-    final state = tester.state<_HostState>(find.byType(_Host));
-    final download = Completer<String?>();
-
-    final opened = openAgainst(state, download);
-    download.completeError(FlipperReadCancelledException('/ext/badge.nfc'));
-
-    expect(await opened, isFalse);
-    // Pumped rather than settled: the toast dismisses itself, and settling
-    // runs past its whole lifetime and finds nothing.
-    await tester.pump();
-    await tester.pump();
-
-    expect(state.asked, isTrue, reason: 'the guard lets a live page through');
-    expect(
-      find.text('cancelled'),
-      findsOneWidget,
-      reason: 'and the wording it gave back reaches the screen',
-    );
-  });
-
-  // The other half of the real callback's contract: it returns null when the
-  // firmware never acknowledged the cancel, and then nothing is claimed.
-  testWidgets('a cancel it declines to word shows nothing', (tester) async {
-    await tester.pumpWidget(wrap(const _Host()));
-    final state = tester.state<_HostState>(find.byType(_Host))..reply = null;
-    final download = Completer<String?>();
-
-    final opened = openAgainst(state, download);
-    download.completeError(FlipperReadCancelledException('/ext/badge.nfc'));
-
-    expect(await opened, isFalse);
-    await tester.pump();
-    await tester.pump();
-
-    expect(state.asked, isTrue, reason: 'asked, and said nothing');
-    expect(find.byType(QNotification), findsNothing);
   });
 }

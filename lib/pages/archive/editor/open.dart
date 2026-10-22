@@ -39,37 +39,35 @@ Future<bool> openRemoteFileInEditor(
   /// the controller keeps the reason for either. #110.
   String? Function()? failureReason,
 
-  /// What to say when [download] or [upload] ended in that cancel; null says
-  /// nothing.
+  /// Whether the firmware acknowledged the cancel that ended [download] or
+  /// [upload]. False, or absent, says nothing to the user: the transfer left
+  /// the screen, but nothing claims it stopped.
   ///
-  /// Called only while [context] is still mounted. The implementations are
-  /// State methods that word themselves off their own `context`, and
-  /// `State.context` after dispose throws - see the catch below. Both call
-  /// sites in here check before calling, and a third would have to as well.
-  String? Function(FlipperCancelledException cancel)? cancelledMessage,
+  /// A predicate rather than the wording, so that nothing here depends on a
+  /// caller's `BuildContext` outliving the transfer. It used to be
+  /// `String? Function(...)`, every implementation was a State method wording
+  /// itself off `context.l10n`, and a cancel that landed after the user left
+  /// the page read `State.context` on a disposed State: an assert in debug,
+  /// and in release a null `_element` dereference that `guarded` swallowed,
+  /// taking the whole open with it. QUNLEASHED-1F. The string is a constant,
+  /// so it is read here from the context-free [l10n] instead - the same shape
+  /// `shareRemoteFile` already uses for this exact cancel.
+  bool Function(FlipperCancelledException cancel)? cancelAcknowledged,
   VoidCallback? onRun,
 }) async {
   final String? localPath;
   try {
     localPath = await download();
   } on FlipperCancelledException catch (e) {
-    // Mounted first, and not merely before the notification: [cancelledMessage]
-    // belongs to a State, and the one in the file manager reads `context.l10n`
-    // to word itself. Reading `State.context` after dispose throws either way -
-    // debug asserts with "This widget has been unmounted", and release, where
-    // that assert is stripped, dereferences a null `_element` and raises the
-    // TypeError the user actually hit.
-    //
-    // It is not loud when it happens: the tap runs inside
-    // `guarded('[FileManager] open ...')`, so the throw is swallowed there and
-    // the whole open is abandoned - no cancel notification, and the refresh
-    // after it never runs. A download the user walked away from is exactly
-    // when that happens. QUNLEASHED-1F, and
-    // `test/editor_cancel_after_dispose_test.dart` keeps the order honest.
-    if (!context.mounted) return false;
-    final message = cancelledMessage?.call(e);
-    if (message != null) {
-      context.showNotification(message, type: QNotificationType.warning);
+    // An ordinary don't-toast-a-dead-context check, which is all it has to be
+    // now that the wording does not come from one. `test/
+    // editor_cancel_after_dispose_test.dart` covers the cancel that lands
+    // after the page has gone.
+    if (context.mounted && (cancelAcknowledged?.call(e) ?? false)) {
+      context.showNotification(
+        l10n.fmTransferCancelled,
+        type: QNotificationType.warning,
+      );
     }
     return false;
   }
@@ -100,22 +98,21 @@ Future<bool> openRemoteFileInEditor(
     },
     onSaveFailureReason: () {
       final cancel = cancelled;
-      // `failureReason` reads a controller rather than a context, so it
-      // answers whether or not the page that opened this is still there.
       if (cancel == null) return failureReason?.call();
-      // [cancelledMessage] does read a context, so it needs the same check as
-      // the catch above. This is not the unreachable half of it: the editor is
-      // pushed onto the root navigator rather than above a nested one, so it
-      // outlives the page that opened it whenever the shell drops that page -
-      // `_page` swaps a file manager for `SizedBox.shrink()` on a wide ->
-      // narrow change (`app/shell.dart`), which a desktop window resize does
-      // while the editor is still on screen.
-      //
-      // Null rather than falling back to `failureReason`: a cancel does not
-      // set `lastFailure`, so that would word this save with some earlier
+      // Not `failureReason` as the fallback: a cancel does not set
+      // `lastFailure`, so that would word this save with some earlier
       // operation's reason.
-      if (!context.mounted) return null;
-      return cancelledMessage?.call(cancel);
+      //
+      // Neither half reads a context, which is what lets this answer at all.
+      // The editor sits on the root navigator, so it outlives the page that
+      // opened it whenever the shell drops that page - `_page` swaps a file
+      // manager for `SizedBox.shrink()` on a wide -> narrow change
+      // (`app/shell.dart`), which a desktop window resize does with the editor
+      // still on screen. The user is looking at the editor and deserves the
+      // reason regardless.
+      return (cancelAcknowledged?.call(cancel) ?? false)
+          ? l10n.fmTransferCancelled
+          : null;
     },
     onRun: onRun,
   );
