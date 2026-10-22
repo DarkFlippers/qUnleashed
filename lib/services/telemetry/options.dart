@@ -52,6 +52,47 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // does not depend on an SDK default either way.
   options.sendDefaultPii = false;
   options.attachScreenshot = false;
+  // On by default, and off here because collecting it can raise errors of its
+  // own that nothing in this app can catch.
+  //
+  // The enricher builds `event.modules` by listening to
+  // `LicenseRegistry.licenses`, which pulls Flutter's own delegate, whose
+  // `onListen` loads the `NOTICES.Z` asset. That callback is `async` and the
+  // `StreamController` discards the future it returns, so on a build where
+  // the asset is absent the throw cannot reach the listener: it goes to the
+  // zone, and arrives as a fatal unhandled error. QUNLEASHED-1J is ten of
+  // those from one session on Linux.
+  //
+  // The throw is not the expensive part. The inner controller never emits and
+  // never closes, so `forEach` never completes, so the enricher's `apply`
+  // never returns and `captureEvent` never reaches `beforeSend` or the
+  // transport. That event is neither sent nor discarded: no envelope, and no
+  // client report either, so nothing counts it. Reproduced against these
+  // versions - on, the capture never finishes and no envelope leaves; off, it
+  // returns and one does.
+  //
+  // And the stall holds a slot. These particular events bypass the queue -
+  // `OnErrorIntegration` captures unawaited - but the app's own `Sentry
+  // .capture*` calls go through `DefaultTaskQueue`, and a capture that never
+  // returns never gives its slot back. After `maxQueueSize` of them the rest
+  // of the session reports nothing at all. That, rather than a burst crowding
+  // a rate limit, is how this would cost real reports; ADR 0013 §8 is about
+  // the neighbouring failure.
+  //
+  // What is *not* settled is how QUNLEASHED-1J delivered ten events at all,
+  // since an enricher wedged on every one of them delivers none. Either the
+  // cache was warm when those were sent or something else listened. #388
+  // carries the question; the fix does not rest on the answer.
+  //
+  // What it costs is nothing anybody reads. `modules` has no consumer here or
+  // in CI, it is not indexed server-side, and the SDK's own doc says what it
+  // holds: package names with no versions, Flutter's native dependencies
+  // mixed in. It is also the one map that crossed §6.2 unscrubbed.
+  //
+  // This removes the only thing in the app that reads `NOTICES.Z`. Adding
+  // `showLicensePage` or `AboutDialog` later brings the same uncatchable
+  // throw back, and that time as a screen that never finishes loading. #388.
+  options.reportPackages = false;
   // On by default, and off here because `LogService` feeds Sentry directly
   // (§2). Left on, every line a talking build prints would arrive a second
   // time as a breadcrumb, unscrubbed by anything in this file.

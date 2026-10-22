@@ -265,6 +265,12 @@ void main() {
       expect(options.tracesSampleRate, 1.0);
       expect(options.enableLogs, isTrue);
       expect(options.enableFramesTracking, isFalse);
+      // Not a preference, and not §6 either. On, the enricher listens to
+      // `LicenseRegistry` to build `event.modules`, and Flutter's delegate
+      // loads `NOTICES.Z` from an `onListen` whose throw nothing can catch.
+      // On a build missing that asset the capture then never finishes, so the
+      // event is neither sent nor counted as lost. QUNLEASHED-1J, #388.
+      expect(options.reportPackages, isFalse);
       // All three scrubbing hooks, not just the one. A log never passes
       // through `beforeSend`, and a transaction only reaches it when
       // `beforeSendTransaction` is unset.
