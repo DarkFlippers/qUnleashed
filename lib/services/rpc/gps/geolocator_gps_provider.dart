@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 
 import '../../guarded.dart';
+import '../../logging.dart';
 import 'gnss_satellites.dart';
 import 'gps_responder.dart';
 
@@ -40,6 +41,26 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
       return GpsReadiness.notSupported;
     } on UnimplementedError {
       return GpsReadiness.notSupported;
+    } on PlatformException catch (e) {
+      // A platform that has the plugin and still cannot answer. Windows 8.1
+      // raises `RequestAccess failed. Check the Geolocation Service is
+      // running.` out of `checkPermission` when that service is stopped -
+      // after `isLocationServiceEnabled` has already said yes, so there is no
+      // earlier branch that could have caught it. QUNLEASHED-B.
+      //
+      // A readiness rather than a throw, because it is a fact about the
+      // machine and not a fault. The one caller that asks on demand already
+      // turned a throw into exactly this (`GpsResponder._ensureReady`), so
+      // the Flipper still gets `ERROR_GPS_UNKNOWN` and nothing there changes.
+      // What changes is the desktop pre-warm at startup, which goes through
+      // `guarded` and so filed every one of these as a failed ambient
+      // service.
+      //
+      // `caught` and not `warn`: it is worth keeping - it is the difference
+      // between a machine that cannot do GPS and one that can - and there is
+      // nobody to alert, because nothing was asked for yet.
+      LogService.caught('[GPS] readiness unavailable on this platform: $e');
+      return GpsReadiness.unknown;
     }
   }
 

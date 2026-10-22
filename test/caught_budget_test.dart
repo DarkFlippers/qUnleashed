@@ -222,8 +222,18 @@ import 'ratchet.dart';
 /// `continue;`), so neither was ever counted by `bare_catch_budget_test.dart`
 /// and its figures do not move. The exchange that file's header describes is
 /// between itself and `log_level_budget_test.dart`; this is not that trade.
+///
+/// `services` rose to 18 for `rpc/gps/geolocator_gps_provider.dart` — a
+/// `PlatformException` out of `checkPermission` on a platform that has the
+/// plugin and still cannot answer. It replaces nothing: the throw escaped
+/// `ensureReady` entirely and the desktop pre-warm reported each one through
+/// `guarded` at `error`, so this *lowers* what reaches the reporting channel
+/// rather than adding to it. Kept rather than dropped because it is the
+/// difference between a machine that cannot do GPS and one that can, and at
+/// `caught` rather than `warn` because nothing has been asked for yet —
+/// §5's rule exactly. QUNLEASHED-B.
 const Map<String, int> kBudget = {
-  'services': 17,
+  'services': 18,
   'pages/archive': 20,
   'pages/tools': 12,
   'pages/flibler': 1,
