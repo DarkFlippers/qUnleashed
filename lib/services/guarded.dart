@@ -28,36 +28,59 @@ import 'logging.dart';
 /// catches it and `error` where it reaches here. The tie-breaker is that
 /// nobody is coming to look at this one.
 ///
-/// ## Why [Future.sync]
+/// ## Why `try`/`await`, and not `Future.sync(task).catchError(...)`
 ///
-/// The callee need not be `async`, and then it throws before there is a future
-/// to attach a handler to. `FlipperClient.writeCliBytes` is the live example —
-/// `_CliPageState._fireAndShow` has the detail. [Future.sync] puts the synchronous
-/// throw and the rejection in the same place.
+/// It was that pair, and the pair broke the promise above for any caller
+/// whose task returns something.
+///
+/// [task] is declared `Future<void> Function()`, and `void` is a top type, so
+/// a `Future<GpsReadiness> Function()` satisfies it and the analyzer is
+/// content. At runtime `Future.sync` hands back the caller's own future
+/// untouched whenever `result is Future<T>` — which `Future<GpsReadiness>`
+/// passes against `Future<void>`. So `catchError` ran against a future whose
+/// real type argument was `GpsReadiness`, while the handler here returns
+/// nothing. On the first task that actually threw, the handler ran, wrote its
+/// line, and *then* `catchError` raised `ArgumentError: ... must return a
+/// value of the future's type` — rejecting the future the queues are promised
+/// cannot reject. QUNLEASHED-A, six times on Windows, each one the desktop
+/// `GeolocatorGpsProvider.ensureReady` throwing (QUNLEASHED-B).
+///
+/// Generic in the task's return, so the reality is written down rather than
+/// erased by a top type, and `try`/`await` rather than `catchError`, so there
+/// is no type-argument check left to get wrong. It keeps what [Future.sync]
+/// was here for: the callee need not be `async`, and `task()` is called inside
+/// the `try`, so a synchronous throw lands in the same place as a rejection.
+/// `FlipperClient.writeCliBytes` is the live example of that shape —
+/// `_CliPageState._fireAndShow` has the detail.
 ///
 /// [onFailure] runs after the message is recorded, for a site that can also
 /// tell the user. It is passed the error only: anything that wants the stack
-/// wants the log. One caller today, and it should come back out if it never
-/// gains a second.
+/// wants the log. It said "one caller today" and was written to come back out
+/// if it never gained a second; it has three — `permission_notice.dart` and
+/// `_CliPageState` twice — so it stays.
 ///
 /// Two neighbouring shapes are deliberately *not* this. `IrLibLocalRepo` uses
 /// `catchError(..., test: ...)` so a fault outside the one it expects is not
 /// quietly turned into a no-op, and [guarded] has no such narrowing.
 /// `MediaRemoteBridge._syncNativeState` hands the real rejection to an awaiting
 /// caller and neuters only the copy it stores, which [guarded] would swallow.
-Future<void> guarded(
+Future<void> guarded<T>(
   String what,
-  Future<void> Function() task, {
+  Future<T> Function() task, {
   void Function(Object error)? onFailure,
-}) => Future.sync(task).catchError((Object error, StackTrace stack) {
-  _record(what, 'failed', error, stack);
-  if (onFailure == null) return;
+}) async {
   try {
-    onFailure(error);
-  } catch (e, st) {
-    _record(what, 'failure handler threw', e, st);
+    await task();
+  } catch (error, stack) {
+    _record(what, 'failed', error, stack);
+    if (onFailure == null) return;
+    try {
+      onFailure(error);
+    } catch (e, st) {
+      _record(what, 'failure handler threw', e, st);
+    }
   }
-});
+}
 
 /// A second reader for what [guarded] catches, installed by whoever has one.
 ///

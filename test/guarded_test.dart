@@ -92,9 +92,9 @@ void main() {
     () async {
       // The case that shaped the helper. FlipperClient.writeCliBytes is not
       // async, so a session that is already gone throws before there is a
-      // future to attach a handler to. Without the Future.sync inside guarded,
-      // this throw leaves the guarded() call itself, before anything can be
-      // awaited.
+      // future to attach a handler to. If [guarded] ever called its task
+      // outside its own `try`, this throw would leave the guarded() call
+      // itself, before anything can be awaited.
       Future<void> gone() => throw StateError('thrown before any future');
 
       await expectLater(guarded('[Test] sync', gone), completes);
@@ -202,6 +202,73 @@ void main() {
     // sees them and how many there were is not recoverable.
     expect(keptLines, hasLength(1));
     expect(keptLines.single, isNot(contains('×')));
+  });
+
+  // The shape QUNLEASHED-A arrived in, and the one every other case here
+  // missed: a task that returns something.
+  //
+  // `task` is declared `Future<void> Function()` and `void` is a top type, so
+  // a `Future<GpsReadiness> Function()` satisfies it statically - which is how
+  // `bootstrap.dart` hands `GeolocatorGpsProvider.ensureReady` to this on
+  // desktop. The old body was `Future.sync(task).catchError(...)`, and
+  // `Future.sync` returns the caller's own future untouched when
+  // `result is Future<T>`, so `catchError` met a future whose real type
+  // argument was the task's and a handler that returns nothing. It logged,
+  // then rejected with `ArgumentError`.
+  //
+  // Every case above passes `boom`, which is `Future<void>`, so none of them
+  // could see it.
+  //
+  // One of the three below is the regression test, and it is worth saying
+  // which: only `still does not reject the caller` fails against the old
+  // body, with the production message. The other two pass against it and are
+  // controls, not evidence - the succeeding task never reaches `catchError`,
+  // and `Future.sync` *caught* a synchronous throw and built a fresh
+  // `Future<void>` from it, so the caller's `Future<int>` never existed and
+  // there was no mismatched type argument to trip over. They are kept because
+  // they pin the two properties a later rewrite could lose.
+  group('a task that returns a value', () {
+    Future<int> boomInt() =>
+        Future<int>.error(StateError('boom'), StackTrace.empty);
+
+    test('still does not reject the caller', () async {
+      var chained = false;
+      await guarded('[Test] work', boomInt).then((_) => chained = true);
+
+      expect(
+        chained,
+        isTrue,
+        reason: 'the queues chain on this future, whatever the task returned',
+      );
+      expect(keptLines.single, contains('[error]'));
+      expect(keptLines.single, contains('[Test] work failed: Bad state: boom'));
+    });
+
+    test('and one that succeeds still keeps nothing', () async {
+      var chained = false;
+      await guarded('[Test] work', () async => 7).then((_) => chained = true);
+
+      expect(chained, isTrue);
+      expect(keptLines, isEmpty);
+    });
+
+    // The property `Future.sync` used to provide, kept across the rewrite: a
+    // callee that is not `async` and throws before there is a future at all
+    // still lands with the rejections rather than escaping to the caller,
+    // because `task()` runs inside the `try`. A control rather than a
+    // regression test - the old body passed this too.
+    test('and a synchronous throw is caught in the same place', () async {
+      var chained = false;
+      Future<int> throwsBeforeAnyFuture() => throw StateError('boom');
+
+      await guarded(
+        '[Test] work',
+        throwsBeforeAnyFuture,
+      ).then((_) => chained = true);
+
+      expect(chained, isTrue);
+      expect(keptLines.single, contains('[Test] work failed: Bad state: boom'));
+    });
   });
 
   group('the second reader', () {

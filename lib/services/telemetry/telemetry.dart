@@ -1029,8 +1029,25 @@ class Telemetry {
   /// message that cannot say which part of reporting broke. A failed Sentry
   /// log send used to arrive in the log as a problem with the Diagnostics
   /// switch.
-  void _guard(String what, Future<void> Function() task) {
-    Future.sync(task).catchError((Object e, StackTrace st) {
+  /// Generic, and `try`/`await` rather than `Future.sync(...).catchError(...)`,
+  /// for the reason [guarded] carries at length: `Future<void> Function()`
+  /// accepts a task returning anything, because `void` is a top type, and then
+  /// `catchError` meets a future whose real type argument is not `void` and a
+  /// handler that returns nothing.
+  ///
+  /// It bit harder here than there. Two callers hand this
+  /// `Sentry.captureException`, which is `Future<SentryId>` - and because this
+  /// returns `void`, the `ArgumentError` had nobody to reject at and went
+  /// straight to the zone as an unlabelled `[uncaught]`, which is the one
+  /// outcome the paragraph above says this helper exists to prevent. It fires
+  /// only while reporting a failure, so it could only ever land on top of
+  /// something already wrong.
+  void _guard<T>(String what, Future<T> Function() task) {
+    // `then<void>` before the catch, and that is the whole fix: it builds a
+    // genuine `Future<void>`, so the handler below is checked against `void`
+    // rather than against whatever the task really returned. Dropping the
+    // future is unchanged and deliberate - nothing is waiting on reporting.
+    Future.sync(task).then<void>((_) {}).catchError((Object e, StackTrace st) {
       if (_reportingAFailure) return;
       _reportingAFailure = true;
       try {
