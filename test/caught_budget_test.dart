@@ -224,14 +224,14 @@ import 'ratchet.dart';
 /// between itself and `log_level_budget_test.dart`; this is not that trade.
 ///
 /// `services` rose to 18 for `rpc/gps/geolocator_gps_provider.dart` — a
-/// `PlatformException` out of `checkPermission` on a platform that has the
-/// plugin and still cannot answer. It replaces nothing: the throw escaped
-/// `ensureReady` entirely and the desktop pre-warm reported each one through
-/// `guarded` at `error`, so this *lowers* what reaches the reporting channel
-/// rather than adding to it. Kept rather than dropped because it is the
-/// difference between a machine that cannot do GPS and one that can, and at
-/// `caught` rather than `warn` because nothing has been asked for yet —
-/// §5's rule exactly. QUNLEASHED-B.
+/// platform error the plugin could not classify, which used to escape
+/// `ensureReady` entirely. On the desktop pre-warm that reached `guarded`,
+/// which filed an issue *and* an error log on every launch of an affected
+/// machine; those become this one line, so the ledger goes down and not up.
+/// `caught` because no alert could prompt anyone to act — the machine cannot
+/// do GPS — while it stays worth reading afterwards, which is §5's audience
+/// split. The on-demand caller's blanket catch simply stops firing for this
+/// class, because nothing throws any more. QUNLEASHED-B.
 const Map<String, int> kBudget = {
   'services': 18,
   'pages/archive': 20,
