@@ -92,9 +92,10 @@ void main() {
     () async {
       // The case that shaped the helper. FlipperClient.writeCliBytes is not
       // async, so a session that is already gone throws before there is a
-      // future to attach a handler to. If [guarded] ever called its task
-      // outside its own `try`, this throw would leave the guarded() call
-      // itself, before anything can be awaited.
+      // future to attach a handler to. [guarded] is `async` now, so it can
+      // never throw out of the call itself - what this pins is that `task()`
+      // runs inside the `try`, so the throw is recorded and swallowed rather
+      // than rejecting the future the queues chain on.
       Future<void> gone() => throw StateError('thrown before any future');
 
       await expectLater(guarded('[Test] sync', gone), completes);
@@ -216,8 +217,8 @@ void main() {
   // argument was the task's and a handler that returns nothing. It logged,
   // then rejected with `ArgumentError`.
   //
-  // Every case above passes `boom`, which is `Future<void>`, so none of them
-  // could see it.
+  // Every case above hands back a `Future<void>`, so none of them could see
+  // it.
   //
   // One of the three below is the regression test, and it is worth saying
   // which: only `still does not reject the caller` fails against the old
@@ -231,17 +232,62 @@ void main() {
     Future<int> boomInt() =>
         Future<int>.error(StateError('boom'), StackTrace.empty);
 
-    test('still does not reject the caller', () async {
-      var chained = false;
-      await guarded('[Test] work', boomInt).then((_) => chained = true);
+    // Declared `Future<dynamic> Function()` on purpose: type it
+    // `Future<void> Function()` and the map erases every argument back to the
+    // shape the bug needed, so the matrix would pin nothing.
+    final rejecting = <String, Future<dynamic> Function()>{
+      'Future<void>': () => Future<void>.error(StateError('boom')),
+      'Future<int>': () => Future<int>.error(StateError('boom')),
+      'Future<bool>': () => Future<bool>.error(StateError('boom')),
+      'Future<String>': () => Future<String>.error(StateError('boom')),
+      // The two that never tripped it, kept so the asymmetry is written down
+      // rather than rediscovered: the handler returned `null`, which
+      // satisfies `FutureOr<int?>` and not `FutureOr<int>`.
+      'Future<int?>': () => Future<int?>.error(StateError('boom')),
+      'Future<Object?>': () => Future<Object?>.error(StateError('boom')),
+    };
+    for (final entry in rejecting.entries) {
+      test('${entry.key} does not reject the caller', () async {
+        var chained = false;
+        await guarded(
+          '[Test] ${entry.key}',
+          entry.value,
+        ).then((_) => chained = true);
 
-      expect(
-        chained,
-        isTrue,
-        reason: 'the queues chain on this future, whatever the task returned',
-      );
-      expect(keptLines.single, contains('[error]'));
-      expect(keptLines.single, contains('[Test] work failed: Bad state: boom'));
+        expect(
+          chained,
+          isTrue,
+          reason: 'the queues chain on this, whatever the task returned',
+        );
+        expect(keptLines.single, contains('[error]'));
+        expect(keptLines.single, contains('failed: Bad state: boom'));
+      });
+    }
+
+    // The shape that actually shipped. `bootstrap._start` declared
+    // `Future<void> Function()`, so the type argument was erased one frame
+    // above `guarded` and `T` inferred `void` while the object underneath was
+    // a `Future<GpsReadiness>`. The generic signature alone would not have
+    // caught this; the `try`/`await` does.
+    test('including one erased to Future<void> by a wrapper', () async {
+      final Future<void> Function() erased = boomInt;
+      var chained = false;
+
+      await guarded('[Test] erased', erased).then((_) => chained = true);
+
+      expect(chained, isTrue);
+      expect(keptLines.single, contains('[Test] erased failed'));
+    });
+
+    // The old bug fired *after* `onFailure` had already run, so a refactor
+    // that moved that call for non-void tasks would go unnoticed otherwise.
+    test('and still tells onFailure first', () async {
+      final seen = <Object>[];
+
+      await guarded('[Test] work', boomInt, onFailure: seen.add);
+
+      expect(seen.single, isA<StateError>());
+      expect(keptLines.single, contains('[Test] work failed'));
     });
 
     test('and one that succeeds still keeps nothing', () async {

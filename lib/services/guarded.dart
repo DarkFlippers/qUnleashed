@@ -42,22 +42,32 @@ import 'logging.dart';
 /// nothing. On the first task that actually threw, the handler ran, wrote its
 /// line, and *then* `catchError` raised `ArgumentError: ... must return a
 /// value of the future's type` — rejecting the future the queues are promised
-/// cannot reject. QUNLEASHED-A, six times on Windows, each one the desktop
-/// `GeolocatorGpsProvider.ensureReady` throwing (QUNLEASHED-B).
+/// cannot reject. QUNLEASHED-A; every event so far was on Windows, and each
+/// shares a trace with a QUNLEASHED-B `GeolocatorGpsProvider.ensureReady`
+/// throw.
 ///
-/// Generic in the task's return, so the reality is written down rather than
-/// erased by a top type, and `try`/`await` rather than `catchError`, so there
-/// is no type-argument check left to get wrong. It keeps what [Future.sync]
-/// was here for: the callee need not be `async`, and `task()` is called inside
-/// the `try`, so a synchronous throw lands in the same place as a rejection.
-/// `FlipperClient.writeCliBytes` is the live example of that shape —
-/// `_CliPageState._fireAndShow` has the detail.
+/// It is non-*nullability* that trips it, not non-`void`: the handler returns
+/// `null`, which satisfies `FutureOr<int?>` but not `FutureOr<int>`. Of the
+/// seven sites handing this a task that returns something, the five
+/// non-nullable ones were live — `bootstrap.dart` ×1, `permission_notice`,
+/// `device_source` ×2, `install_page` — and the two nullable ones never were.
+///
+/// `try`/`await` rather than `catchError` is the fix: there is no
+/// type-argument check left to get wrong. The generic is for honesty at
+/// direct call sites and does *not* close the class on its own — a wrapper
+/// that re-declares `Future<void> Function()` erases it again one frame up,
+/// which is exactly what `bootstrap._start` did on the path that produced
+/// QUNLEASHED-A.
+///
+/// It keeps what [Future.sync] was here for: the callee need not be `async`,
+/// and `task()` is called inside the `try`, so a synchronous throw lands in
+/// the same place as a rejection. `FlipperClient.writeCliBytes` is the live
+/// example of that shape — `_CliPageState._fireAndShow` has the detail.
 ///
 /// [onFailure] runs after the message is recorded, for a site that can also
 /// tell the user. It is passed the error only: anything that wants the stack
-/// wants the log. It said "one caller today" and was written to come back out
-/// if it never gained a second; it has three — `permission_notice.dart` and
-/// `_CliPageState` twice — so it stays.
+/// wants the log. It comes back out if it ever drops to one caller; it has
+/// two today, `permission_notice.dart` and `_CliPageState._fireAndShow`.
 ///
 /// Two neighbouring shapes are deliberately *not* this. `IrLibLocalRepo` uses
 /// `catchError(..., test: ...)` so a fault outside the one it expects is not

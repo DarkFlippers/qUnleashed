@@ -1029,11 +1029,9 @@ class Telemetry {
   /// message that cannot say which part of reporting broke. A failed Sentry
   /// log send used to arrive in the log as a problem with the Diagnostics
   /// switch.
-  /// Generic, and `try`/`await` rather than `Future.sync(...).catchError(...)`,
-  /// for the reason [guarded] carries at length: `Future<void> Function()`
-  /// accepts a task returning anything, because `void` is a top type, and then
-  /// `catchError` meets a future whose real type argument is not `void` and a
-  /// handler that returns nothing.
+  ///
+  /// Generic, and with a `then<void>` hop before the catch, for the reason
+  /// [guarded]'s doc carries at length.
   ///
   /// It bit harder here than there. Two callers hand this
   /// `Sentry.captureException`, which is `Future<SentryId>` - and because this
@@ -1042,6 +1040,11 @@ class Telemetry {
   /// outcome the paragraph above says this helper exists to prevent. It fires
   /// only while reporting a failure, so it could only ever land on top of
   /// something already wrong.
+  ///
+  /// Both halves are load-bearing: `then<void>` only builds a real
+  /// `Future<void>` because `Future.sync(task)` is now statically
+  /// `Future<T>`. Drop the generic and it is a cast over the same object
+  /// again.
   void _guard<T>(String what, Future<T> Function() task) {
     // `then<void>` before the catch, and that is the whole fix: it builds a
     // genuine `Future<void>`, so the handler below is checked against `void`
@@ -1051,7 +1054,22 @@ class Telemetry {
       if (_reportingAFailure) return;
       _reportingAFailure = true;
       try {
-        LogService.error('[Telemetry] $what: ${LogService.describe(e, st)}');
+        // Described into a local first, because `describe` interpolates the
+        // error and one whose `toString()` throws is real enough that
+        // `guarded._record` guards it twice. The `finally` below would not
+        // have: nothing here catches, the future is dropped, and the throw
+        // would reach the zone as the `[uncaught]` the doc above says this
+        // exists to prevent. The type names the culprit, which "an error"
+        // does not - and recovering into a value rather than swallowing keeps
+        // this off `bare_catch_budget_test.dart`, which is a ceiling meant to
+        // fall.
+        String described;
+        try {
+          described = LogService.describe(e, st);
+        } catch (_) {
+          described = 'a ${e.runtimeType} whose toString() threw';
+        }
+        LogService.error('[Telemetry] $what: $described');
       } finally {
         _reportingAFailure = false;
       }
