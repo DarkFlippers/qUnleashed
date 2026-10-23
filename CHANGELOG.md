@@ -1,6 +1,7 @@
 ## Main changes
 - Version: 0.17.1
 ## Other changes
+- Connection: Bump flipperlib: Android's service discovery that failed to classify (by @mishamyte | PR #394 | Closes #393)
 - Crash reports: Treat a platform that cannot answer about location as a readiness (by @mishamyte | PR #392)
 - Crash reports: Stop guarded rejecting when its task returns something (by @mishamyte | PR #391 | Fixes #390)
 - Crash reports: Stop asking the SDK for the package list it cannot collect (by @mishamyte | PR #389 | Closes #388)
