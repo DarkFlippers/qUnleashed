@@ -113,7 +113,7 @@ class _CliPageState extends State<CliPage> {
   /// a session whose transport has been torn down, one already back in RPC
   /// mode, and the write itself all reject instead. The first two both read
   /// "No active transport", so which of them happened is easy to mistake; the
-  /// Future.sync inside [guarded] puts all four in one place.
+  /// `task()` call inside [guarded]'s `try` puts all four in one place.
   void _fireAndShow(Future<void> Function() send, String what) =>
       unawaited(guarded('[CLI] $what', send, onFailure: _reportWriteFailure));
 

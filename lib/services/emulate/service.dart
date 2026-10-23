@@ -334,8 +334,8 @@ class EmulateService {
       _activeKey = null;
     } finally {
       _binding = null;
-      // Read into a local before the field is cleared. `guarded` runs its task
-      // through `Future.sync`, so the body does start before the next line -
+      // Read into a local before the field is cleared. `guarded` calls its
+      // task inside its `try`, so the body does start before the next line -
       // but relying on that to decide which subscription gets cancelled is a
       // worse thing to leave behind than one extra variable.
       final connection = _connection;

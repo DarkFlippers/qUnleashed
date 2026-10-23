@@ -96,7 +96,11 @@ there and why it was the first thing scheduled.
   not cover.
 - **`guarded()` never rejects.** Queues chain the next operation with
   `previous.then(...)`, so a rejected future would strand everything behind it
-  for the life of the chain. Do not "improve" it to propagate.
+  for the life of the chain. Do not "improve" it to propagate. It is
+  `try`/`await` and not `Future.sync(...).catchError(...)` for a reason: a
+  `catchError` handler is checked against the future's *real* type argument,
+  and `void` being a top type means that argument is rarely what the signature
+  says — which is how it rejected silently for months (QUNLEASHED-A).
 - **Auto-reconnect is on** (`autoReconnect = true`, `reconnectSettle` 600 ms),
   and a file upload restarts after the session is restored
   (`client/api/storage.dart`). Code that assumes a transfer runs once is wrong.
