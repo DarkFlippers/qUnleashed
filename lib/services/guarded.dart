@@ -30,8 +30,8 @@ import 'logging.dart';
 ///
 /// ## Why `try`/`await`, and not `Future.sync(task).catchError(...)`
 ///
-/// It was that pair, and the pair broke the promise above for any caller
-/// whose task returns something.
+/// It was that pair, and the pair broke the promise above for a caller whose
+/// task returns something non-nullable.
 ///
 /// [task] is declared `Future<void> Function()`, and `void` is a top type, so
 /// a `Future<GpsReadiness> Function()` satisfies it and the analyzer is
@@ -47,10 +47,9 @@ import 'logging.dart';
 /// throw.
 ///
 /// It is non-*nullability* that trips it, not non-`void`: the handler returns
-/// `null`, which satisfies `FutureOr<int?>` but not `FutureOr<int>`. Of the
-/// seven sites handing this a task that returns something, the five
-/// non-nullable ones were live — `bootstrap.dart` ×1, `permission_notice`,
-/// `device_source` ×2, `install_page` — and the two nullable ones never were.
+/// `null`, which satisfies `FutureOr<int?>` but not `FutureOr<int>`. Both
+/// halves are in `guarded_test.dart`'s matrix, which is where the rule is
+/// kept rather than in a census here that nothing would fail to update.
 ///
 /// `try`/`await` rather than `catchError` is the fix: there is no
 /// type-argument check left to get wrong. The generic is for honesty at
@@ -66,8 +65,7 @@ import 'logging.dart';
 ///
 /// [onFailure] runs after the message is recorded, for a site that can also
 /// tell the user. It is passed the error only: anything that wants the stack
-/// wants the log. It comes back out if it ever drops to one caller; it has
-/// two today, `permission_notice.dart` and `_CliPageState._fireAndShow`.
+/// wants the log. It comes back out if it ever drops to one caller.
 ///
 /// Two neighbouring shapes are deliberately *not* this. `IrLibLocalRepo` uses
 /// `catchError(..., test: ...)` so a fault outside the one it expects is not

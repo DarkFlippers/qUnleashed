@@ -1021,48 +1021,47 @@ class Telemetry {
   /// and termination is not something to lean on it for.
   bool _reportingAFailure = false;
 
-  /// `guarded` without the import, which would be circular: `guarded` logs
-  /// through `LogService`, and this file is what `LogService` reports
-  /// *through*. Same contract - the returned future never rejects.
+  /// `guarded`'s contract without `guarded` itself: the returned work never
+  /// rejects.
+  ///
+  /// Not a call to it, because `guarded._record` hands every failure to
+  /// `guardedFailureSink`, and that sink is this class - so a capture that
+  /// failed would be reported by capturing it again, without bound. The
+  /// import is fine and already here; it is the call that would recurse.
   ///
   /// [what] is the operation, because one message for five callers is a
   /// message that cannot say which part of reporting broke. A failed Sentry
   /// log send used to arrive in the log as a problem with the Diagnostics
   /// switch.
   ///
-  /// Generic, and with a `then<void>` hop before the catch, for the reason
-  /// [guarded]'s doc carries at length.
-  ///
-  /// It bit harder here than there. Two callers hand this
-  /// `Sentry.captureException`, which is `Future<SentryId>` - and because this
-  /// returns `void`, the `ArgumentError` had nobody to reject at and went
-  /// straight to the zone as an unlabelled `[uncaught]`, which is the one
-  /// outcome the paragraph above says this helper exists to prevent. It fires
-  /// only while reporting a failure, so it could only ever land on top of
-  /// something already wrong.
-  ///
-  /// Both halves are load-bearing: `then<void>` only builds a real
-  /// `Future<void>` because `Future.sync(task)` is now statically
-  /// `Future<T>`. Drop the generic and it is a cast over the same object
-  /// again.
+  /// `try`/`await` rather than `Future.sync(...).catchError(...)`, for the
+  /// reason [guarded]'s doc carries at length. It bit harder here: two
+  /// callers hand this `Sentry.captureException`, which is
+  /// `Future<SentryId>`, and because this returns `void` the `ArgumentError`
+  /// had nobody to reject at and went to the zone as an unlabelled
+  /// `[uncaught]` - the one outcome this helper exists to prevent, arriving
+  /// only ever on top of something already wrong.
   void _guard<T>(String what, Future<T> Function() task) {
-    // `then<void>` before the catch, and that is the whole fix: it builds a
-    // genuine `Future<void>`, so the handler below is checked against `void`
-    // rather than against whatever the task really returned. Dropping the
-    // future is unchanged and deliberate - nothing is waiting on reporting.
-    Future.sync(task).then<void>((_) {}).catchError((Object e, StackTrace st) {
+    // Dropped deliberately and not `unawaited`: nothing waits on reporting,
+    // and `_run` cannot reject.
+    _run(what, task);
+  }
+
+  /// The body of [_guard], which has to be `async` to `await` the task while
+  /// [_guard] itself stays `void`.
+  Future<void> _run<T>(String what, Future<T> Function() task) async {
+    try {
+      await task();
+    } catch (e, st) {
       if (_reportingAFailure) return;
       _reportingAFailure = true;
       try {
-        // Described into a local first, because `describe` interpolates the
-        // error and one whose `toString()` throws is real enough that
-        // `guarded._record` guards it twice. The `finally` below would not
-        // have: nothing here catches, the future is dropped, and the throw
-        // would reach the zone as the `[uncaught]` the doc above says this
-        // exists to prevent. The type names the culprit, which "an error"
-        // does not - and recovering into a value rather than swallowing keeps
-        // this off `bare_catch_budget_test.dart`, which is a ceiling meant to
-        // fall.
+        // Described into a local, because `describe` interpolates the error
+        // and one whose `toString()` throws would otherwise escape the
+        // `finally` below - which catches nothing - and reach the zone as the
+        // `[uncaught]` above. The type names the culprit, which "an error"
+        // does not. `guarded._record` keeps its own copy of this; one helper
+        // owning it is a follow-up, not this branch.
         String described;
         try {
           described = LogService.describe(e, st);
@@ -1073,6 +1072,6 @@ class Telemetry {
       } finally {
         _reportingAFailure = false;
       }
-    });
+    }
   }
 }

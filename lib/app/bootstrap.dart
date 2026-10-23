@@ -122,11 +122,9 @@ class _WatchLifecycleObserver with WidgetsBindingObserver {
 /// Tagged like every other kept line, because these now reach the reporting
 /// channel and the label is what makes one searchable there; before, at info,
 /// they reached nothing.
-/// Generic for the same reason [guarded] is: `Future<void> Function()` accepts
-/// a task returning anything, because `void` is a top type, so this wrapper
-/// used to erase the type one frame above `guarded` and hand it a future whose
-/// real argument was something else. `guarded` no longer cares - it catches
-/// rather than reading a type argument - but leaving the erasure here is how
-/// the next `catchError` written in this file would inherit QUNLEASHED-A.
+///
+/// Generic so the task's own type survives the hop rather than being erased
+/// by the top type `void`. [guarded] no longer needs that, and the other
+/// forwarding wrappers in `lib/` have not been changed to match.
 void _start<T>(String label, Future<T> Function() task) =>
     unawaited(guarded('[Bootstrap] ambient service "$label"', task));
