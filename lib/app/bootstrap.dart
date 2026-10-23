@@ -122,5 +122,9 @@ class _WatchLifecycleObserver with WidgetsBindingObserver {
 /// Tagged like every other kept line, because these now reach the reporting
 /// channel and the label is what makes one searchable there; before, at info,
 /// they reached nothing.
-void _start(String label, Future<void> Function() task) =>
+///
+/// Generic so the task's own type survives the hop rather than being erased
+/// by the top type `void`. [guarded] no longer needs that, and the other
+/// forwarding wrappers in `lib/` have not been changed to match.
+void _start<T>(String label, Future<T> Function() task) =>
     unawaited(guarded('[Bootstrap] ambient service "$label"', task));

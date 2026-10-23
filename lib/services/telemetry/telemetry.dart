@@ -1021,23 +1021,57 @@ class Telemetry {
   /// and termination is not something to lean on it for.
   bool _reportingAFailure = false;
 
-  /// `guarded` without the import, which would be circular: `guarded` logs
-  /// through `LogService`, and this file is what `LogService` reports
-  /// *through*. Same contract - the returned future never rejects.
+  /// `guarded`'s contract without `guarded` itself: the returned work never
+  /// rejects.
+  ///
+  /// Not a call to it, because `guarded._record` hands every failure to
+  /// `guardedFailureSink`, and that sink is this class - so a capture that
+  /// failed would be reported by capturing it again, without bound. The
+  /// import is fine and already here; it is the call that would recurse.
   ///
   /// [what] is the operation, because one message for five callers is a
   /// message that cannot say which part of reporting broke. A failed Sentry
   /// log send used to arrive in the log as a problem with the Diagnostics
   /// switch.
-  void _guard(String what, Future<void> Function() task) {
-    Future.sync(task).catchError((Object e, StackTrace st) {
+  ///
+  /// `try`/`await` rather than `Future.sync(...).catchError(...)`, for the
+  /// reason [guarded]'s doc carries at length. It bit harder here: two
+  /// callers hand this `Sentry.captureException`, which is
+  /// `Future<SentryId>`, and because this returns `void` the `ArgumentError`
+  /// had nobody to reject at and went to the zone as an unlabelled
+  /// `[uncaught]` - the one outcome this helper exists to prevent, arriving
+  /// only ever on top of something already wrong.
+  void _guard<T>(String what, Future<T> Function() task) {
+    // Dropped deliberately and not `unawaited`: nothing waits on reporting,
+    // and `_run` cannot reject.
+    _run(what, task);
+  }
+
+  /// The body of [_guard], which has to be `async` to `await` the task while
+  /// [_guard] itself stays `void`.
+  Future<void> _run<T>(String what, Future<T> Function() task) async {
+    try {
+      await task();
+    } catch (e, st) {
       if (_reportingAFailure) return;
       _reportingAFailure = true;
       try {
-        LogService.error('[Telemetry] $what: ${LogService.describe(e, st)}');
+        // Described into a local, because `describe` interpolates the error
+        // and one whose `toString()` throws would otherwise escape the
+        // `finally` below - which catches nothing - and reach the zone as the
+        // `[uncaught]` above. The type names the culprit, which "an error"
+        // does not. `guarded._record` keeps its own copy of this; one helper
+        // owning it is a follow-up, not this branch.
+        String described;
+        try {
+          described = LogService.describe(e, st);
+        } catch (_) {
+          described = 'a ${e.runtimeType} whose toString() threw';
+        }
+        LogService.error('[Telemetry] $what: $described');
       } finally {
         _reportingAFailure = false;
       }
-    });
+    }
   }
 }

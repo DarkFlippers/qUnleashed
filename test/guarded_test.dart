@@ -92,9 +92,10 @@ void main() {
     () async {
       // The case that shaped the helper. FlipperClient.writeCliBytes is not
       // async, so a session that is already gone throws before there is a
-      // future to attach a handler to. Without the Future.sync inside guarded,
-      // this throw leaves the guarded() call itself, before anything can be
-      // awaited.
+      // future to attach a handler to. [guarded] is `async` now, so it can
+      // never throw out of the call itself - what this pins is that `task()`
+      // runs inside the `try`, so the throw is recorded and swallowed rather
+      // than rejecting the future the queues chain on.
       Future<void> gone() => throw StateError('thrown before any future');
 
       await expectLater(guarded('[Test] sync', gone), completes);
@@ -202,6 +203,67 @@ void main() {
     // sees them and how many there were is not recoverable.
     expect(keptLines, hasLength(1));
     expect(keptLines.single, isNot(contains('×')));
+  });
+
+  // The shape QUNLEASHED-A arrived in, and the one every other case here
+  // missed: a task that returns something.
+  //
+  // `task` was declared `Future<void> Function()` and `void` is a top type,
+  // so a `Future<GpsReadiness> Function()` satisfied it statically - which is
+  // how `bootstrap.dart` hands `GeolocatorGpsProvider.ensureReady` to this on
+  // desktop. The old body was `Future.sync(task).catchError(...)`, and
+  // `Future.sync` returns the caller's own future untouched when
+  // `result is Future<T>`, so `catchError` met a future whose real type
+  // argument was the task's and a handler that returns nothing. It logged,
+  // then rejected with `ArgumentError`.
+  //
+  // Every case above hands back a `Future<void>`, so none of them could see
+  // it. The matrix is the evidence: against the old body the non-nullable
+  // rows fail and the rest pass, which is the asymmetry - the handler returns
+  // `null`, and `null` satisfies `FutureOr<int?>` but not `FutureOr<int>`.
+  group('a task that returns a value', () {
+    Future<int> boomInt() =>
+        Future<int>.error(StateError('boom'), StackTrace.empty);
+
+    // Typed as production types it - `Future<void> Function()` is what
+    // `bootstrap._start` declared - because the static type is not what
+    // `catchError` checks. The runtime argument survives the assignment, and
+    // that is the whole bug.
+    final rejecting = <String, Future<void> Function()>{
+      'Future<void>': boom,
+      'Future<int>': boomInt,
+      'Future<int?>': () =>
+          Future<int?>.error(StateError('boom'), StackTrace.empty),
+    };
+    for (final entry in rejecting.entries) {
+      test('${entry.key} does not reject the caller', () async {
+        var chained = false;
+        await guarded(
+          '[Test] ${entry.key}',
+          entry.value,
+        ).then((_) => chained = true);
+
+        expect(
+          chained,
+          isTrue,
+          reason: 'the queues chain on this, whatever the task returned',
+        );
+        expect(keptLines.single, contains('[error]'));
+        expect(keptLines.single, contains('failed: Bad state: boom'));
+      });
+    }
+
+    // The old bug fired *after* `onFailure` had already run, so a refactor
+    // that moved that call for a value-returning task would go unnoticed
+    // otherwise. This one fails against the old body too.
+    test('and still tells onFailure first', () async {
+      final seen = <Object>[];
+
+      await guarded('[Test] work', boomInt, onFailure: seen.add);
+
+      expect(seen.single, isA<StateError>());
+      expect(keptLines.single, contains('[Test] work failed'));
+    });
   });
 
   group('the second reader', () {
