@@ -222,8 +222,18 @@ import 'ratchet.dart';
 /// `continue;`), so neither was ever counted by `bare_catch_budget_test.dart`
 /// and its figures do not move. The exchange that file's header describes is
 /// between itself and `log_level_budget_test.dart`; this is not that trade.
+///
+/// `services` rose to 18 for `rpc/gps/geolocator_gps_provider.dart` — a
+/// platform error the plugin could not classify, which used to escape
+/// `ensureReady` entirely. On the desktop pre-warm that reached `guarded`,
+/// which filed an issue *and* an error log on every launch of an affected
+/// machine; those become this one line, so the ledger goes down and not up.
+/// `caught` because no alert could prompt anyone to act — the machine cannot
+/// do GPS — while it stays worth reading afterwards, which is §5's audience
+/// split. The on-demand caller's blanket catch simply stops firing for this
+/// class, because nothing throws any more. QUNLEASHED-B.
 const Map<String, int> kBudget = {
-  'services': 17,
+  'services': 18,
   'pages/archive': 20,
   'pages/tools': 12,
   'pages/flibler': 1,
