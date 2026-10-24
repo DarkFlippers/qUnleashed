@@ -1665,6 +1665,11 @@
     "description": "Title of the dialog listing Flippers reachable over USB."
   },
 
+  "pickerUsbOnlyReason": "Bluetooth devices are not listed: this screen needs a USB connection",
+  "@pickerUsbOnlyReason": {
+    "description": "Line under the title of the USB-only device picker, saying why no Bluetooth device is in the list. Shown whenever the picker is narrowed to USB; today the command line is the only screen that narrows it, because a Bluetooth link cannot carry a terminal session."
+  },
+
   "pickerSelectDevice": "Select device",
   "@pickerSelectDevice": {
     "description": "Title of the dialog listing Flippers to connect to."
@@ -1687,7 +1692,7 @@
 
   "pickerCantFindDevice": "Can''t find my device",
   "@pickerCantFindDevice": {
-    "description": "Button that drops the name filter so every nearby Bluetooth device is listed."
+    "description": "Button that drops the name filter, so everything the picker can see is listed - unrelated USB hardware as well as nearby Bluetooth devices."
   },
 
   "pickerShowOnlyDevices": "Show only devices",
@@ -2204,6 +2209,11 @@
   "connectSearch": "Search",
   "@connectSearch": {
     "description": "Button that starts scanning for Flippers."
+  },
+
+  "connectSearchSubtitle": "Also searches for Bluetooth devices",
+  "@connectSearchSubtitle": {
+    "description": "Subtitle of the Search row. The rows under it are plugged-in Flippers plus Bluetooth ones already connected once, so until then nothing on the page says Bluetooth is available at all."
   },
 
   "connectActive": "Active",

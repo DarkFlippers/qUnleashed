@@ -199,7 +199,7 @@ class _ConnectedContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const ConnectCard(),
+        ConnectCard(links: LinkService.instance),
         const SizedBox(height: 14),
       ],
     );
@@ -233,7 +233,12 @@ class _DisconnectedContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Column(children: [SizedBox(height: 14), ConnectCard()]);
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        ConnectCard(links: LinkService.instance),
+      ],
+    );
   }
 }
 
