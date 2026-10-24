@@ -65,7 +65,7 @@ class SeedSubFile {
     if (manufacturer.protocol == SeedProtocol.faacSlh && seed == 0) {
       buffer.writeln('AllowZeroSeed: true');
     }
-    buffer.writeln('Manufacture: ${manufacturer.label}');
+    buffer.writeln('Manufacture: ${manufacturer.inFile}');
     return buffer.toString();
   }
 

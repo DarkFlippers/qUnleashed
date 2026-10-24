@@ -62,23 +62,60 @@ enum SeedProtocol {
 /// BFT was once unnamed because the firmware recovers those itself; listing it
 /// anyway was a decision, so re-hiding one is too, not a tidy-up.
 enum SeedManufacturer {
-  faacSlh(mode: 1, label: 'FAAC SLH', protocol: SeedProtocol.faacSlh),
-  bft(mode: 2, label: 'BFT', protocol: SeedProtocol.keeloq),
-  genius(mode: 3, label: 'Genius', protocol: SeedProtocol.faacSlh),
-  erreka(mode: 4, label: 'Erreka', protocol: SeedProtocol.keeloq);
+  faacSlh(
+    mode: 1,
+    label: 'FAAC SLH',
+    inFile: 'FAAC_SLH',
+    protocol: SeedProtocol.faacSlh,
+  ),
+  bft(mode: 2, label: 'BFT', inFile: 'BFT', protocol: SeedProtocol.keeloq),
+  genius(
+    mode: 3,
+    label: 'Genius',
+    inFile: 'Genius',
+    protocol: SeedProtocol.faacSlh,
+  ),
+  erreka(
+    mode: 4,
+    label: 'Erreka',
+    inFile: 'Erreka',
+    protocol: SeedProtocol.keeloq,
+  );
 
   const SeedManufacturer({
     required this.mode,
     required this.label,
+    required this.inFile,
     required this.protocol,
   });
 
   /// The engine's mode number.
   final int mode;
 
-  /// How the Flipper-side capture app writes it, and how a `.sub` spells the
-  /// `Manufacture` field.
+  /// How the Flipper-side capture app writes it, and how this one is shown.
+  ///
+  /// Not what a `.sub` carries - that is [inFile]. The two differ for FAAC SLH,
+  /// and spelling is not meaningful here: it is typed into the capture app's
+  /// source by hand and [fromLabel] normalises it.
   final String label;
+
+  /// The `Manufacture` a written `.sub` carries.
+  ///
+  /// The keystore's own entry name, matched by `strcmp`. `faac_slh.c`'s
+  /// `subghz_protocol_faac_slh_get_key` compares this against each entry and
+  /// `keeloq.c` hands it to the keystore as `mfname`; the names are the ones
+  /// the firmware writes itself in `subghz_gen_info.c` - `FAAC_SLH`, `Genius`,
+  /// `BFT`, `Erreka`.
+  ///
+  /// Only FAAC SLH differs from [label], and only there because the keystore
+  /// spells it with an underscore while a screen should not. Writing the label
+  /// was not visibly broken - no entry matches `FAAC SLH`, so the Faac lookup
+  /// fell through to its "file names something this keystore lacks" branch and
+  /// returned the `FAAC_SLH` key anyway - but that branch is a compatibility
+  /// path for unknown manufacturers, not a spelling we may lean on. Genius has
+  /// no such fallback worth having: it matches by name or it is handed FAAC's
+  /// key, which is the wrong one.
+  final String inFile;
 
   /// Which frame layout this one's remotes use.
   final SeedProtocol protocol;

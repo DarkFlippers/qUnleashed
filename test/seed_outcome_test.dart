@@ -86,6 +86,22 @@ void main() {
       );
     });
 
+    test('the Manufacture each one writes is the keystore entry name', () {
+      // Closed-world: these are matched by `strcmp` against keystore entries,
+      // so a fifth manufacturer typed to this app's taste rather than the
+      // keystore's gets FAAC's key through the Faac fallback, or no key at all.
+      // The firmware writes these same four in `subghz_gen_info.c`.
+      expect(
+        {for (final m in SeedManufacturer.values) m.label: m.inFile},
+        {
+          'FAAC SLH': 'FAAC_SLH',
+          'BFT': 'BFT',
+          'Genius': 'Genius',
+          'Erreka': 'Erreka',
+        },
+      );
+    });
+
     test('each manufacturer is paired with the right frame layout', () {
       // Closed-world, like the mode map above. The layout is now a value, so a
       // mis-cased protocol is a compile error rather than something a test has

@@ -51,6 +51,25 @@ Seed: 00 00 07 89
 Manufacture: Genius
 ''';
 
+/// Written by `faaccrack 1 12345674 B3EF9ABB 3F5E4CF5 698DCAEE -o faac.sub -f
+/// 433920000`, the FAAC SLH known-answer vector.
+///
+/// Here for `Manufacture`: the keystore spells it `FAAC_SLH` and the firmware
+/// matches that by `strcmp`, where this app's label for a screen is "FAAC SLH".
+/// It was the one mode with no engine fixture, and the only one whose output
+/// differed from the engine's.
+const _engineWroteFaacSlh = '''
+Filetype: Flipper SubGhz Key File
+Version: 1
+Frequency: 433920000
+Preset: FuriHalSubGhzPresetOok650Async
+Protocol: Faac SLH
+Bit: 64
+Key: 12 34 56 74 69 8D CA EE
+Seed: 00 00 01 23
+Manufacture: FAAC_SLH
+''';
+
 /// Written by `faaccrack 2 200342E2 2F62BE4B 1895D794 367AEB49 -o bft.sub -f
 /// 433920000`, the BFT known-answer vector.
 ///
@@ -90,6 +109,21 @@ void main() {
           frequencyHz: 868350000,
         ),
         _engineWroteGenius,
+      );
+    });
+
+    test('names the manufacturer the keystore does, not the screen', () {
+      // `subghz_protocol_faac_slh_get_key` compares `Manufacture` against each
+      // keystore entry with `strcmp`, so this is the field that picks the
+      // manufacture key. The label is for a screen and says "FAAC SLH".
+      expect(
+        SeedSubFile.render(
+          result: _found(seed: 0x00000123, frameHop: 0x698DCAEE),
+          manufacturer: SeedManufacturer.faacSlh,
+          fix: 0x12345674,
+          frequencyHz: 433920000,
+        ),
+        _engineWroteFaacSlh,
       );
     });
 
@@ -170,7 +204,7 @@ void main() {
           frequencyHz: 433920000,
         );
         expect(rendered, contains('Protocol: $protocol'));
-        expect(rendered, contains('Manufacture: ${manufacturer.label}'));
+        expect(rendered, contains('Manufacture: ${manufacturer.inFile}'));
       }
     });
   });
