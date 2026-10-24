@@ -92,6 +92,7 @@ class ConnectionDialog extends StatefulWidget {
   /// The link this picker scans and connects on.
   final FlipperClient client;
 
+  /// Lists only what arrived over a cable, and says so — see [_buildHeader].
   final bool usbOnly;
 
   @override
@@ -332,17 +333,45 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Row(
+        // The reason line makes the title column taller than the control
+        // beside it, which stays on the title's line rather than centring
+        // against both.
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(
-              widget.usbOnly
-                  ? context.l10n.pickerSelectUsbDevice
-                  : context.l10n.pickerSelectDevice,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: colors.dialogText,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.usbOnly
+                      ? context.l10n.pickerSelectUsbDevice
+                      : context.l10n.pickerSelectDevice,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: colors.dialogText,
+                  ),
+                ),
+                // Beside the title it already picks, because it is the other
+                // half of the same statement: a narrowed list has no
+                // Bluetooth device in it, and a title saying only that this
+                // is a USB list reads as the app not having the transport
+                // rather than as this screen not being able to use it. The
+                // one caller is the command line, whose link cannot carry a
+                // CLI at all (`supportsCli` is false on the BLE transport);
+                // the dialog that said so went away in aa55e5c4 and nothing
+                // has said it since. Derived here rather than passed in, so
+                // the next caller to narrow the list is explained too - a
+                // sentence a caller has to remember is a sentence that goes
+                // missing. #381.
+                if (widget.usbOnly) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    context.l10n.pickerUsbOnlyReason,
+                    style: TextStyle(fontSize: 12, color: colors.dialogMuted),
+                  ),
+                ],
+              ],
             ),
           ),
           if (_scanning)

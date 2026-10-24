@@ -11,12 +11,16 @@ import '../../../../theme/theme.dart';
 import '../page_card.dart';
 
 class ConnectCard extends StatelessWidget {
-  const ConnectCard({super.key});
+  const ConnectCard({super.key, required this.links});
+
+  /// The connection list this card draws. Passed in rather than reached for,
+  /// the way `AutoConnectHintCard` beside it takes it, so what the card says
+  /// with nothing connected can be exercised at all. ADR 0002.
+  final LinkService links;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final links = LinkService.instance;
 
     return ListenableBuilder(
       listenable: links,
@@ -25,10 +29,7 @@ class ConnectCard extends StatelessWidget {
         return FlipperPageCard(
           child: Column(
             children: [
-              _ConnectActionRow(
-                color: colors.accent,
-                onTap: () => promptConnectDevice(context),
-              ),
+              _ConnectActionRow(onTap: () => promptConnectDevice(context)),
               for (final entry in entries) ...[
                 Divider(height: 1, color: colors.divider),
                 _DeviceRow(
@@ -61,34 +62,60 @@ class ConnectCard extends StatelessWidget {
 }
 
 class _ConnectActionRow extends StatelessWidget {
-  const _ConnectActionRow({required this.color, required this.onTap});
+  const _ConnectActionRow({required this.onTap});
 
-  final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final accent = colors.accent;
+    final strings = context.l10n;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-              child: Icon(Icons.search, size: 24, color: color),
-            ),
-            Expanded(
-              child: Text(
-                context.l10n.connectSearch,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          child: Row(
+            children: [
+              Icon(Icons.search, size: 24, color: accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      strings.connectSearch,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    // The rows below are plugged-in Flippers and Bluetooth
+                    // ones already connected once, so on a phone that has
+                    // never paired - or has forgotten the device - this row is
+                    // the only thing on the page that says Bluetooth is a
+                    // transport at all. With a Flipper on the cable the rows
+                    // are USB and nothing else, which is how the card came to
+                    // be read as a USB-only screen. #381.
+                    //
+                    // Wrapping rather than ellipsized like the device rows
+                    // under it: those truncate a name the user already knows,
+                    // while this is the sentence carrying the information, and
+                    // the translations are longer than the English.
+                    Text(
+                      strings.connectSearchSubtitle,
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
