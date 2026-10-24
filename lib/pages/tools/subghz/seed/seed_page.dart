@@ -493,7 +493,10 @@ class _ResultCard extends StatelessWidget {
           if (counter != null)
             _Row(
               label: l10n.seedCounter,
-              value: seedHex(counter, capture.manufacturer.counterDigits),
+              value: seedHex(
+                counter,
+                capture.manufacturer.protocol.counterDigits,
+              ),
             ),
         ],
         // A no-match is the result most likely to be misread as a verdict on

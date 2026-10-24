@@ -86,11 +86,34 @@ void main() {
       );
     });
 
-    test('the counter width follows the protocol, not the manufacturer', () {
-      expect(SeedManufacturer.faacSlh.counterDigits, 5);
-      expect(SeedManufacturer.genius.counterDigits, 5);
-      expect(SeedManufacturer.bft.counterDigits, 4);
-      expect(SeedManufacturer.erreka.counterDigits, 4);
+    test('each manufacturer is paired with the right frame layout', () {
+      // Closed-world, like the mode map above. The layout is now a value, so a
+      // mis-cased protocol is a compile error rather than something a test has
+      // to catch - what is still hand-typed, and what this pins, is which of
+      // the two each manufacturer was given. Pairing Erreka with Faac would
+      // write its frame unreversed, which the firmware reads as a different
+      // remote.
+      expect(
+        {for (final m in SeedManufacturer.values) m.label: m.protocol},
+        {
+          'FAAC SLH': SeedProtocol.faacSlh,
+          'BFT': SeedProtocol.keeloq,
+          'Genius': SeedProtocol.faacSlh,
+          'Erreka': SeedProtocol.keeloq,
+        },
+      );
+    });
+
+    test('the counter width and the reversal follow the protocol', () {
+      // Spelled out rather than computed from the enum, which would restate
+      // the values instead of pinning them.
+      expect(
+        {
+          for (final p in SeedProtocol.values)
+            p.inFile: (p.counterDigits, p.framesAreBitReversed),
+        },
+        {'Faac SLH': (5, false), 'KeeLoq': (4, true)},
+      );
     });
   });
 }

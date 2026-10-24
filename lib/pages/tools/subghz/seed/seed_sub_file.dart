@@ -48,20 +48,21 @@ class SeedSubFile {
     }
     final frameHop = result.frameHop!;
     final seed = result.seed!;
-    final frame = (BigInt.from(fix) << 32) | BigInt.from(frameHop);
+    var frame = (BigInt.from(fix) << 32) | BigInt.from(frameHop);
+    if (manufacturer.protocol.framesAreBitReversed) frame = _reverse64(frame);
     final buffer = StringBuffer()
       ..writeln('Filetype: Flipper SubGhz Key File')
       ..writeln('Version: 1')
       ..writeln('Frequency: $frequencyHz')
       ..writeln('Preset: ${preset ?? defaultPreset}')
-      ..writeln('Protocol: ${manufacturer.protocol}')
+      ..writeln('Protocol: ${manufacturer.protocol.inFile}')
       ..writeln('Bit: 64')
       ..writeln('Key: ${_bytes(frame, 8)}')
       ..writeln('Seed: ${_bytes(BigInt.from(seed), 4)}');
 
     // Faac reads a zero seed as "unknown" unless the file says otherwise. The
     // one case where an absent-looking value is a real one.
-    if (manufacturer.protocol == 'Faac SLH' && seed == 0) {
+    if (manufacturer.protocol == SeedProtocol.faacSlh && seed == 0) {
       buffer.writeln('AllowZeroSeed: true');
     }
     buffer.writeln('Manufacture: ${manufacturer.label}');
@@ -133,6 +134,21 @@ class SeedSubFile {
   /// Everything a generated name leaves out. Tidiness, not a storage rule -
   /// [checkBaseName] accepts a space from a user, and "FAAC SLH" has one.
   static final _outsideLabel = RegExp(r'[^A-Za-z0-9]');
+
+  /// The frame turned round, for the protocols that are stored that way - see
+  /// [SeedProtocol.framesAreBitReversed] for why.
+  ///
+  /// Over all 64 bits, which is the only width these files carry: [render]
+  /// writes `Bit: 64` as a literal and is the only thing that writes one of
+  /// these. The firmware reverses whatever count the file declares, so the two
+  /// have to stay in step.
+  static BigInt _reverse64(BigInt value) {
+    var out = BigInt.zero;
+    for (var i = 0; i < 64; i++) {
+      out = (out << 1) | ((value >> i) & BigInt.one);
+    }
+    return out;
+  }
 
   /// Big-endian bytes, space separated and upper case, as the firmware writes
   /// them.

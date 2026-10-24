@@ -1,12 +1,20 @@
 // The `.sub` a recovered remote is written as.
 //
-// The expectation is not invented here: it is what the engine's own
+// The expectations are not invented here: each is what the engine's own
 // command-line build writes for the same recovery, captured by running it. The
 // engine refuses to write that file unless re-encrypting the rebuilt frame
 // reproduces the captured hop, so a file matching it byte for byte is one the
 // firmware will transmit.
 //
-// What it cannot see: whether the firmware accepts the file. That needs a
+// Which build matters, for the two KeeLoq ones. They come from the engine's
+// readable source *after* it learned to reverse a KeeLoq frame. The obfuscated
+// copy in `lib/modules/cpp/faaccrack/` predates that, so building the CLI from
+// the in-repo engine and re-running these commands reproduces every line
+// except `Key:`, which comes back unreversed. That is the stale artifact, not a
+// wrong fixture here - and it reaches nothing, because the library build
+// renames `main` away (`CMakeLists.txt`) and the app writes the `.sub` itself.
+//
+// What none of it can see: whether the firmware accepts the file. That needs a
 // Flipper and a receiver.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
@@ -28,8 +36,9 @@ SeedResult _found({
   hopsUsed: hopsUsed,
 );
 
-/// Written by `faaccrack 3 A0DC9330 293AC619 1EECA414 CBCEFBA6 -f 868350000`,
-/// the Genius known-answer vector the native probe also uses.
+/// Written by `faaccrack 3 A0DC9330 293AC619 1EECA414 CBCEFBA6 -o genius.sub
+/// -f 868350000`, the Genius known-answer vector the native probe also uses.
+/// Without `-o` the engine solves and prints but writes nothing.
 const _engineWroteGenius = '''
 Filetype: Flipper SubGhz Key File
 Version: 1
@@ -42,6 +51,34 @@ Seed: 00 00 07 89
 Manufacture: Genius
 ''';
 
+/// Written by `faaccrack 2 200342E2 2F62BE4B 1895D794 367AEB49 -o bft.sub -f
+/// 433920000`, the BFT known-answer vector.
+///
+/// The key is the frame `200342E2367AEB49` reversed over all 64 bits, so a
+/// reader can recompute it. See [SeedManufacturer.framesAreBitReversed] for
+/// what the firmware does with it.
+const _engineWroteBft = '''
+Filetype: Flipper SubGhz Key File
+Version: 1
+Frequency: 433920000
+Preset: FuriHalSubGhzPresetOok650Async
+Protocol: KeeLoq
+Bit: 64
+Key: 92 D7 5E 6C 47 42 C0 04
+Seed: 00 00 04 56
+Manufacture: BFT
+''';
+
+/// The `Key:` line of what `faaccrack 4 20345678 4AB86AAC 04C40F30 A1988133 -o
+/// erreka.sub -f 433920000` wrote: the frame `20345678A1988133` reversed.
+///
+/// The other KeeLoq manufacturer, so that the reversal is pinned by protocol
+/// and not by one enum value. Only the key, because that is this vector's whole
+/// job - [_engineWroteBft] already holds the KeeLoq header byte for byte, and a
+/// second full-file fixture would report a change to `Preset:` under the name
+/// of the reversal.
+const _engineWroteErrekaKey = 'Key: CC 81 19 85 1E 6A 2C 04';
+
 void main() {
   group('render', () {
     test('matches what the engine itself writes', () {
@@ -53,6 +90,29 @@ void main() {
           frequencyHz: 868350000,
         ),
         _engineWroteGenius,
+      );
+    });
+
+    test('turns a KeeLoq frame round, as the engine does', () {
+      // Not a formatting choice - see `SeedManufacturer.framesAreBitReversed`
+      // for what the firmware does with a frame written the other way round.
+      expect(
+        SeedSubFile.render(
+          result: _found(seed: 0x00000456, frameHop: 0x367AEB49),
+          manufacturer: SeedManufacturer.bft,
+          fix: 0x200342E2,
+          frequencyHz: 433920000,
+        ),
+        _engineWroteBft,
+      );
+      expect(
+        SeedSubFile.render(
+          result: _found(seed: 0x0600A0BC, frameHop: 0xA1988133),
+          manufacturer: SeedManufacturer.erreka,
+          fix: 0x20345678,
+          frequencyHz: 433920000,
+        ),
+        contains(_engineWroteErrekaKey),
       );
     });
 
