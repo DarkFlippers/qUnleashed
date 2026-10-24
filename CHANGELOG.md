@@ -1,6 +1,7 @@
 ## Main changes
 - Version: 0.17.1
 ## Other changes
+- SubGHz: Write a recovered remote as the firmware reads it back, and list BFT (by @mishamyte | PR #395)
 - Connection: Bump flipperlib: Android's service discovery that failed to classify (by @mishamyte | PR #394 | Closes #393)
 - Crash reports: Treat a platform that cannot answer about location as a readiness (by @mishamyte | PR #392)
 - Crash reports: Stop guarded rejecting when its task returns something (by @mishamyte | PR #391 | Fixes #390)

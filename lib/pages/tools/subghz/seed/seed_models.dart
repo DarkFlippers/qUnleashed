@@ -2,6 +2,51 @@
 /// how a recovery ended.
 library;
 
+/// The two frame layouts the four manufacturers divide into.
+///
+/// An enum rather than the bare string this used to be. The string is both what
+/// goes into a file and what decides how a frame is built, and the Flipper's
+/// own sources spell it `Keeloq` in places - so typed in per manufacturer it
+/// sat one mis-cased letter away from a frame written the wrong way round,
+/// which only a test could catch. As values it cannot be written.
+enum SeedProtocol {
+  faacSlh(inFile: 'Faac SLH', counterDigits: 5, framesAreBitReversed: false),
+  keeloq(inFile: 'KeeLoq', counterDigits: 4, framesAreBitReversed: true);
+
+  const SeedProtocol({
+    required this.inFile,
+    required this.counterDigits,
+    required this.framesAreBitReversed,
+  });
+
+  /// The `Protocol` a written `.sub` carries, and what a capture's own
+  /// `Protocol:` line is checked against. Two manufacturers share each: a file
+  /// says which of them it is through `Manufacture`.
+  final String inFile;
+
+  /// The counter inside a decrypted hop is 20 bits for Faac and 16 for KeeLoq.
+  /// Only used for formatting - the engine already masks it - but a counter
+  /// printed to the wrong width looks like a bug in the recovery rather than in
+  /// the display.
+  final int counterDigits;
+
+  /// Whether the firmware stores this protocol's 64-bit frame bit-reversed.
+  ///
+  /// A KeeLoq frame goes over the air LSB first, so `keeloq.c` reverses `Key:`
+  /// before it splits the fixed code from the rolling half, and reverses
+  /// `fix << 32 | hop` again when it builds a frame to send. A KeeLoq file
+  /// written in frame order therefore names a remote nobody owns: the halves
+  /// land in the wrong places, the firmware accepts the file, and the gate
+  /// ignores what it sends with nothing on screen saying so. `faac_slh.c` reads
+  /// the frame as it stands, so Faac is written unreversed.
+  ///
+  /// Read off the Flipper firmware, which is not vendored here - a reader
+  /// cannot check those two files locally. What is vendored and says the same
+  /// thing is `lib/modules/cpp/faaccrack/faaccrack.h`'s note on `fix`: "for
+  /// KeeLoq protocols the frame goes out LSB first and has to be reversed".
+  final bool framesAreBitReversed;
+}
+
 /// The remotes the engine has a manufacture key for.
 ///
 /// `mode` is the number the native engine takes. It is hard-coded inside the
@@ -9,53 +54,71 @@ library;
 /// transcription of that numbering and not its source - see
 /// `lib/modules/cpp/faaccrack/BUILD_NOTES.md`. The known-answer vectors in the
 /// native probe are what hold the two in step.
+///
+/// Every value here is offered: `toolSeedRecoverySubtitle` names them all, and
+/// `test/seed_models_test.dart` fails if a value is added without the sentence
+/// gaining it, or a name is left in it that no value solves.
+///
+/// BFT was once unnamed because the firmware recovers those itself; listing it
+/// anyway was a decision, so re-hiding one is too, not a tidy-up.
 enum SeedManufacturer {
-  faacSlh(mode: 1, label: 'FAAC SLH', protocol: 'Faac SLH'),
-
-  /// Solved here, but not offered here: the firmware recovers BFT itself, so
-  /// pointing a user at a search that takes minutes would send them the long
-  /// way round.
-  ///
-  /// Kept in the enum rather than removed, because [fromLabel] returning null
-  /// makes `SeedCaptureFormat.parse` refuse the whole capture as a manufacturer
-  /// this build has no key for - which would not be true, and would read as a
-  /// broken app rather than a redirection.
-  bft(mode: 2, label: 'BFT', protocol: 'KeeLoq', advertised: false),
-  genius(mode: 3, label: 'Genius', protocol: 'Faac SLH'),
-  erreka(mode: 4, label: 'Erreka', protocol: 'KeeLoq');
+  faacSlh(
+    mode: 1,
+    label: 'FAAC SLH',
+    inFile: 'FAAC_SLH',
+    protocol: SeedProtocol.faacSlh,
+  ),
+  bft(mode: 2, label: 'BFT', inFile: 'BFT', protocol: SeedProtocol.keeloq),
+  genius(
+    mode: 3,
+    label: 'Genius',
+    inFile: 'Genius',
+    protocol: SeedProtocol.faacSlh,
+  ),
+  erreka(
+    mode: 4,
+    label: 'Erreka',
+    inFile: 'Erreka',
+    protocol: SeedProtocol.keeloq,
+  );
 
   const SeedManufacturer({
     required this.mode,
     required this.label,
+    required this.inFile,
     required this.protocol,
-    this.advertised = true,
   });
 
   /// The engine's mode number.
   final int mode;
 
-  /// How the Flipper-side capture app writes it, and how a `.sub` spells the
-  /// `Manufacture` field.
+  /// How the Flipper-side capture app writes it, and how this one is shown.
+  ///
+  /// Not what a `.sub` carries - that is [inFile]. The two differ for FAAC SLH,
+  /// and spelling is not meaningful here: it is typed into the capture app's
+  /// source by hand and [fromLabel] normalises it.
   final String label;
 
-  /// The `Protocol` a written `.sub` carries. Two manufacturers share each: a
-  /// file says which of them it is through `Manufacture`.
-  final String protocol;
-
-  /// Whether the tool offers this one to a user who has captured nothing yet,
-  /// i.e. whether its name belongs in `toolSeedRecoverySubtitle`.
+  /// The `Manufacture` a written `.sub` carries.
   ///
-  /// A value rather than a sentence in one ARB string, so the two cannot drift:
-  /// `test/seed_models_test.dart` holds the subtitle to this field in both
-  /// directions. Unadvertised is not unsupported - the search runs exactly the
-  /// same way for a capture that names one.
-  final bool advertised;
+  /// The keystore's own entry name, matched by `strcmp`. `faac_slh.c`'s
+  /// `subghz_protocol_faac_slh_get_key` compares this against each entry and
+  /// `keeloq.c` hands it to the keystore as `mfname`; the names are the ones
+  /// the firmware writes itself in `subghz_gen_info.c` - `FAAC_SLH`, `Genius`,
+  /// `BFT`, `Erreka`.
+  ///
+  /// Only FAAC SLH differs from [label], and only there because the keystore
+  /// spells it with an underscore while a screen should not. Writing the label
+  /// was not visibly broken - no entry matches `FAAC SLH`, so the Faac lookup
+  /// fell through to its "file names something this keystore lacks" branch and
+  /// returned the `FAAC_SLH` key anyway - but that branch is a compatibility
+  /// path for unknown manufacturers, not a spelling we may lean on. Genius has
+  /// no such fallback worth having: it matches by name or it is handed FAAC's
+  /// key, which is the wrong one.
+  final String inFile;
 
-  /// The counter inside a decrypted hop is 20 bits for the Faac protocols and
-  /// 16 for the KeeLoq ones. Only used for formatting - the engine already
-  /// masks it - but a counter printed to the wrong width looks like a bug in
-  /// the recovery rather than in the display.
-  int get counterDigits => protocol == 'Faac SLH' ? 5 : 4;
+  /// Which frame layout this one's remotes use.
+  final SeedProtocol protocol;
 
   /// Spacing and case, which the label is not meaningful in: it is typed into
   /// the Flipper app's source by hand, and "FAAC SLH" versus "FAAC_SLH" is not
