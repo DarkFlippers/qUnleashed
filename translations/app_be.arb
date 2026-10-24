@@ -6627,9 +6627,9 @@
   "@toolSeedRecovery": {
     "description": "Title of the SubGHz rolling-code seed recovery tool."
   },
-  "toolSeedRecoverySubtitle": "Аднаўленне пультаў FAAC, Genius і Erreka",
+  "toolSeedRecoverySubtitle": "Аднаўленне пультаў FAAC, BFT, Genius і Erreka",
   "@toolSeedRecoverySubtitle": {
-    "description": "Subtitle of the SubGHz seed recovery tool. It names the manufacturers whose SeedManufacturer.advertised is true; BFT is solved but not listed, because the firmware recovers those itself. test/seed_models_test.dart holds this sentence to that field, so a name added or removed here fails."
+    "description": "Subtitle of the SubGHz seed recovery tool. FAAC, BFT, Genius and Erreka are gate-remote manufacturers: keep all four, in Latin script, untranslated and untransliterated. FAAC is the maker's name; the code spells it 'FAAC SLH' after the protocol variant, but this sentence names the maker."
   },
   "seedTitle": "Аднаўленне seed Sub-GHz",
   "@seedTitle": {
