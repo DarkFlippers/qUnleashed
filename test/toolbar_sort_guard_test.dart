@@ -79,13 +79,12 @@ class _ToolbarVisitor extends RecursiveAstVisitor<void> {
   /// `argumentExpression` and not `argumentExpression2`: the second is the one
   /// the analyzer is moving to and is `@experimental`, which `flutter analyze`
   /// reports and CI treats as fatal. The first carries `@ToBeDeprecated`,
-  /// which reports nothing yet.
-  static bool _hasSort(ArgumentList arguments) => arguments.arguments.any(
-    (argument) =>
-        argument is NamedArgument &&
-        argument.name.lexeme == 'sort' &&
-        !_canBeNull(argument.argumentExpression),
-  );
+  /// which reports nothing yet. `ratchet.dart`'s `namedArgument` is where that
+  /// now lives for the ratchets that only need the argument by name.
+  static bool _hasSort(ArgumentList arguments) {
+    final sort = namedArgument(arguments, 'sort');
+    return sort != null && !_canBeNull(sort.argumentExpression);
+  }
 
   static bool _canBeNull(Expression expression) {
     if (expression is NullLiteral) return true;

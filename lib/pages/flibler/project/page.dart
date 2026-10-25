@@ -1,13 +1,12 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/localization/l10n.dart';
-import '../../../services/logging.dart';
 import '../../../components/appbar.dart';
 import '../../../components/cardlist.dart';
+import '../../../components/folder_pick.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
@@ -50,28 +49,16 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
 
   Future<void> _pickFolder() async {
     final lastFolder = _ctrl.lastFolder;
-    final String? path;
-    try {
-      path = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.fliblerPickFolder,
-        initialDirectory: lastFolder.isEmpty ? null : lastFolder,
-      );
-    } catch (e, st) {
-      // Reached from a button, so a rejection here has no listener at all and
-      // lands in the zone as a fatal uncaught error - the mechanism of
-      // QUNLEASHED-K, and not its failure. `category_page.dart` has which
-      // refusals can and cannot reach a folder pick.
-      LogService.caught(
-        '[Flibler] the folder pick failed: ${LogService.describe(e, st)}',
-      );
-      if (mounted) {
-        context.showNotification(
-          context.l10n.commonPickFailed,
-          type: QNotificationType.error,
-        );
-      }
-      return;
-    }
+    // Reached from a button, so a rejection here would have no listener at all
+    // and would land in the zone as a fatal uncaught error - the mechanism of
+    // QUNLEASHED-K. [pickFolder] never rejects, and reports a refusal that
+    // this platform's plugin used to hide behind a null.
+    final path = await pickFolder(
+      context,
+      what: '[Flibler] the folder pick',
+      dialogTitle: context.l10n.fliblerPickFolder,
+      initialDirectory: lastFolder.isEmpty ? null : lastFolder,
+    );
     if (path == null) return;
     _repoField.clear();
     _ctrl.setFolder(path);

@@ -171,6 +171,28 @@ fl.File dir(String name) => fl.File(name: name, type: File_FileType.DIR);
 fl.File tag(String name, {int size = 64}) =>
     fl.File(name: name, type: File_FileType.FILE, size: size);
 
+/// A device whose storage holds one file, `notes.txt`, and nothing else.
+///
+/// Enough to mount `FileManagerPage` and see that it is still standing, which
+/// is what the two pick tests need it for - `unguarded_pick_test.dart` for a
+/// refused pick and `dropped_pick_test.dart` for one that came back empty.
+///
+/// Shared at the second file rather than the third, which is not what
+/// `ratchet.dart`'s rule says and is not that rule's subject either: it is
+/// about extracting a *predicate* two ratchets happen to agree on today, where
+/// pulling it out early fixes the wrong shape. This is a fixture, and two
+/// copies of a fake whose `framesFor` has to match a submodule's signatures
+/// drift silently - which is the argument the mixin above it was extracted on.
+class ListingFlipper with ArchiveRpcFake {
+  @override
+  List<Main> framesFor(Main request) => request.hasStorageListRequest()
+      ? [Main(storageListResponse: ListResponse()..file.add(tag('notes.txt')))]
+      : const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 /// Points `ArchiveStorage` at a fresh temp directory for the file, and
 /// answers the `path_provider` call the pre-Devices migration makes.
 ///
