@@ -2,10 +2,10 @@
 // everywhere.
 //
 // No ordinal. The last three ratchets each claimed one and each was wrong -
-// `picker_bytes_guard_test.dart` says "the eighth" and is the eleventh,
-// `ratchet.dart` still says "Seven of them now" over twelve - because nothing
-// checks a number that is only ever read by a human. The checkable claim is the
-// one in `main`: `budget: const <String, int>{}`.
+// `picker_bytes_guard_test.dart` says "the eighth" and is the eleventh, and
+// `ratchet.dart`'s header carried one that was also wrong until #375 took it
+// out - because nothing checks a number that is only ever read by a human. The
+// checkable claim is the one in `main`: `budget: const <String, int>{}`.
 //
 // QUNLEASHED-K: the file browser's "Upload files" called
 // `FilePicker.platform.pickFiles` with no `try` around it, from a

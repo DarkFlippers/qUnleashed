@@ -10,6 +10,7 @@ import '../../../../theme/theme.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../controller.dart';
 import '../../../../components/archive/models/key.dart';
+import '../../../../components/selection.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
@@ -42,14 +43,12 @@ class DeletedPage extends StatefulWidget {
   State<DeletedPage> createState() => _DeletedPageState();
 }
 
-class _DeletedPageState extends State<DeletedPage> {
+class _DeletedPageState extends State<DeletedPage>
+    with ListSelection<DeletedPage> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   String _query = '';
   String? _filterVal;
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
 
@@ -122,53 +121,7 @@ class _DeletedPageState extends State<DeletedPage> {
   }
 
   List<ArchiveKey> get _selectedKeys =>
-      _ctrl.deletedKeys().where((k) => _selected.contains(_keyId(k))).toList();
-
-  void _enterSelection(ArchiveKey key) {
-    setState(() {
-      _selectionMode = true;
-      _selected.add(_keyId(key));
-    });
-  }
-
-  void _toggleSelect(ArchiveKey key) {
-    final id = _keyId(key);
-    setState(() {
-      if (!_selected.remove(id)) _selected.add(id);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    // QUNLEASHED-P. Every bulk action on this page hands this method to async
-    // code - a `VoidCallback` on a sheet entry, or its own continuation after
-    // an await - so the page can be gone by the time it runs, and then the
-    // `setState` below reaches a disposed State. In a release build there is
-    // no lifecycle assertion left there and the null check on `_element` is
-    // what throws, as a fatal uncaught `TypeError`.
-    //
-    // Guarded here rather than at each call site because the call sites are
-    // the part that gets forgotten: four of the five that needed it had the
-    // guard one statement away, around the toast beside the exit, and a fifth
-    // in `browser/page.dart` had none. Nothing is lost by returning early -
-    // the selection this clears dies with the State.
-    if (!mounted) return;
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
-  void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
-    setState(() {
-      if (selected) {
-        _selected.addAll(filtered.map(_keyId));
-      } else {
-        _selected.removeAll(filtered.map(_keyId));
-        if (_selected.isEmpty) _selectionMode = false;
-      }
-    });
-  }
+      _ctrl.deletedKeys().where((k) => isSelected(k.id)).toList();
 
   void _onSort(String key) {
     unawaited(
@@ -189,7 +142,7 @@ class _DeletedPageState extends State<DeletedPage> {
         context.l10n.archiveRestoreFailed,
       );
     }
-    _exitSelection();
+    exitSelection();
   }
 
   Future<void> _showBulkActions(BuildContext context) async {
@@ -208,7 +161,7 @@ class _DeletedPageState extends State<DeletedPage> {
         context,
         _ctrl,
         keys,
-        onDone: _exitSelection,
+        onDone: exitSelection,
       ),
     ];
 
@@ -229,9 +182,6 @@ class _DeletedPageState extends State<DeletedPage> {
       actions: actions,
     );
   }
-
-  String _keyId(ArchiveKey k) =>
-      '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
 
   bool get _hasFilter => _filterVal != null || _query.isNotEmpty;
 
@@ -288,14 +238,12 @@ class _DeletedPageState extends State<DeletedPage> {
           );
         }
         final filtered = _visible(all);
-        final allSelected =
-            filtered.isNotEmpty &&
-            filtered.every((k) => _selected.contains(_keyId(k)));
+        final allPicked = allSelected(filtered.map((k) => k.id));
 
         return PopScope(
-          canPop: !_selectionMode,
+          canPop: !selectionMode,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _selectionMode) _exitSelection();
+            if (!didPop && selectionMode) exitSelection();
           },
           child: Scaffold(
             backgroundColor: colors.background,
@@ -315,14 +263,16 @@ class _DeletedPageState extends State<DeletedPage> {
               ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(50),
-                child: _selectionMode
+                child: selectionMode
                     ? CategorySelectionToolbar(
-                        count: _selected.length,
-                        allSelected: allSelected,
+                        count: selectedCount,
+                        allSelected: allPicked,
                         catColor: headerColor,
-                        onClose: _exitSelection,
-                        onToggleAll: () =>
-                            _setAllSelected(filtered, !allSelected),
+                        onClose: exitSelection,
+                        onToggleAll: () => setAllSelected(
+                          filtered.map((k) => k.id),
+                          selected: !allPicked,
+                        ),
                         onActions: () => _showBulkActions(context),
                       )
                     : CategoryToolbar(
@@ -351,7 +301,7 @@ class _DeletedPageState extends State<DeletedPage> {
                 final cols = layoutColumns(
                   deletedColumns(),
                   constraints.maxWidth -
-                      (_selectionMode ? kSelectionIndicatorWidth : 0),
+                      (selectionMode ? kSelectionIndicatorWidth : 0),
                   filtered,
                 );
 
@@ -387,7 +337,7 @@ class _DeletedPageState extends State<DeletedPage> {
                               sortAsc: _sort.asc,
                               onSort: _onSort,
                               colors: colors,
-                              selectionMode: _selectionMode,
+                              selectionMode: selectionMode,
                             ),
                             Expanded(
                               child: ListView.builder(
@@ -397,26 +347,27 @@ class _DeletedPageState extends State<DeletedPage> {
                                 itemCount: filtered.length,
                                 itemBuilder: (_, i) {
                                   final key = filtered[i];
+                                  final id = key.id;
                                   return ArchiveTableRow(
-                                    key: ValueKey(_keyId(key)),
+                                    key: ValueKey(id),
                                     flipperKey: key,
                                     cols: cols,
                                     colors: colors,
                                     cat: key.category,
                                     showCategoryIcon: true,
                                     progress: _ctrl.progressForKey(key),
-                                    selectionMode: _selectionMode,
-                                    selected: _selected.contains(_keyId(key)),
-                                    onTap: () => _selectionMode
-                                        ? _toggleSelect(key)
+                                    selectionMode: selectionMode,
+                                    selected: isSelected(id),
+                                    onTap: () => selectionMode
+                                        ? toggleSelect(id)
                                         : KeyActionsSheet.show(
                                             context,
                                             _ctrl,
                                             key,
                                           ),
-                                    onLongPress: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : _enterSelection(key),
+                                    onLongPress: () => selectionMode
+                                        ? toggleSelect(id)
+                                        : enterSelection(id),
                                   );
                                 },
                               ),

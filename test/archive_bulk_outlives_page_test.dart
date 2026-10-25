@@ -7,10 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/pages/archive/overview/category/deleted_page.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
-import 'package:qunleashed/services/archive/sort_settings.dart';
-import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/logging.dart';
-import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'archive_fakes.dart';
@@ -18,12 +15,17 @@ import 'kept_lines.dart';
 
 /// A bulk action that outlives the page it was started from.
 ///
-/// QUNLEASHED-P. Every bulk action on the archive pages hands `_exitSelection`
-/// to async code, so the page can be gone by the time it runs - and then its
-/// `setState` reaches a disposed `State`. The guard is inside `_exitSelection`
-/// itself rather than at the call sites, because the call sites are the part
-/// that was forgotten: four of the five that needed it already had a `mounted`
-/// check one statement away, around the toast beside the exit.
+/// QUNLEASHED-P. Every bulk action on the archive pages hands the selection's
+/// exit to async code, so the page can be gone by the time it runs - and then
+/// its `setState` reaches a disposed `State`. The guard lives inside
+/// `ListSelection.exitSelection`, whose doc says why it is there rather than
+/// at the call sites; four pages wrote that method out for themselves when this
+/// file was written and all four share it now (#375).
+///
+/// **What this file holds is the reaching, not the guard.**
+/// `list_selection_test.dart` fails the moment the `mounted` check goes; only
+/// this one proves a real bulk action still hands the exit to async code at
+/// all, which is the premise that check rests on.
 ///
 /// **What fails here is not what a user saw.** In a release build `setState`
 /// has no lifecycle assertion left and the null check on `_element`
@@ -33,29 +35,13 @@ import 'kept_lines.dart';
 /// message, same call site, same mechanism - so this pins the defect even
 /// though it cannot reproduce the exact exception the report carries.
 ///
-/// The gate is `callRpcFramesMulti`, which is what `storageWriteChunked` sends
-/// through, so the restore is suspended at the longest of the three awaits
-/// that can outlive the page - the read before it and the `refresh()` after it
-/// being the other two.
+/// The gate is `ArchiveRpcFake.writeGate`, which suspends
+/// `callRpcFramesMulti` - what `storageWriteChunked` sends through - so the
+/// restore stops at the longest of the three awaits that can outlive the page,
+/// the read before it and the `refresh()` after it being the other two. The
+/// seam is shared because it is the only one there is: the client's API is
+/// extensions over a small core, so nothing above it can be faked (#376).
 class _HangingFlipper with ArchiveRpcFake {
-  /// Held until the test says the page is gone.
-  final Completer<void> gate = Completer<void>();
-
-  /// Makes the write throw once the gate is let go, for the case about what a
-  /// failure leaves behind. [LinkDropped] is `archive_fakes.dart`'s shared
-  /// stand-in; `ArchiveRpcFake.isLinkDropError` answers false for it unless a
-  /// fake says otherwise, so the restore does not retry and the throw lands in
-  /// `_restoreKeys`'s catch, which is the path under test.
-  bool failWrite = false;
-
-  /// Whether the restore got as far as the write at all. Asserted, because a
-  /// gate nothing reaches would make this file pass against any code.
-  bool writeStarted = false;
-
-  /// Whether the write has returned or thrown. Asserted for the same reason:
-  /// a restore that never resumed cannot have reached the line under test.
-  bool writeSettled = false;
-
   /// Nothing on the device, which is what makes the local file read as
   /// deleted rather than synced.
   @override
@@ -65,36 +51,8 @@ class _HangingFlipper with ArchiveRpcFake {
   }
 
   @override
-  Future<List<Main>> callRpcFramesMulti(
-    Future<void> Function(Future<void> Function(Main frame) sendFrame) send, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-    bool retainFrames = true,
-    bool interleavable = false,
-  }) async {
-    writeStarted = true;
-    try {
-      await gate.future;
-      if (failWrite) throw LinkDropped();
-      await send((_) async {});
-      return const [];
-    } finally {
-      writeSettled = true;
-    }
-  }
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-
-/// Interleaved real-clock steps a restore is given to finish.
-///
-/// Not a measured margin: the live-page case below is what certifies it,
-/// because that one fails if the budget is too short for the continuation to
-/// run. Sized so a stall costs a couple of seconds rather than the suite's
-/// ten-minute timeout.
-const int _budget = 200;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -104,8 +62,10 @@ void main() {
   useTempArchiveRoot('archive_bulk_outlives');
 
   late _HangingFlipper client;
+
+  /// Held until the case says the page is gone, through `writeGate`.
+  late Completer<void> gate;
   late ArchiveController ctrl;
-  late ArchiveSortSettings settings;
 
   /// True once the `refresh()` that `_restoreKeys` ends with has finished, so
   /// `restoreKeys` has completed and the page's continuation - the line under
@@ -120,61 +80,28 @@ void main() {
   setUp(() {
     clearKeptLines();
     SharedPreferences.setMockInitialValues(const {});
-    client = _HangingFlipper();
-    settings = ArchiveSortSettings();
+    gate = Completer<void>();
+    client = _HangingFlipper()..writeGate = gate;
     refreshSettled = false;
   });
-
-  /// Bounded pumps. `pumpAndSettle` does not return on these pages, and the
-  /// gate below is deliberately never settled.
-  Future<void> settle(WidgetTester tester) async {
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-  }
-
-  /// Runs the real clock until [done], which is the only way the restore gets
-  /// past any of its awaits.
-  ///
-  /// `_restoreKeys` reads the file off disk before it writes, and `testWidgets`
-  /// drives a fake clock that does not run real file I/O to completion - so
-  /// without this the restore suspends at the read and never reaches the gate.
-  /// The `pump` inside the loop is load-bearing and not a tidy-up: the
-  /// controller's flow needs the fake clock advanced between real-clock
-  /// slices, and a single `runAsync` with a poll inside it never completes.
-  /// Bounded rather than a bare `while`: a condition that never comes true
-  /// should fail this file in seconds, not hang it until the timeout.
-  Future<void> runUntil(
-    WidgetTester tester,
-    bool Function() done, {
-    required String reason,
-  }) async {
-    for (var i = 0; i < _budget && !done(); i++) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
-    expect(done(), isTrue, reason: reason);
-  }
 
   /// A local NFC file with nothing answering for it on the device, which is
   /// `archive_partial_walk_test.dart`'s recipe for a key that reads as
   /// deleted.
   Future<void> pumpDeletedPage(WidgetTester tester) async {
-    final storage = ArchiveStorage();
-    await tester.runAsync(() async {
-      await storage.resolveRootDir();
-      final device = storage.deviceDir(archiveTestDevice);
-      if (device.existsSync()) device.deleteSync(recursive: true);
-      await storage.writeLastDeviceName(archiveTestDevice);
-      final dir = storage.categoryDir(archiveTestDevice, ArchiveCategory.nfc)
-        ..createSync(recursive: true);
-      io.File('${dir.path}${io.Platform.pathSeparator}card.nfc')
-          .writeAsStringSync('Filetype: Flipper NFC device\n');
-      ctrl = ArchiveController(client: client, storage: storage);
-      await ctrl.initialize();
-      await settings.load();
-    });
+    final mounted = await mountArchivePage(
+      tester,
+      client: client,
+      seed: (storage) async {
+        final dir = storage.categoryDir(archiveTestDevice, ArchiveCategory.nfc)
+          ..createSync(recursive: true);
+        io.File('${dir.path}${io.Platform.pathSeparator}card.nfc')
+            .writeAsStringSync('Filetype: Flipper NFC device\n');
+      },
+      page: (controller, sortSettings) =>
+          DeletedPage(controller: controller, sortSettings: sortSettings),
+    );
+    ctrl = mounted.controller;
 
     var sawLoading = false;
     ctrl.addListener(() {
@@ -185,26 +112,10 @@ void main() {
         refreshSettled = true;
       }
     });
-
-    addTearDown(() async {
-      ctrl.dispose();
-      settings.dispose();
-      await client.close();
-    });
-
-    await tester.binding.setSurfaceSize(const Size(900, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
-        home: DeletedPage(controller: ctrl, sortSettings: settings),
-      ),
-    );
-    await settle(tester);
   }
 
   /// Selects the one deleted key and taps Restore, leaving the restore
-  /// suspended at [_HangingFlipper.gate].
+  /// suspended at the gate.
   Future<void> startRestore(WidgetTester tester) async {
     expect(find.text('card'), findsOneWidget);
 
@@ -226,7 +137,7 @@ void main() {
 
   /// Lets the gate go and waits for `restoreKeys` to complete.
   Future<void> finishRestore(WidgetTester tester) async {
-    client.gate.complete();
+    gate.complete();
     await runUntil(
       tester,
       () => refreshSettled,
@@ -241,7 +152,7 @@ void main() {
   ///
   /// Here to keep the cases below honest. `_restoreKeys` ends in a `refresh()`,
   /// so the write returning is not the continuation running - and a wait that
-  /// stops at the write leaves `_exitSelection` unreached, which is a test
+  /// stops at the write leaves `exitSelection` unreached, which is a test
   /// that passes against the defect. The first version of this file did
   /// exactly that. This case asserts the one thing the continuation does that
   /// can be seen, so it fails if the wait is too short.
@@ -307,7 +218,7 @@ void main() {
   testWidgets('a restore that fails after the page is gone is still recorded', (
     tester,
   ) async {
-    client.failWrite = true;
+    client.writeFailure = LinkDropped();
     await pumpDeletedPage(tester);
     await startRestore(tester);
 

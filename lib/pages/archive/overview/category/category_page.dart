@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/folder_pick.dart';
 import '../../../../components/icon.dart';
+import '../../../../components/selection.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/dialogs/connection.dart';
@@ -48,15 +49,13 @@ class CategoryPage extends StatefulWidget {
   State<CategoryPage> createState() => _CategoryPageState();
 }
 
-class _CategoryPageState extends State<CategoryPage> {
+class _CategoryPageState extends State<CategoryPage>
+    with ListSelection<CategoryPage> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   String _query = '';
   String? _filterVal;
   bool _starredOnly = false;
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
   ArchiveCategory get _cat => widget.category;
@@ -154,53 +153,11 @@ class _CategoryPageState extends State<CategoryPage> {
   }
 
   List<ArchiveKey> get _selectedKeys =>
-      _allKeys.where((k) => _selected.contains(_keyId(k))).toList();
-
-  void _enterSelection(ArchiveKey key) {
-    setState(() {
-      _selectionMode = true;
-      _selected.add(_keyId(key));
-    });
-  }
-
-  void _toggleSelect(ArchiveKey key) {
-    final id = _keyId(key);
-    setState(() {
-      if (!_selected.remove(id)) _selected.add(id);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    // Guarded for the reason `deleted_page.dart`'s copy spells out
-    // (QUNLEASHED-P): the bulk actions hand this to async code, so the page
-    // can be gone by the time it runs, and the `setState` below would reach a
-    // disposed State. `_bulkDownload` below is this page's instance of it.
-    if (!mounted) return;
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
-  void _onDropped() {
-    if (mounted) _exitSelection();
-  }
-
-  void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
-    setState(() {
-      if (selected) {
-        _selected.addAll(filtered.map(_keyId));
-      } else {
-        _selected.removeAll(filtered.map(_keyId));
-        if (_selected.isEmpty) _selectionMode = false;
-      }
-    });
-  }
+      _allKeys.where((k) => isSelected(k.id)).toList();
 
   Future<void> _bulkSetFavorite(bool favorite) async {
     await _ctrl.setKeysFavorite(_selectedKeys, favorite);
-    _exitSelection();
+    exitSelection();
   }
 
   void _onSort(String key) {
@@ -306,14 +263,12 @@ class _CategoryPageState extends State<CategoryPage> {
           );
         }
 
-        final allSelected =
-            filtered.isNotEmpty &&
-            filtered.every((k) => _selected.contains(_keyId(k)));
+        final allPicked = allSelected(filtered.map((k) => k.id));
 
         return PopScope(
-          canPop: !_selectionMode,
+          canPop: !selectionMode,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _selectionMode) _exitSelection();
+            if (!didPop && selectionMode) exitSelection();
           },
           child: Scaffold(
             backgroundColor: colors.background,
@@ -336,14 +291,16 @@ class _CategoryPageState extends State<CategoryPage> {
               ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(50),
-                child: _selectionMode
+                child: selectionMode
                     ? CategorySelectionToolbar(
-                        count: _selected.length,
-                        allSelected: allSelected,
+                        count: selectedCount,
+                        allSelected: allPicked,
                         catColor: catColor,
-                        onClose: _exitSelection,
-                        onToggleAll: () =>
-                            _setAllSelected(filtered, !allSelected),
+                        onClose: exitSelection,
+                        onToggleAll: () => setAllSelected(
+                          filtered.map((k) => k.id),
+                          selected: !allPicked,
+                        ),
                         onActions: () => _showBulkActions(context),
                       )
                     : CategoryToolbar(
@@ -403,8 +360,7 @@ class _CategoryPageState extends State<CategoryPage> {
       builder: (ctx, constraints) {
         final visibleCols = visibleColumns(
           _cat,
-          constraints.maxWidth -
-              (_selectionMode ? kSelectionIndicatorWidth : 0),
+          constraints.maxWidth - (selectionMode ? kSelectionIndicatorWidth : 0),
           filtered,
         );
 
@@ -440,7 +396,7 @@ class _CategoryPageState extends State<CategoryPage> {
                       sortAsc: _sort.asc,
                       onSort: _onSort,
                       colors: colors,
-                      selectionMode: _selectionMode,
+                      selectionMode: selectionMode,
                     ),
                     Expanded(
                       child: ListView.builder(
@@ -450,27 +406,28 @@ class _CategoryPageState extends State<CategoryPage> {
                         itemCount: filtered.length,
                         itemBuilder: (_, i) {
                           final key = filtered[i];
-                          final selected = _selected.contains(_keyId(key));
+                          final id = key.id;
+                          final selected = isSelected(id);
                           return ArchiveKeyDragSource(
-                            key: ValueKey(_keyId(key)),
+                            key: ValueKey(id),
                             archiveKey: key,
                             selected: selected,
                             selection: () => _selectedKeys,
-                            onDropped: _onDropped,
+                            onDropped: exitSelection,
                             child: ArchiveTableRow(
                               flipperKey: key,
                               cols: visibleCols,
                               colors: colors,
                               cat: _cat,
                               progress: _ctrl.progressForKey(key),
-                              selectionMode: _selectionMode,
+                              selectionMode: selectionMode,
                               selected: selected,
-                              onTap: () => _selectionMode
-                                  ? _toggleSelect(key)
+                              onTap: () => selectionMode
+                                  ? toggleSelect(id)
                                   : _showKeyActions(context, key),
-                              onLongPress: () => _selectionMode
-                                  ? _toggleSelect(key)
-                                  : _enterSelection(key),
+                              onLongPress: () => selectionMode
+                                  ? toggleSelect(id)
+                                  : enterSelection(id),
                             ),
                           );
                         },
@@ -509,7 +466,7 @@ class _CategoryPageState extends State<CategoryPage> {
         context,
         _ctrl,
         keys,
-        onDone: _exitSelection,
+        onDone: exitSelection,
       ),
     ];
 
@@ -553,11 +510,11 @@ class _CategoryPageState extends State<CategoryPage> {
     if (dir == null) return;
 
     final saved = await saveKeysInto(keys, dir);
-    // Below the guard, not above it. `_exitSelection` is safe either way now,
-    // but reading it above a `mounted` check invites someone to add a second
-    // guard here instead of trusting the one in the helper.
+    // Below the guard, not above it. `ListSelection.exitSelection` is safe
+    // either way, but reading it above a `mounted` check invites someone to
+    // add a second guard here instead of trusting the one in the mixin.
     if (!context.mounted) return;
-    _exitSelection();
+    exitSelection();
     context.showNotification(
       saved == keys.length
           ? context.l10n.archiveSavedFiles(saved)
@@ -567,7 +524,4 @@ class _CategoryPageState extends State<CategoryPage> {
           : QNotificationType.warning,
     );
   }
-
-  String _keyId(ArchiveKey k) =>
-      '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
 }

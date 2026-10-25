@@ -356,7 +356,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       _task(() => _toggleFavorite(key));
 
   Future<void> _toggleFavorite(ArchiveKey key) async {
-    final keyId = _keyIdOf(key);
+    final keyId = key.id;
     if (_favorites.contains(keyId)) {
       _favorites.remove(keyId);
     } else {
@@ -384,7 +384,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   ) async {
     var changed = false;
     for (final key in keys) {
-      final keyId = _keyIdOf(key);
+      final keyId = key.id;
       final has = _favorites.contains(keyId);
       if (favorite && !has) {
         _favorites.add(keyId);
@@ -690,7 +690,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _renameKey(ArchiveKey key, String newName) async {
     _lastFailure = null;
     if (newName.trim().isEmpty || newName == key.name) return;
-    final keyId = _keyIdOf(key);
+    final keyId = key.id;
     final newFileName = '${newName.trim()}.${key.extension}';
     try {
       if (key.localPath != null) {
@@ -718,11 +718,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
             LogService.warn('[Archive] device rename failed: $e');
           }
         }
-        final newKeyId = _localKey(
-          key.flipperDir,
-          newName.trim(),
-          key.extension,
-          key.subFolder,
+        final newKeyId = archiveKeyId(
+          flipperDir: key.flipperDir,
+          name: newName.trim(),
+          extension: key.extension,
+          subFolder: key.subFolder,
         );
         _keys.remove(keyId);
         if (_favorites.contains(keyId)) {
@@ -800,11 +800,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
       final stat = await io.File(newLocalPath).stat();
-      final newKeyId = _localKey(
-        key.flipperDir,
-        baseName,
-        key.extension,
-        key.subFolder,
+      final newKeyId = archiveKeyId(
+        flipperDir: key.flipperDir,
+        name: baseName,
+        extension: key.extension,
+        subFolder: key.subFolder,
       );
       _keys[newKeyId] = ArchiveKey(
         name: baseName,
@@ -1192,11 +1192,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   ) {
     final seen = <String>{};
     for (final rf in remoteFiles) {
-      final keyId = _localKey(
-        rf.flipperDir,
-        rf.name,
-        rf.extension,
-        rf.subFolder,
+      final keyId = archiveKeyId(
+        flipperDir: rf.flipperDir,
+        name: rf.name,
+        extension: rf.extension,
+        subFolder: rf.subFolder,
       );
       seen.add(keyId);
       final existing = _keys[keyId];
@@ -1817,7 +1817,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           continue;
         }
         await _client.storageWriteChunked(key.remotePath, bytes);
-        final keyId = _keyIdOf(key);
+        final keyId = key.id;
         final existing = _keys[keyId];
         if (existing != null) {
           _keys[keyId] = existing.copyWith(
@@ -2077,11 +2077,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Inserts or replaces a key from a locally-stored file entry.
   String _ingestLocal(LocalKeyEntry entry) {
-    final keyId = _localKey(
-      entry.flipperDir,
-      entry.name,
-      entry.extension,
-      entry.subFolder,
+    final keyId = archiveKeyId(
+      flipperDir: entry.flipperDir,
+      name: entry.name,
+      extension: entry.extension,
+      subFolder: entry.subFolder,
     );
     final prev = _keys[keyId];
     _keys[keyId] = ArchiveKey(
@@ -2101,16 +2101,6 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     );
     return keyId;
   }
-
-  String _localKey(
-    String flipperDir,
-    String name,
-    String extension,
-    String subFolder,
-  ) => '$flipperDir/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
-
-  String _keyIdOf(ArchiveKey key) =>
-      _localKey(key.flipperDir, key.name, key.extension, key.subFolder);
 }
 
 /// What one file's download did, for [ArchiveController] alone.

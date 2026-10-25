@@ -61,13 +61,11 @@ class _MixinVisitor extends RecursiveAstVisitor<void> {
   final List<int> lines = [];
 
   void _take(WithClause? clause) {
-    for (final type in clause?.mixinTypes ?? const <NamedType>[]) {
-      if (type.name.lexeme == 'VisibleSurface') {
-        // The type's own offset, not the declaration's: an `AnnotatedNode`
-        // starts at its doc comment, so a marked widget that grows a `///`
-        // would otherwise have the failure cite the comment's line.
-        lines.add(unit.lineInfo.getLocation(type.offset).lineNumber);
-      }
+    for (final type in mixinsNamed(clause, 'VisibleSurface')) {
+      // The type's own offset, not the declaration's: an `AnnotatedNode`
+      // starts at its doc comment, so a marked widget that grows a `///`
+      // would otherwise have the failure cite the comment's line.
+      lines.add(unit.lineInfo.getLocation(type.offset).lineNumber);
     }
   }
 
