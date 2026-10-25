@@ -1,5 +1,6 @@
-// Two rules about reading `DeviceScope`: nothing subscribes for the client,
-// and the sites that do subscribe are counted.
+// Four rules about reading `DeviceScope`, one accessor at a time: nothing
+// subscribes for a value that cannot change, nothing reads live state off a
+// read that cannot see it change, and both sets of exceptions are counted.
 //
 // `DeviceScope.of` is a listening read. It was also the only one the scope
 // offered, so every reader of it got a subscription whether it had any use for
@@ -39,24 +40,41 @@
 // widget. #344 is the same defect at the accessor instead, and ADR 0011's
 // addendum is the decision.
 //
-// So `clientOf` exists, and these two rules keep the split:
+// So there are three accessors, and `lib/` splits 30 / 6 / 3 across them:
+// `clientOf` (no dependency, hands back the client), `notifierOf` (no
+// dependency, hands back the controller) and `of` (the listening read).
 //
-//  * **A guard, budget zero**: no listening read whose only use is `.client`.
-//  * **A census, budget nine**: every listening read, per area. Four of the
-//    nine left read live state in a `build` and want the dependency; five are
-//    callbacks that want the controller and not a subscription, and have no
-//    accessor for that yet. The budget below says which each one is, and
-//    adding a tenth means editing it and saying so.
+// Each non-listening accessor gets a guard and a census, because each one
+// trades a rebuild for a thing that can go wrong quietly:
 //
-// The census is what makes the guard hard to walk around. A reader that takes
-// the controller into a local and only ever asks it for `.client` satisfies
-// the guard - resolving that is dataflow, and these ratchets parse without
-// resolving (ADR 0004) - but it still raises the census, and the census
-// failure names the file. That is not hypothetical: it is how the
-// `firmware_card.dart` site above was found, by a review reading the census
-// budget's own justification for it and noticing the justification was false.
+//  * **`clientOf`, guard at zero**: no listening read whose only use is
+//    `.client`. The client cannot change, so the subscription is pure cost.
+//  * **`of`, census at three**: every listening read, per area. Three left,
+//    all of them reading live state in a `build`, which is what the
+//    subscription is for.
+//  * **`notifierOf`, guard at zero**: no live state read off its result.
+//    It is the accessor with no type to hide behind - `clientOf`'s return
+//    type at least keeps `info`, `dfuPresent`, `connectionState` and
+//    `deviceLoading` out of reach (not `isConnected`, which is on the client
+//    too) - and this hands back the controller, so reading `info` off it in a
+//    `build` is a value frozen at whenever something else last rebuilt the
+//    reader.
+//  * **`notifierOf`, census at six**: every call, per area, so each one is
+//    declared and says what it does with the controller.
 //
-// What neither rule can see:
+// **A census is what makes a guard hard to walk around**, and that is not
+// hypothetical. A reader that takes the controller into a local and only ever
+// asks it for `.client` satisfies the `clientOf` guard - resolving that is
+// dataflow, and these ratchets parse without resolving (ADR 0004) - but it
+// still raises the `of` census. That is exactly how `firmware_card.dart`'s
+// changelog push was found: by a review reading the census budget's own
+// justification for the site and noticing the justification was false. The
+// same hole is in the `notifierOf` guard, and `pages/devices/page.dart`'s
+// `_openFullInfo` sits in it - it reads `info` through a local, so the guard
+// cannot see it either way. What covers that site is its budget line saying
+// it reads once into a pushed sheet, not the guard.
+//
+// What none of the rules can see:
 //
 //  * **A read behind a helper.** `DeviceController deviceOf(BuildContext c) =>
 //    DeviceScope.of(c);` is one counted site, and every caller of it gets a
@@ -66,11 +84,14 @@
 //  * A client passed down from a counted site. Counted where it is read;
 //    invisible below that, which is also the shape ADR 0002 wants.
 //  * A `clientOf` read that should have been an `of` read. That direction is
-//    staleness rather than churn, and the signature is what prevents it:
-//    `clientOf` returns the client, so there is no `info` or `isConnected` on
-//    the other end of it to read stale. ADR 0011's addendum says why that is
-//    the accessor's return type and not a comment.
+//    staleness rather than churn, and the return type is what narrows it:
+//    `info`, `dfuPresent`, `connectionState` and `deviceLoading` are not on a
+//    client. It does not close the door - `FlipperClient` has its own
+//    `isConnected` and `deviceInfoCache` - and ADR 0011's addendum says so
+//    rather than claiming the type settles it.
 //  * `test/`. Only `lib/` is walked, so a fixture may listen however it likes.
+import 'dart:io';
+
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,39 +104,91 @@ import 'ratchet.dart';
 /// editing this map to get CI green reads the line they are changing - which
 /// is the mechanism that caught the `firmware_card.dart` site, so the wording
 /// here is load-bearing and not decoration.
-const Map<String, int> kBudget = {
-  // `app/shell.dart` picks the tab layout from `connectionState`, in its
-  // `build`. One read - and the one place a third accessor would pay, since
-  // the dependency it registers makes the `ListenableBuilder` below it narrow
-  // nothing. ADR 0011's addendum.
-  'app': 1,
-  // The device screen is what the poll is *for*, and these eight are not all
-  // the same kind of read.
-  //
-  // Three want the dependency: `page.dart`'s two `build` reads (the info table
-  // and the connection state) and `widgets/firmware_update_button.dart`'s
-  // `dfuPresent`, also in a `build`.
-  //
-  // Five are callbacks, where the dependency is standing and useless but
-  // there is no accessor that hands over the controller without one -
-  // `_onRefresh` (`synchronize()`), `_playAlert`, `_exportDeviceInfo`
-  // (`buildExportDump()`), `firmware_update_button`'s DFU-only branch
-  // (`setRecovering`), and `_openFullInfo`, which reads `info` once to
-  // populate a sheet. They are the argument for `notifierOf` and they stay
-  // counted here until it exists.
+const Map<String, int> kListeningBudget = {
+  // The device screen is what the poll is *for*. Three reads, all in a
+  // `build`, all of them wanting every notification the poll produces:
+  // `page.dart`'s info table and its connection state, and
+  // `widgets/firmware_update_button.dart`'s `dfuPresent`.
   //
   // Was 9. `widgets/firmware_card.dart`'s changelog push was counted here
   // under the claim that it "hands the live controller to the changelog
   // route", and it handed `device.client` - a client-only read reaching the
   // client through a local, which is the one shape the guard cannot see. A
-  // review found it by reading this comment and checking it. It is `clientOf`
-  // now, which is why the number is 8, and why the wording here is
-  // load-bearing rather than decoration.
-  'pages/devices': 8,
+  // review found it by reading this comment and checking it (#344). Then five
+  // more left for `notifierOf`, which is #407 and the budget below.
+  //
+  // `app` has no entry any more: `shell.dart`'s read was the sixth to go.
+  'pages/devices': 3,
+};
+
+/// Where the controller is taken without a dependency, per area.
+///
+/// Every entry says what the site does with the controller, because the whole
+/// safety of `notifierOf` is that somebody wrote that down. There is no type
+/// stopping the next one reading `info` off it in a `build`.
+const Map<String, int> kNotifierBudget = {
+  // `shell.dart` hands the controller to a `ListenableBuilder` and reads
+  // state off it **only inside that builder**, where the subscription lives:
+  // `_deviceLabel` reads `connectionState`, `device`, `deviceLoading` and
+  // `deviceInfoConnected`, and the builder re-runs on every notification, so
+  // none of them goes stale. What must not happen is a read in
+  // `_AppShellState.build` itself - that is the shape this entry exists to
+  // keep out, and it is why the budget is 1 and not 0. #407.
+  'app': 1,
+  // Four callbacks calling a method - `_onRefresh` (`synchronize()`),
+  // `_playAlert`, `_exportDeviceInfo` (`buildExportDump()`) and
+  // `firmware_update_button`'s DFU-only branch (`setRecovering`) - plus
+  // `_openFullInfo`, which takes **one snapshot** of `deviceInfoEntries` and
+  // `info` to fill a sheet that is then pushed and static.
+  //
+  // That fifth one is the awkward case, and the only reason this comment
+  // matters rather than decorating: the guard below cannot see it, because it
+  // reads through a local, and **nothing executes it either**. Its
+  // `onOpenFullInfo` is wired only when `ctrl.isConnected`, and
+  // `FakeFlipperClient.connectedDevice` returns null on purpose - a non-null
+  // one would put `DeviceController` into `_ensureDataLoading`, which reaches
+  // for a `deviceInfoUpdates` the fake does not answer. So a fixture that
+  // could open the sheet does not exist yet, and this line is the whole of
+  // the site's cover. If the sheet ever stops being a snapshot, it wants
+  // `DeviceScope.of` and a test that drives it.
+  'pages/devices': 5,
 };
 
 /// The name of the scope, spelt once.
 const kScope = 'DeviceScope';
+
+/// The non-listening accessor that hands back the whole controller.
+const kNotifierRead = 'notifierOf';
+
+/// What `DeviceController` exposes as state rather than as an action.
+///
+/// Read off a [DeviceScope.notifierOf] result, every one of these is a value
+/// frozen at whenever something else last rebuilt the reader. `client` is in
+/// the set because `clientOf` is the accessor for it, and taking it off the
+/// controller is a longer way round that also gives the next editor the
+/// controller to misuse.
+///
+/// The actions are deliberately absent, and they are the point of the
+/// accessor: `synchronize`, `playAlert`, `buildExportDump`, `setRecovering`,
+/// `reboot`. They are [MethodInvocation]s rather than property accesses, so
+/// the visitor would not see them anyway - this set is what makes the
+/// distinction a rule rather than a coincidence of syntax.
+const Set<String> kControllerState = {
+  'client',
+  'device',
+  'deviceLoading',
+  'deviceInfoConnected',
+  'alertPlaying',
+  'dfuPresent',
+  'recovering',
+  'info',
+  'isConnected',
+  'connectionState',
+  'firmwareVersion',
+  'buildDate',
+  'deviceName',
+  'deviceInfoEntries',
+};
 
 /// The file that owns the accessors, and so the one file allowed to subscribe
 /// directly.
@@ -151,149 +224,261 @@ bool _isDirectDependOn(MethodInvocation node) {
 bool _isListeningRead(MethodInvocation node) =>
     node.methodName.name == 'of' && isCallOnClass(node, kScope);
 
-/// Every listening read in a unit, and which of them want only `.client`.
+/// Whether [node] is the scope's non-listening controller accessor.
+bool _isNotifierRead(MethodInvocation node) =>
+    node.methodName.name == kNotifierRead && isCallOnClass(node, kScope);
+
+/// The property this read is immediately asked for, if it is asked for one.
 ///
-/// One visit for both rules: the second list is a subset of the first, and the
-/// question they ask is about the same nodes.
+/// `DeviceScope.of(context).client` parses as a [PropertyAccess] over the
+/// invocation, so the parent is the whole question. A null-aware access is the
+/// same read - neither accessor can return null, but a reader that wrote `?.`
+/// is making the same mistake and should get the same message. A method call
+/// on the result is a [MethodInvocation] parent instead and yields null here,
+/// which is what separates `notifierOf(c).synchronize()` from
+/// `notifierOf(c).info`.
+String? _propertyRead(MethodInvocation node) {
+  final parent = node.parent;
+  return parent is PropertyAccess ? parent.propertyName.name : null;
+}
+
+/// Every scope read in a unit, in the four lists the rules need.
+///
+/// One visit for all of them: they ask different questions about the same
+/// nodes, and `countAcrossLib` is ~400 ms a walk.
 class _ScopeReadVisitor extends RecursiveAstVisitor<void> {
   _ScopeReadVisitor(this.unit);
 
   final CompilationUnit unit;
 
+  /// Every listening read.
   final List<int> listening = [];
+
+  /// The listening reads whose only use is `.client`.
   final List<int> clientOnly = [];
+
+  /// Every `notifierOf` read.
+  final List<int> notifier = [];
+
+  /// The `notifierOf` reads that are asked for live state.
+  final List<int> notifierState = [];
 
   int _lineOf(int offset) => unit.lineInfo.getLocation(offset).lineNumber;
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
+    final line = _lineOf(node.offset);
     if (_isListeningRead(node) || _isDirectDependOn(node)) {
-      listening.add(_lineOf(node.offset));
-      if (_wantsOnlyClient(node)) clientOnly.add(_lineOf(node.offset));
+      listening.add(line);
+      if (_propertyRead(node) == 'client') clientOnly.add(line);
+    }
+    if (_isNotifierRead(node)) {
+      notifier.add(line);
+      if (kControllerState.contains(_propertyRead(node))) {
+        notifierState.add(line);
+      }
     }
     super.visitMethodInvocation(node);
   }
-
-  /// Whether the read is immediately asked for `.client` and nothing else.
-  ///
-  /// `DeviceScope.of(context).client` parses as a [PropertyAccess] over the
-  /// invocation, so the parent is the whole question. A null-aware access is
-  /// the same read - `of` cannot return null, but a reader that wrote `?.` is
-  /// making the same mistake and should get the same message.
-  bool _wantsOnlyClient(MethodInvocation node) {
-    final parent = node.parent;
-    return parent is PropertyAccess && parent.propertyName.name == 'client';
-  }
 }
 
-/// The listening reads in [unit], split into every one and the client-only
-/// ones.
-({List<int> listening, List<int> clientOnly}) scopeReadsIn(
-  CompilationUnit unit,
-) {
+/// The scope reads in [unit], as the four lists the rules compare.
+({
+  List<int> listening,
+  List<int> clientOnly,
+  List<int> notifier,
+  List<int> notifierState,
+})
+scopeReadsIn(CompilationUnit unit) {
   final visitor = _ScopeReadVisitor(unit);
   unit.visitChildren(visitor);
-  return (listening: visitor.listening, clientOnly: visitor.clientOnly);
+  return (
+    listening: visitor.listening,
+    clientOnly: visitor.clientOnly,
+    notifier: visitor.notifier,
+    notifierState: visitor.notifierState,
+  );
 }
 
-/// The client-only reads in [path], tallying *every* listening read into
-/// [tally] on the way past.
+/// The guarded reads in [path], tallying the two censuses into
+/// [listeningTally] and [notifierTally] on the way past.
 ///
-/// Top-level, taking the tally as a parameter, rather than a closure inside
-/// `setUpAll`. The guard's budget is empty, and a rule that counts zero over
+/// Top-level, taking the tallies as parameters, rather than a closure inside
+/// `setUpAll`. The guards' budgets are empty, and a rule that counts zero over
 /// real `lib/` can have no vacuity check of its own - so while this lived in
 /// the closure, replacing its result with `const []` left the guard counting
-/// nothing forever and **all eleven cases still passed**. The nine cases below
+/// nothing forever and **all eleven cases still passed**. The cases below
 /// exercised the visitor and never the wiring that feeds it to
-/// [countAcrossLib]. Out here, both halves - the subset that is returned and
-/// the exemption that short-circuits it - are reachable from a case.
-List<int> scopeReadsFor(CompilationUnit unit, String path, AreaTally tally) {
+/// [countAcrossLib]. Out here, every half is reachable from a case.
+///
+/// The two guards share one returned list because `expectWithinBudget` takes
+/// one map and both budgets are zero: a site in either is a failure naming the
+/// file, and the `why` names both accessors. They are told apart by the cases
+/// over this function, which assert the lists separately.
+List<int> scopeReadsFor(
+  CompilationUnit unit,
+  String path,
+  AreaTally listeningTally,
+  AreaTally notifierTally,
+) {
   // The accessor's own `dependOnInheritedWidgetOfExactType` is the one
   // subscription that is not a page's, and it is the whole point of the file.
-  // Exempt from both rules rather than one, so the exemption cannot mean two
+  // Exempt from every rule rather than one, so the exemption cannot mean four
   // things.
   if (isExempt(path, const {kScopeFile})) return const <int>[];
 
   final found = scopeReadsIn(unit);
-  tally.add(path, found.listening);
-  return found.clientOnly;
+  listeningTally.add(path, found.listening);
+  notifierTally.add(path, found.notifier);
+  return [...found.clientOnly, ...found.notifierState];
 }
 
 void main() {
-  // One walk for both rules. `countAcrossLib` runs `git ls-files` and parses
-  // every file under `lib/`, and both numbers fall out of the same visit.
+  // One walk for all four rules. `countAcrossLib` runs `git ls-files` and
+  // parses every file under `lib/`, and every number falls out of one visit.
   late AreaTally listening;
-  late ({Map<String, int> counted, Map<String, List<String>> sites}) clientOnly;
+  late AreaTally notifier;
+  late ({Map<String, int> counted, Map<String, List<String>> sites}) guarded;
 
   setUpAll(() {
-    final tally = AreaTally();
-    clientOnly = countAcrossLib(
-      (unit, path) => scopeReadsFor(unit, path, tally),
+    final listeningTally = AreaTally();
+    final notifierTally = AreaTally();
+    guarded = countAcrossLib(
+      (unit, path) => scopeReadsFor(unit, path, listeningTally, notifierTally),
     );
-    listening = tally;
+    listening = listeningTally;
+    notifier = notifierTally;
   });
 
-  test('nothing subscribes to the scope just to get the client', () {
-    expectWithinBudget(
-      counted: clientOnly.counted,
-      budget: const <String, int>{},
-      sites: clientOnly.sites,
-      budgetFile: 'test/device_scope_listen_test.dart',
-      why:
-          'DeviceScope.of registers a dependency, and the client it hands '
-          'back cannot change - DeviceController._client is final and the '
-          'controller is late final in the one state that builds a scope. So '
-          'the reader rebuilds on every device-info poll, twelve times a '
-          'minute with a Flipper connected, for a value that is the same '
-          'object every time. Nothing clears a dependency on a rebuild, so '
-          'this is standing wherever it is read, not only in a build; in #339 '
-          'it was a crash. Call DeviceScope.clientOf(context) instead - it '
-          'reads the same widget without depending on it. ADR 0011.',
-    );
-  });
-
-  test('and the sites that do subscribe are the ones that read live state', () {
-    // The vacuity guard, in the two forms that cannot go stale. A checked-in
-    // exact count can: `ratchet.dart` argues against one in so many words, and
-    // the first draft of this case asserted `greaterThanOrEqualTo(10)` - so
-    // converting the `firmware_card.dart` site, a strict improvement, failed
-    // here with a message claiming the walk had found nothing. Shrinkage is
-    // reported by `expectWithinBudget` as a nag, which is this repo's
-    // deliberate asymmetry.
+  /// Asserts [tally] is at or under [budget], having found anything at all.
+  ///
+  /// The vacuity half is two checks that cannot go stale, and that matters:
+  /// an exact count can, which `ratchet.dart` argues in so many words. The
+  /// first draft of the listening census asserted `greaterThanOrEqualTo(10)`,
+  /// so converting the `firmware_card.dart` site - a strict improvement -
+  /// failed with a message claiming the walk had found nothing. Shrinkage is
+  /// `expectWithinBudget`'s printed nag, which is this repo's deliberate
+  /// asymmetry.
+  void expectCensus(AreaTally tally, Map<String, int> budget, String why) {
     expect(
-      listening.total,
+      tally.total,
       greaterThan(0),
       reason: 'a walk that counts nothing passes every budget',
     );
-    for (final area in kBudget.keys) {
+    for (final area in budget.keys) {
       expect(
-        listening.counted[area],
+        tally.counted[area],
         isNotNull,
         reason:
-            'no listening read found in $area at all - either the budget '
-            'entry is stale and should go, or the walk stopped seeing it',
+            'no read found in $area at all - either the budget entry is '
+            'stale and should go, or the walk stopped seeing it',
       );
     }
     expectWithinBudget(
-      counted: listening.counted,
-      budget: kBudget,
-      sites: listening.sites,
+      counted: tally.counted,
+      budget: budget,
+      sites: tally.sites,
+      budgetFile: 'test/device_scope_listen_test.dart',
+      why: why,
+    );
+  }
+
+  test('no read is guarded against is left in lib/', () {
+    expectWithinBudget(
+      counted: guarded.counted,
+      budget: const <String, int>{},
+      sites: guarded.sites,
       budgetFile: 'test/device_scope_listen_test.dart',
       why:
-          'A new DeviceScope.of read subscribes its whole element to a '
-          'notifier that fires every five seconds while a Flipper is '
-          'connected, and it keeps that subscription until the element goes - '
-          'a rebuild does not clear it. That is right for a reader of '
-          'isConnected, info, dfuPresent or connectionState, and wrong for '
-          'anything else - use DeviceScope.clientOf for the client. If the '
-          'read really does want live state, raise the number above and say '
-          'what it reads.',
+          'Two rules, both at zero, and the site named above is one of them '
+          '- read the line it points at to see which: a .client taken off '
+          'DeviceScope.of, or live state taken off DeviceScope.notifierOf. '
+          '(1) A listening read whose only use is .client: DeviceScope.of '
+          'registers a dependency and the client cannot change - '
+          'DeviceController._client is final and the controller is late final '
+          'in the one state that builds a scope - so the reader rebuilds on '
+          'every device-info poll for a value that is the same object every '
+          'time, and nothing clears a dependency on a rebuild, so it is '
+          'standing wherever it is read. In #339 that was a crash. Call '
+          'DeviceScope.clientOf(context). (2) Live state read off '
+          'DeviceScope.notifierOf: that read registers no dependency, so the '
+          'value is frozen at whenever something else last rebuilt the '
+          'reader. Call DeviceScope.of(context) if you need it to stay '
+          'current, or notifierOf only to call a method or hand the '
+          'controller on. ADR 0011.',
+    );
+  });
+
+  test('every listening read is one that reads live state in a build', () {
+    expectCensus(
+      listening,
+      kListeningBudget,
+      'A new DeviceScope.of read subscribes its whole element to a notifier '
+      'that fires every five seconds while a Flipper is connected, and it '
+      'keeps that subscription until the element goes - a rebuild does not '
+      'clear it. That is right for a build that reads isConnected, info, '
+      'dfuPresent or connectionState, and wrong for anything else: use '
+      'clientOf for the client and notifierOf to call a method. If the read '
+      'really does read live state in a build, raise the number and say what '
+      'it reads.',
+    );
+  });
+
+  test('and every notifierOf read says what it does with the controller', () {
+    expectCensus(
+      notifier,
+      kNotifierBudget,
+      'notifierOf hands back the whole controller with no dependency, so it '
+      'is the one accessor with no type stopping a stale read - the guard '
+      'above catches the obvious shape and cannot see one taken through a '
+      'local. What covers that is this budget: raise the number and write '
+      'down what the site does with the controller. If it calls a method or '
+      'hands it to a Listenable-taking widget, that is what the accessor is '
+      'for; if it reads state in a build, it wants DeviceScope.of.',
+    );
+  });
+
+  test('the state set is every getter DeviceController exposes', () {
+    // `kControllerState` is a hand-copied mirror of another file, and the
+    // `notifierOf` guard is only as complete as it is: a getter added to
+    // `DeviceController` tomorrow is invisible to the rule for ever, silently,
+    // which is the one failure this whole file exists to prevent. So the copy
+    // is checked rather than trusted - the shape
+    // `test/native_struct_mirror_test.dart` established.
+    //
+    // Getters only. The actions are what `notifierOf` is *for*, and they are
+    // `MethodInvocation`s rather than property accesses, so the visitor would
+    // not see them anyway.
+    const path = 'lib/pages/devices/controllers/device.dart';
+    final unit = parseUnit(File(path).readAsStringSync(), path: path);
+    final visitor = _GetterVisitor();
+    unit.visitChildren(visitor);
+
+    expect(
+      visitor.getters,
+      hasLength(greaterThan(5)),
+      reason: 'found no getters at all in $path - the walk is broken',
+    );
+    expect(
+      visitor.getters,
+      kControllerState,
+      reason:
+          'kControllerState has drifted from DeviceController. Add the new '
+          'getter to the set, or - if it really is not device state a build '
+          'could read stale - leave it out and say why here. Leaving it out '
+          'silently means DeviceScope.notifierOf(context).<it> stops being '
+          'caught.',
     );
   });
 
   group('what counts as a listening read', () {
-    ({List<int> listening, List<int> clientOnly}) found(String source) =>
-        scopeReadsIn(parseUnit(source));
+    ({
+      List<int> listening,
+      List<int> clientOnly,
+      List<int> notifier,
+      List<int> notifierState,
+    })
+    found(String source) => scopeReadsIn(parseUnit(source));
 
     test('the shape that this change removed', () {
       final reads = found('''
@@ -419,35 +604,210 @@ void main() {
     });
   });
 
+  group('what counts as a stale read off notifierOf', () {
+    ({
+      List<int> listening,
+      List<int> clientOnly,
+      List<int> notifier,
+      List<int> notifierState,
+    })
+    found(String source) => scopeReadsIn(parseUnit(source));
+
+    test('reading live state off it is the whole point of the rule', () {
+      final reads = found('''
+        Widget build(BuildContext context) =>
+            Text(DeviceScope.notifierOf(context).info.toString());
+      ''');
+      expect(reads.notifier, [2]);
+      expect(reads.notifierState, [2]);
+    });
+
+    test('and so is the client, which has its own accessor', () {
+      final reads = found('''
+        void f(BuildContext context) {
+          g(DeviceScope.notifierOf(context).client);
+        }
+      ''');
+      expect(reads.notifierState, [
+        2,
+      ], reason: 'clientOf is the shorter way round and gives away less');
+    });
+
+    test('calling a method on it is not a read', () {
+      final reads = found('''
+        void f(BuildContext context) {
+          DeviceScope.notifierOf(context).synchronize();
+        }
+      ''');
+      expect(reads.notifier, [2], reason: 'counted, so it has to be declared');
+      expect(
+        reads.notifierState,
+        isEmpty,
+        reason: 'a MethodInvocation parent, which is what the accessor is for',
+      );
+    });
+
+    test('and a method whose name is a state member is still a call', () {
+      // What pins the *parent type* rather than the name set. Every real
+      // method on the controller - `synchronize`, `playAlert`,
+      // `buildExportDump` - is absent from `kControllerState`, so a rule that
+      // ignored the parent type entirely and matched on the name alone would
+      // still pass the case above. A call spelt `info()` separates them: the
+      // name is in the set and the parent is a [MethodInvocation].
+      final reads = found('''
+        void f(BuildContext context) {
+          DeviceScope.notifierOf(context).info();
+        }
+      ''');
+      expect(reads.notifier, [2]);
+      expect(
+        reads.notifierState,
+        isEmpty,
+        reason: 'a call is a call, whatever it is called',
+      );
+    });
+
+    test('nor is handing the controller on untouched', () {
+      final reads = found('''
+        Widget build(BuildContext context) => ListenableBuilder(
+          listenable: DeviceScope.notifierOf(context),
+          builder: (context, _) => const SizedBox(),
+        );
+      ''');
+      expect(reads.notifier, [2]);
+      expect(reads.notifierState, isEmpty);
+    });
+
+    test('a getter that is not state is not caught', () {
+      final reads = found('''
+        void f(BuildContext context) {
+          g(DeviceScope.notifierOf(context).hashCode);
+        }
+      ''');
+      expect(
+        reads.notifierState,
+        isEmpty,
+        reason: 'the set is DeviceController\'s state, not every property',
+      );
+    });
+
+    test('a listening read is not a notifierOf read', () {
+      final reads = found('''
+        Widget build(BuildContext context) =>
+            Text(DeviceScope.of(context).info.toString());
+      ''');
+      expect(reads.notifier, isEmpty);
+      expect(reads.notifierState, isEmpty);
+      expect(reads.listening, [2], reason: 'it belongs to the other census');
+    });
+
+    test('a read taken into a local is invisible here too', () {
+      final reads = found('''
+        void f(BuildContext context) {
+          final ctrl = DeviceScope.notifierOf(context);
+          g(ctrl.info);
+        }
+      ''');
+      expect(
+        reads.notifierState,
+        isEmpty,
+        reason:
+            'which is the hole _openFullInfo sits in, covered by the '
+            'budget line rather than by this rule',
+      );
+      expect(reads.notifier, [2], reason: 'but the census still counts it');
+    });
+  });
+
   group('what the walk is handed', () {
-    const source = '''
+    const listeningSource = '''
       Widget build(BuildContext context) =>
           QPageAppBar(client: DeviceScope.of(context).client);
     ''';
 
-    test('a page contributes to the guard and to the census', () {
-      final tally = AreaTally();
+    const notifierSource = '''
+      Widget build(BuildContext context) =>
+          Text(DeviceScope.notifierOf(context).info.toString());
+    ''';
+
+    test('a client-only listening read reaches the guard and the census', () {
+      final listening = AreaTally();
+      final notifier = AreaTally();
       final lines = scopeReadsFor(
-        parseUnit(source),
+        parseUnit(listeningSource),
         'lib/pages/about/license_page.dart',
-        tally,
+        listening,
+        notifier,
       );
       expect(lines, [2], reason: 'the guard is fed the client-only subset');
-      expect(tally.counted, {'pages/about': 1});
-      expect(tally.sites, {
+      expect(listening.counted, {'pages/about': 1});
+      expect(listening.sites, {
         'pages/about': ['lib/pages/about/license_page.dart:2'],
       });
+      expect(notifier.counted, isEmpty);
     });
 
-    test('and the scope file contributes to neither', () {
-      final tally = AreaTally();
-      final lines = scopeReadsFor(parseUnit(source), kScopeFile, tally);
-      expect(lines, isEmpty);
+    test('a stale notifierOf read reaches the guard and the other census', () {
+      final listening = AreaTally();
+      final notifier = AreaTally();
+      final lines = scopeReadsFor(
+        parseUnit(notifierSource),
+        'lib/app/shell.dart',
+        listening,
+        notifier,
+      );
+      expect(lines, [2], reason: 'both guards share the one returned list');
+      expect(notifier.counted, {'app': 1});
       expect(
-        tally.counted,
+        listening.counted,
         isEmpty,
-        reason: 'the exemption covers both rules, not just the guard',
+        reason: 'notifierOf does not subscribe, so it is not in that census',
       );
     });
+
+    test('and the scope file contributes to none of them', () {
+      final listening = AreaTally();
+      final notifier = AreaTally();
+      expect(
+        scopeReadsFor(
+          parseUnit(listeningSource),
+          kScopeFile,
+          listening,
+          notifier,
+        ),
+        isEmpty,
+      );
+      expect(
+        scopeReadsFor(
+          parseUnit(notifierSource),
+          kScopeFile,
+          listening,
+          notifier,
+        ),
+        isEmpty,
+      );
+      expect(
+        listening.counted,
+        isEmpty,
+        reason: 'the exemption covers every rule, not just the guards',
+      );
+      expect(notifier.counted, isEmpty);
+    });
   });
+}
+
+/// The public getter names declared in a unit.
+///
+/// Only used on `controllers/device.dart`, which holds one class - so no class
+/// filtering is needed, and the test asserts it found something rather than
+/// trusting that.
+class _GetterVisitor extends RecursiveAstVisitor<void> {
+  final Set<String> getters = {};
+
+  @override
+  void visitMethodDeclaration(MethodDeclaration node) {
+    final name = node.name.lexeme;
+    if (node.isGetter && !name.startsWith('_')) getters.add(name);
+    super.visitMethodDeclaration(node);
+  }
 }

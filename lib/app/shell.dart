@@ -204,7 +204,17 @@ class _AppShellState extends State<AppShell> {
 
     // Provided above the Navigator now, so this reads it like every other
     // page rather than owning it - ADR 0011.
-    final device = DeviceScope.of(context);
+    //
+    // `notifierOf`, so the poll does not rebuild *this*. The read used to be
+    // listening, which subscribed this element - so every tick re-ran the
+    // lines above as well as the builder below, and the `ListenableBuilder`
+    // narrowed nothing at all.
+    //
+    // The controller's state *is* read, by `_deviceLabel`, but only from
+    // inside the builder - whose element holds the subscription, so the label
+    // follows the device. Nothing in the lines below this one reads state off
+    // it, which is what makes a non-listening read correct here. #407.
+    final device = DeviceScope.notifierOf(context);
 
     // Tier 1. The only permission that reaches it is Bluetooth on iOS,
     // where `transport/usb/ios.dart` throws `UnsupportedError` and there is
@@ -216,18 +226,48 @@ class _AppShellState extends State<AppShell> {
     // ends up staring at the empty app.
     if (_bluetoothBlocks(context)) return _blockingGate(context);
 
+    // **The page stack is built out here and handed through, not rebuilt
+    // inside the builder.** `ListenableBuilder.child` exists for exactly this:
+    // it passes the same widget instance back, and `Element.updateChild`
+    // skips a child whose widget is identical - so a notification rebuilds
+    // this scaffold and its nav bar, and **every mounted page's `build` is
+    // skipped**.
+    //
+    // That is the saving, and it is worth being exact about: built inside the
+    // closure it was a new `IndexedStack` every tick, which *updates* its
+    // children rather than tearing them down, so `State` objects and scroll
+    // positions survived either way. What they paid was a `build` per mounted
+    // page, twelve times a minute.
+    //
+    // The only thing in here that depends on the device is `deviceLabel` - one
+    // string, drawn in the bottom bar - and the wide layout does not draw even
+    // that: `FlipperRootScaffold` ignores `deviceLabel`, `currentTab` and
+    // `onTabSelected` entirely when `isWide`, so on desktop the poll was
+    // rebuilding the whole app for a value nothing displayed. #407.
+    final pages = IndexedStack(
+      index: slot,
+      children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
+    );
+
+    // Out here with it: neither depends on the device, and `_railGroups`
+    // builds a fresh list of lists, with a `FlipperRailIcon` per item, every
+    // time it is called. Inside the builder they were recomputed on every
+    // tick along with the label.
+    // `deviceLabel` is the only thing in the scaffold that a notification can
+    // change, so it is the only thing left inside.
+    final railGroups = _railGroups(colors, slot);
+    final currentTab = _tabOf(slot);
+
     return ListenableBuilder(
       listenable: device,
-      builder: (context, _) {
+      child: pages,
+      builder: (context, child) {
         return FlipperRootScaffold(
-          currentTab: _tabOf(slot),
+          currentTab: currentTab,
           onTabSelected: (tab) => _select(_slotOfTab(tab)),
           deviceLabel: _deviceLabel(device),
-          railGroups: _railGroups(colors, slot),
-          child: IndexedStack(
-            index: slot,
-            children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
-          ),
+          railGroups: railGroups,
+          child: child!,
         );
       },
     );

@@ -8,12 +8,16 @@ import 'package:qunleashed/pages/devices/device_scope.dart';
 
 import 'firmware_fixture.dart';
 
-/// What `DeviceScope.clientOf` does, and what it deliberately does not do.
+/// What the two non-listening accessors do, and what they deliberately do
+/// not do.
 ///
 /// `test/device_scope_listen_test.dart` is the ratchet that keeps the 30
-/// client-only reads off `of`; this is the behaviour that makes moving them
-/// worth doing, and the one consequence of the move that is a real difference
-/// rather than a saving.
+/// client-only reads on `clientOf` and the 6 controller reads on `notifierOf`;
+/// this is the behaviour that makes moving them worth doing, and the one
+/// consequence of the move that is a real difference rather than a saving.
+///
+/// `test/shell_poll_rebuild_test.dart` is the other half of `notifierOf`:
+/// what the shell stops rebuilding once the read stops subscribing.
 ///
 /// Every case here asserts a **pair**, because "nothing rebuilt" also passes
 /// when the notification never arrived. The witness is [DeviceScopeProbe] -
@@ -186,6 +190,91 @@ void main() {
     await closeDevice(tester, first);
     await closeDevice(tester, second);
   });
+
+  testWidgets('notifierOf hands back the controller without a dependency', (
+    tester,
+  ) async {
+    final (device, client) = mountedDevice();
+    final seen = <DeviceController>[];
+
+    await tester.pumpWidget(
+      wrapWithDevice(
+        Stack(
+          children: [
+            DeviceScopeProbe(onBuild: () => listeningBuilds++),
+            _NotifierReader(onRead: seen.add),
+          ],
+        ),
+        device,
+      ),
+    );
+    await tester.pump();
+
+    expect(seen, [same(device)], reason: 'the controller the scope carries');
+
+    final listeningBefore = listeningBuilds;
+    final seenBefore = seen.length;
+
+    // Not `arrive()`: that puts an event on `connectionStream`, which other
+    // controllers listen to as well, and this case is about the scope's
+    // notification alone. `setDfuPresent` notifies the device controller and
+    // nothing else. #410 is where that distinction came from.
+    device.setDfuPresent(true);
+    await tester.pumpAndSettle();
+
+    expect(
+      listeningBuilds,
+      greaterThan(listeningBefore),
+      reason:
+          'the notification reached the scope, so the line below is a '
+          'property of notifierOf and not of a notification that never came',
+    );
+    expect(seen, hasLength(seenBefore));
+
+    await closeDevice(tester, device);
+    expect(client, isNotNull);
+  });
+
+  testWidgets('and it is the same object clientOf takes its client from', (
+    tester,
+  ) async {
+    // The two accessors have to agree, or `notifierOf(c).client` and
+    // `clientOf(c)` are different objects and the ratchet's rule that one
+    // replaces the other is wrong.
+    final (device, client) = mountedDevice();
+    final seen = <DeviceController>[];
+
+    await tester.pumpWidget(
+      wrapWithDevice(
+        Stack(
+          children: [
+            _ClientReader(onRead: read.add),
+            _NotifierReader(onRead: seen.add),
+          ],
+        ),
+        device,
+      ),
+    );
+    await tester.pump();
+
+    expect(read.single, same(client));
+    expect(seen.single.client, same(read.single));
+
+    await closeDevice(tester, device);
+  });
+}
+
+/// A widget that reads the controller the non-listening way.
+class _NotifierReader extends StatelessWidget {
+  const _NotifierReader({required this.onRead});
+
+  final void Function(DeviceController) onRead;
+
+  @override
+  Widget build(BuildContext context) {
+    onRead(DeviceScope.notifierOf(context));
+    return const SizedBox.shrink();
+  }
 }
 
 /// A widget that reads the client the non-listening way, and reports each read.

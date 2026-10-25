@@ -1,6 +1,14 @@
 ## Main changes
 - Version: 0.17.1
+- Archive: **A bulk delete no longer half-applies** - a link that was down skipped the device half in silence, removed the local copy anyway and reported success, so the next sync pulled the file straight back; each key is now all of it or none of it, the wait is held open for a link that is settling, and a refused restore or save is recorded rather than only shown (by @mishamyte | PR #399 | Closes #373, #374)
 ## Other changes
+- Device: Stop the whole app rebuilding on the five-second device poll - the shell was subscribed for one label in the bottom bar, which a desktop window does not even draw, and was rebuilding every open tab to redraw it (by @mishamyte | PR #412 | Closes #407)
+- Device: Read the device client without subscribing to the device - thirty call sites across eighteen files stop rebuilding on the five-second info poll, and one tap on a firmware changelog stops subscribing the device screen for the rest of the session (by @mishamyte | PR #406 | Closes #344)
+- Quality: The archive's four copies of multi-select became one mixin, and its category, deleted and favourites screens - which were one screen written three times - became one frame; a ratchet holds the first (by @mishamyte | PR #403, #405 | Closes #375, #376, #404)
+- Fixed: Say that the system refused a folder pick, instead of reading it as a cancel (by @mishamyte | PR #402 | Closes #353)
+- Apps: Reach the apps-manager folder sort, and order it the way the archive does (by @mishamyte | PR #401 | Closes #314)
+- Crash reports: Report a handled failure without uploading a session replay (by @mishamyte | PR #400 | Closes #333)
+- Connection: Say Bluetooth where the connect surfaces only showed USB (by @mishamyte | PR #397 | Closes #381)
 - SubGHz: Write a recovered remote as the firmware reads it back, and list BFT (by @mishamyte | PR #395)
 - Connection: Bump flipperlib: Android's service discovery that failed to classify (by @mishamyte | PR #394 | Closes #393)
 - Crash reports: Treat a platform that cannot answer about location as a readiness (by @mishamyte | PR #392)

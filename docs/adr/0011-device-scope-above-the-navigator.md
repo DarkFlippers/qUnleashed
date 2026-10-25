@@ -175,23 +175,75 @@ client-only listening reads at zero, and a per-area census of every listening
 read, because the zero-budget rule cannot see a controller taken into a local
 and that census can.
 
-The **nine** reads that keep `of` are not all live-state readers, and the
-census budget says which is which. **Four want the dependency**: they read
-live state in a `build` — `app/shell.dart`, two in `pages/devices/page.dart`,
-and `firmware_update_button.dart`'s `dfuPresent`. **Five do not**: they are
-callbacks, where a dependency is standing and useless. Four of those are
-action calls through the controller — `synchronize()`, `playAlert()`,
-`buildExportDump()`, `setRecovering()` — and the fifth, `_openFullInfo`, reads
-`info` once to populate a sheet.
+The **nine** reads that kept `of` after this change were not all live-state
+readers, and the census budget said which was which. **Four wanted the
+dependency**: they read live state in a `build` — `app/shell.dart`, two in
+`pages/devices/page.dart`, and `firmware_update_button.dart`'s `dfuPresent`.
+**Five did not**: they were callbacks, where a dependency is standing and
+useless. Four of those were action calls through the controller —
+`synchronize()`, `playAlert()`, `buildExportDump()`, `setRecovering()` — and
+the fifth, `_openFullInfo`, took one snapshot of `info` to populate a sheet.
 
-So the accessor pair is one short. There are three needs here, not two: the
+So the accessor pair was one short. There are three needs here, not two: the
 client with no dependency, live state read in a `build`, and **the controller
 object for a callback or a `Listenable`-taking widget, which wants no
-dependency either**. A `notifierOf` is the obvious next step and deliberately
-not taken here, because a non-listening controller read is the staleness bug
-`clientOf`'s return type exists to prevent — the mitigation would have to be
-the name and the census rather than the type, and that wants its own decision
-rather than a line in this addendum. `app/shell.dart:207` is the site where it
-would pay: the listening read there is in `build`, so the `ListenableBuilder`
-below it narrows nothing, and the app's root scaffold rebuilds whole on every
-poll tick.
+dependency either**.
+
+A third accessor for that was **deliberately not taken in this change**: a
+non-listening controller read is the staleness bug `clientOf`'s return type
+exists to prevent, so its mitigation would have to be a name and a ratchet
+rather than a type, and that wanted deciding on its own rather than as a line
+here. The answer came the next day, and is the addendum below; the figures in
+this paragraph are what `lib/` held before it.
+
+## Addendum: the third accessor (2026-10-26, #407)
+
+`notifierOf` landed, and the split across `lib/` is now 30 `clientOf`, 6
+`notifierOf`, 3 `of`.
+
+```dart
+static DeviceController notifierOf(BuildContext context) =>
+    context.getInheritedWidgetOfExactType<DeviceScope>()!.notifier!;
+```
+
+**It is the accessor with nothing to hide behind,** and that is the whole of
+the decision. `clientOf`'s return type narrows the surface — `info`,
+`dfuPresent`, `connectionState` and `deviceLoading` are not reachable on a
+client, while `isConnected` and `deviceInfoCache` are, which the addendum above
+is careful to say. `notifierOf` narrows nothing: it hands back the controller
+and with it every read that one keeps out of reach. What stands in for the
+type is the name, its doc comment, and two rules in
+`test/device_scope_listen_test.dart` — a guard at zero on live state read off
+the result, and a census of every call, so each site is declared and says what
+it does with the controller.
+
+The guard is syntactic, so it sees `notifierOf(c).info` and not a controller
+taken into a local first. `pages/devices/page.dart`'s `_openFullInfo` sits in
+exactly that hole: it reads `info` once, through a local, to fill a sheet that
+is then pushed and static. What covers it is its census budget line, not the
+guard — which is the same division of labour that found the `firmware_card.dart`
+site in #344, and the reason the censuses exist beside the guards rather than
+instead of them.
+
+### What it was for
+
+`app/shell.dart` was the site that paid. Its read was `of`, in `build`, so the
+shell's own element was a dependent and **the `ListenableBuilder` beneath that
+read narrowed nothing** — the thing it was meant to protect was being rebuilt
+from above it. The other half was that the `IndexedStack` holding every
+mounted tab was constructed *inside* that builder, so even a rebuild starting
+at the builder produced a new instance and re-ran every page's `build`. It is
+passed through `ListenableBuilder.child` now, and `Element.updateChild` skips
+a child whose widget is the identical instance.
+
+The sharp edge is the wide layout: `FlipperRootScaffold.build` ignores
+`deviceLabel` entirely when `isWide`, so on a desktop window the poll was
+rebuilding the whole app for a value nothing displayed.
+
+`test/shell_poll_rebuild_test.dart` holds both halves. It drives
+`DeviceController.setRecovering` rather than a connection event, because
+`ArchiveController` listens to `connectionStream` too and `_AppShellState`
+answers *its* notifications with a `setState` that does not ask what changed —
+a second path to the same waste, filed as #410 rather than fixed here. Which
+of the two costs more is not measured: the poll's rate is known and the
+archive controller's is not.
