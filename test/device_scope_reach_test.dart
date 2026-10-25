@@ -1,3 +1,4 @@
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/app/app.dart';
@@ -54,6 +55,20 @@ void main() {
     return context.dependOnInheritedWidgetOfExactType<DeviceScope>()?.notifier;
   }
 
+  /// The client [DeviceScope.clientOf] finds at [key]'s context.
+  ///
+  /// The reach above is asserted through `dependOn...`, which is what `of`
+  /// uses. Since #344 the thirty client-only sites go through `clientOf` and
+  /// its `getInheritedWidgetOfExactType` instead, so the accessor most of
+  /// `lib/` now depends on is checked here too. The two resolve through the
+  /// same `_inheritedElements` map, which is the reason this is one line
+  /// rather than a case of its own.
+  FlipperClient? clientReachedFrom(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return null;
+    return DeviceScope.clientOf(context);
+  }
+
   /// The reporting switch found at [key]'s context, or null if there is no
   /// scope.
   DiagnosticsSettings? switchReachedFrom(GlobalKey key) {
@@ -99,6 +114,7 @@ void main() {
     // Read before the tree goes, asserted after: `closeDevice` has to run
     // whatever this says, or a failure here is reported as a pending timer.
     final reached = reachedFrom(key);
+    final reachedClient = clientReachedFrom(key);
     final reachedSwitch = switchReachedFrom(key);
     final reachedPermissions = permissionsReachedFrom(key);
     await closeDevice(tester, device);
@@ -107,6 +123,11 @@ void main() {
       reached,
       same(device),
       reason: 'the same controller the shell reads, not a second one',
+    );
+    expect(
+      reachedClient,
+      same(client),
+      reason: 'and the accessor the thirty converted sites use finds it too',
     );
     expect(
       reachedSwitch,

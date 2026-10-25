@@ -48,7 +48,7 @@ class _AppLicensePageState extends State<AppLicensePage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: context.l10n.licenseTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

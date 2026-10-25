@@ -9,7 +9,6 @@ import 'package:qunleashed/pages/apps/catalog/widgets/action_button.dart';
 import 'package:qunleashed/pages/apps/data/catalog_api.dart';
 import 'package:qunleashed/pages/apps/data/models/detail.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
-import 'package:qunleashed/pages/devices/device_scope.dart';
 
 import 'firmware_fixture.dart';
 
@@ -50,11 +49,11 @@ import 'firmware_fixture.dart';
 /// the notification never arrived: the renderers are the *same* instances
 /// afterwards, and something that legitimately listens is *not*.
 ///
-/// For the poll that something is [_ScopeProbe], a widget of this test's own
-/// mounted under the same scope, rather than the bar. The bar would do today,
-/// since it is what reads the scope - but the page does not *need* that
-/// dependency (the client it wants is one object for the tree's life, and
-/// `QPageAppBar` subscribes to the device's streams itself), and
+/// For the poll that something is [DeviceScopeProbe], a widget mounted under
+/// the same scope, rather than the bar. The bar would do today, since it is
+/// what reads the scope - but the page does not *need* that dependency (the
+/// client it wants is one object for the tree's life, and `QPageAppBar`
+/// subscribes to the device's streams itself), and
 /// `firmware_changelog_page.dart` already takes its client as a parameter
 /// instead. Were this page tightened the same way, a witness on the bar would
 /// fail reading "the poll never arrived" on a page that had just got strictly
@@ -63,13 +62,25 @@ import 'firmware_fixture.dart';
 /// For install progress the witnesses are the two widgets the fix claims to
 /// have kept listening: the install button and the bar's actions.
 ///
+/// **That tightening happened, in #344**, and the choice above is why this
+/// file needed no change for it: `_DetailAppBar` reads
+/// `DeviceScope.clientOf` now, so nothing on this page depends on the scope at
+/// all. The first case below still kills putting `of` back in
+/// `_AppDetailPageState.build`, but it no longer distinguishes *the read stops
+/// at the bar* from *the read registers no dependency* - it would pass for any
+/// arrangement of the bar, including the inlining that `detail_page.dart` now
+/// says would be safe. The second case is untouched: the `AnimatedBuilder` on
+/// the catalog controller is still there, and still the only thing stopping
+/// the delete action going stale.
+///
 /// What that pair shows is that nothing *above* the renderers rebuilt. It is
 /// not proof that no descendant did, and no case here drives a selection or
 /// the crash itself; the mechanism above is why the property is worth holding.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  /// How often a widget depending on the scope has rebuilt - see [_ScopeProbe].
+  /// How often a widget depending on the scope has rebuilt - see
+  /// [DeviceScopeProbe].
   ///
   /// Never reset: every assertion on it is a delta against a count taken in
   /// the case itself.
@@ -127,7 +138,7 @@ void main() {
         Stack(
           children: [
             AppDetailPage(alias: 'test-app', controller: controller),
-            _ScopeProbe(onBuild: () => scopeBuilds++),
+            DeviceScopeProbe(onBuild: () => scopeBuilds++),
           ],
         ),
         device,
@@ -156,11 +167,7 @@ void main() {
     final before = renderersIn(tester);
     final probeBefore = scopeBuilds;
 
-    // A device arriving, which `DeviceController` turns into the same
-    // `notifyListeners` the five-second info poll does. The poll itself cannot
-    // be driven here - `FakeFlipperClient` carries connection events and
-    // nothing else - and the scope does not care which of the two fired.
-    client.arrive();
+    client.arrive(); // the poll's stand-in; see `FakeFlipperClient.arrive`.
     await tester.pumpAndSettle();
 
     // It reached the scope's dependents, so "nothing rebuilt" below is the
@@ -232,21 +239,4 @@ class _FixedDetailController extends AppsCatalogController {
   AppsCatalogApi get api => _api;
 
   void bump() => notifyListeners();
-}
-
-/// A widget that depends on [DeviceScope] and counts its own builds.
-///
-/// The witness for the battery-poll case: it rebuilds whenever the scope
-/// notifies, whatever the page under test chooses to depend on.
-class _ScopeProbe extends StatelessWidget {
-  const _ScopeProbe({required this.onBuild});
-
-  final VoidCallback onBuild;
-
-  @override
-  Widget build(BuildContext context) {
-    DeviceScope.of(context);
-    onBuild();
-    return const SizedBox.shrink();
-  }
 }

@@ -97,10 +97,37 @@ String areaOf(String path) {
   return (over: over, under: under);
 }
 
+/// Per-area totals and, for a failure message, where each counted site is.
+///
+/// [countAcrossLib] fills one of these as it walks. It is a class rather than
+/// the two bare maps because a ratchet wanting a *second* number out of the
+/// same walk has to accumulate it itself, and the bookkeeping was being copied
+/// to do that: `device_scope_listen_test.dart` tallies every listening read
+/// while the walk returns the client-only subset of them. Extracted at that
+/// second user, which is this file's charter.
+class AreaTally {
+  final Map<String, int> counted = {};
+  final Map<String, List<String>> sites = {};
+
+  /// Records the [lines] found in [path], under that path's area.
+  void add(String path, List<int> lines) {
+    if (lines.isEmpty) return;
+    final area = areaOf(path);
+    counted.update(area, (n) => n + lines.length, ifAbsent: () => lines.length);
+    sites
+        .putIfAbsent(area, () => <String>[])
+        .addAll(lines.map((line) => '$path:$line'));
+  }
+
+  /// Every area's count added up, for a vacuity check.
+  int get total => counted.values.fold(0, (sum, n) => sum + n);
+}
+
 /// Walks every Dart file under `lib/`, counting what [linesIn] finds.
 ///
 /// Returns the per-area totals and, for a failure message, where each counted
-/// site is.
+/// site is. The record rather than the [AreaTally] itself, because fifteen
+/// ratchets destructure it and none of them wants the accumulator.
 ({Map<String, int> counted, Map<String, List<String>> sites}) countAcrossLib(
   List<int> Function(CompilationUnit unit, String path) linesIn,
 ) {
@@ -115,21 +142,14 @@ String areaOf(String path) {
     reason: 'expected the whole of lib/, got ${files.length} files',
   );
 
-  final counted = <String, int>{};
-  final sites = <String, List<String>>{};
+  final tally = AreaTally();
   for (final path in files) {
-    final lines = linesIn(
-      parseUnit(File(path).readAsStringSync(), path: path),
+    tally.add(
       path,
+      linesIn(parseUnit(File(path).readAsStringSync(), path: path), path),
     );
-    if (lines.isEmpty) continue;
-    final area = areaOf(path);
-    counted.update(area, (n) => n + lines.length, ifAbsent: () => lines.length);
-    sites
-        .putIfAbsent(area, () => <String>[])
-        .addAll(lines.map((line) => '$path:$line'));
   }
-  return (counted: counted, sites: sites);
+  return (counted: tally.counted, sites: tally.sites);
 }
 
 /// Asserts [counted] is at or under [budget], and says where if it is not.
@@ -177,25 +197,40 @@ void expectWithinBudget({
 /// by splitting on one.
 bool isExempt(String path, Set<String> exempt) => exempt.any(path.endsWith);
 
+/// Whether [node] is a static call on the class named [className], however
+/// that class was imported.
+///
+/// The prefixed form is why it is worth sharing: one
+/// `import '.../logging.dart' as log;` would zero out a whole file's
+/// contribution to a rule that only knew the bare name, and nobody adding that
+/// import would connect it to a ratchet.
+///
+/// What it cannot see is the other redirection: `typedef Log = LogService;`
+/// gives the target a different name, and nothing here resolves a typedef.
+/// That is a blind spot for every caller, and each says so.
+bool isCallOnClass(MethodInvocation node, String className) {
+  final target = node.target;
+  if (target is SimpleIdentifier) return target.name == className;
+  if (target is PrefixedIdentifier) {
+    return target.identifier.name == className;
+  }
+  return false;
+}
+
 /// Whether [node] is a call on `LogService`, however it was imported.
 ///
 /// Shared because two ratchets ask it and a third would — the log-level budget
-/// and the `caught` budget had byte-identical copies. The prefixed form is why
-/// it is worth sharing: one `import '.../logging.dart' as log;` would zero out
-/// a whole file's contribution to whichever copy had not been taught about it,
-/// and nobody adding that import would connect it to a ratchet.
+/// and the `caught` budget had byte-identical copies. The third arrived as
+/// `device_scope_listen_test.dart` asking the same question about
+/// `DeviceScope`, which is what pushed the target test down into
+/// [isCallOnClass]; this stayed, because two ratchets read better for naming
+/// the class once than for passing it in.
 ///
 /// The visitors stay with their own tests, as this file's header says. They
 /// differ — one tracks catch depth and one does not — and only the predicate
 /// is common.
-bool isLogServiceCall(MethodInvocation node) {
-  final target = node.target;
-  if (target is SimpleIdentifier) return target.name == 'LogService';
-  if (target is PrefixedIdentifier) {
-    return target.identifier.name == 'LogService';
-  }
-  return false;
-}
+bool isLogServiceCall(MethodInvocation node) =>
+    isCallOnClass(node, 'LogService');
 
 /// The argument called [name] in [arguments], or null if it is not passed.
 ///

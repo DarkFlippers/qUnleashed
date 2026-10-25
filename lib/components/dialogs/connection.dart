@@ -27,7 +27,7 @@ Future<FlipperDevice?> showConnectionDialog(
   // above the Navigator, so every caller of this has one - and the dialog
   // reaching for the global itself was the last thing in `components`
   // resolving its own. ADR 0002.
-  final client = DeviceScope.of(context).client;
+  final client = DeviceScope.clientOf(context);
   return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,

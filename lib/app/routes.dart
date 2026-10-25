@@ -16,7 +16,7 @@ import '../pages/devices/device_scope.dart';
 void registerAppRoutes() {
   registerRoute(
     AppRoute.remoteControl,
-    (context, _) => RemoteControlPage(client: DeviceScope.of(context).client),
+    (context, _) => RemoteControlPage(client: DeviceScope.clientOf(context)),
   );
   registerRoute(AppRoute.pixelEditor, (_, args) {
     final editor = args as PixelEditorArgs;
@@ -28,7 +28,7 @@ void registerAppRoutes() {
   });
   registerRoute(
     AppRoute.archiveMap,
-    (context, _) => FlipperMapPage(client: DeviceScope.of(context).client),
+    (context, _) => FlipperMapPage(client: DeviceScope.clientOf(context)),
   );
   registerRoute(AppRoute.fliblerProject, (_, _) => const FliblerProjectPage());
   registerRoute(AppRoute.appSettings, (_, _) => const SettingsPage());

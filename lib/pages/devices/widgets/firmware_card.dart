@@ -260,7 +260,15 @@ class _FirmwareCardState extends State<FirmwareCard> {
     // No `DeviceScope` around this any more: it is provided above the
     // Navigator, so a pushed route is inside it - ADR 0011. It used to be
     // re-provided here, and this was the only push that remembered to.
-    final device = DeviceScope.of(context);
+    //
+    // `clientOf`, and that matters more here than at a read in a `build`.
+    // Nothing clears `Element._dependencies` on a rebuild - only `activate`
+    // and `deactivate` touch it - so a listening read from a callback is a
+    // *standing* dependency for the element's life, not one that lapses at the
+    // next build. This card is the device screen's heaviest, and one tap on a
+    // changelog used to subscribe it to the five-second info poll until the
+    // screen went away. #344.
+    final client = DeviceScope.clientOf(context);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FirmwareChangelogPage(
@@ -273,7 +281,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
           deviceInfo: widget.deviceInfo,
           selectedChannelId: _fw.selectedChannelId(entry),
           selectedVariant: _fw.selectedVariant(entry),
-          client: device.client,
+          client: client,
         ),
       ),
     );
@@ -287,7 +295,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
     // The device scope owns the client; this card is always built inside one.
     // Reading it here rather than holding `FlipperOneClient().get()` in a
     // field is what lets a widget test mount this against a fake - ADR 0002.
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
 
     final entry = config.firmwares[_page.clamp(0, config.firmwares.length - 1)];
     final fetchState = _fw.fetchStateFor(entry);

@@ -164,6 +164,14 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   /// Shaped to what the recovery wait reads rather than to what the real
   /// client emits: it consults `isConnected` and ignores the event's
   /// contents, so the device this carries is left null.
+  ///
+  /// **Also the stand-in for the five-second device-info poll.**
+  /// `DeviceController` turns this into the same `notifyListeners` that
+  /// `services/connection/device_info_watch.dart` produces, and the poll
+  /// itself cannot be driven from here - this client carries connection events
+  /// and nothing else. Every test that asserts something does or does not
+  /// rebuild on the poll fires this instead, and the scope does not care which
+  /// of the two it was.
   void arrive() {
     _connected = true;
     _connection.add(
@@ -300,3 +308,32 @@ Widget wrapWithDevice(Widget child, DeviceController device) => MaterialApp(
       DeviceScope(notifier: device, child: navigator!),
   home: child,
 );
+
+/// A widget that depends on [DeviceScope] the listening way and counts its
+/// builds.
+///
+/// The control in a **pair assertion**: "nothing rebuilt" also passes when the
+/// notification never arrived, so a case that claims a widget ignores the
+/// device-info poll has to show the poll reached the scope's dependents at
+/// all. This rebuilds whenever the scope notifies, whatever the subject under
+/// test depends on - which is exactly why it has to be a separate widget. A
+/// subject that both reads the scope and witnesses the notification is the
+/// thing being tested, so it cannot also be the control.
+///
+/// It lives here rather than in either test because both wanted it byte for
+/// byte: `app_detail_rebuild_scope_test.dart` (where it started, as
+/// `_ScopeProbe`) and `device_scope_client_of_test.dart`. Both already import
+/// this file for [mountedDevice], [wrapWithDevice] and [closeDevice], so
+/// sharing it costs no new import anywhere.
+class DeviceScopeProbe extends StatelessWidget {
+  const DeviceScopeProbe({super.key, required this.onBuild});
+
+  final VoidCallback onBuild;
+
+  @override
+  Widget build(BuildContext context) {
+    DeviceScope.of(context);
+    onBuild();
+    return const SizedBox.shrink();
+  }
+}

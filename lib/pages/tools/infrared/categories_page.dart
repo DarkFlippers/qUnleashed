@@ -72,7 +72,7 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
   }
 
   void _openIrdb() {
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
     pushPage(context, (_) => IrLibPage(client: client));
   }
 
@@ -82,7 +82,7 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: context.l10n.irLibraryTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

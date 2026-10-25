@@ -106,7 +106,7 @@ class _IrLibPageState extends State<IrLibPage> {
           return Scaffold(
             backgroundColor: colors.background,
             appBar: QPageAppBar(
-              client: DeviceScope.of(context).client,
+              client: DeviceScope.clientOf(context),
               title: _ctrl.title,
               backgroundColor: colors.accent,
               foregroundColor: colors.onAccent,

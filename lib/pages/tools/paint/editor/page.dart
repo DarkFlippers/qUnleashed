@@ -460,11 +460,17 @@ class _PaintPageState extends State<PaintPage> {
   /// the dialog's own route and not here. `showDialog`'s future completes when
   /// the route is *popped*, while its exit transition still has frames to run
   /// and anything that rebuilds this page rebuilds the dialog's subtree inside
-  /// them - and `DeviceScope`'s five-second battery poll does exactly that. A
-  /// `ctrl.dispose()` after the await therefore threw "A TextEditingController
-  /// was used after being disposed" out of `build`, from every dismissal that
-  /// a rebuild landed on. `test/paint_export_name_test.dart` is what found it,
-  /// by being the first test to mount this page and close this dialog.
+  /// them. A `ctrl.dispose()` after the await therefore threw "A
+  /// TextEditingController was used after being disposed" out of `build`, from
+  /// every dismissal that a rebuild landed on.
+  /// `test/paint_export_name_test.dart` is what found it, by being the first
+  /// test to mount this page and close this dialog.
+  ///
+  /// What used to supply the rebuild was `DeviceScope`'s five-second battery
+  /// poll, through the bar's listening read. #344 made that read
+  /// non-listening, so nothing in this tree depends on the scope any more -
+  /// but the hazard is any rebuild, not that one, and a theme change or a
+  /// controller tick still is one.
   Future<String?> _promptProjectName({String? initial}) async {
     if (!mounted) return null;
     final colors = context.appColors;

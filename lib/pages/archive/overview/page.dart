@@ -131,7 +131,7 @@ class _ArchivePageState extends State<ArchivePage> {
   void _openFileManager(String initialPath) {
     // The file manager lists the path in initState, so a second tap is a
     // second listing as well as a second page. #244.
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
     pushPage(
       context,
       (_) => FileManagerPage(client: client, initialPath: initialPath),
@@ -261,7 +261,7 @@ class _ArchivePageState extends State<ArchivePage> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 16, bottom: 4),
                       child: StorageUsageCards(
-                        client: DeviceScope.of(context).client,
+                        client: DeviceScope.clientOf(context),
                         enabled: _ctrl.isConnected,
                         onOpenInternal: () => _openFileManager('/int'),
                         onOpenExternal: () => _openFileManager('/ext'),

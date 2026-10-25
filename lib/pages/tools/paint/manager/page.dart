@@ -239,7 +239,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: context.l10n.paintTitle,
         actions: [
           QPageAppBarAction(

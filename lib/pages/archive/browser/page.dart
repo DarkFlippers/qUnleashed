@@ -328,7 +328,7 @@ class _FileManagerPageState extends State<FileManagerPage>
       extension: e.extension,
       remotePath: remotePath,
     );
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => EmulatePage(flipperKey: key, client: client),
