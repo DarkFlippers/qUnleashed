@@ -1528,29 +1528,235 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     bool remote = true,
   }) async {
     _lastFailure = null;
+    // Only the keys an action was actually asked of. A key that is already
+    // deleted holds nothing on the device - purging the deleted list is local
+    // by definition - and a key with no local copy has no local half to run.
+    // Counted in, they read as deleted: the summary could name files nothing
+    // was done to, and the denominator counted work nobody asked for.
+    final queue = <({ArchiveKey key, bool device, bool phone})>[];
     for (final key in keys) {
+      final device = remote && !key.isDeleted;
+      final phone = local && (key.inLocal || key.localPath != null);
+      if (device || phone) queue.add((key: key, device: device, phone: phone));
+    }
+    // Keyed on the half as well as the cause. A device delete that failed and
+    // a local file that would not go are different failures, and tallying
+    // them as one is what let "gone from the Flipper, still on the phone" be
+    // reported as "not deleted". Counted rather than held in one slot, for
+    // the reason the sync summary is: one slot held whichever key failed
+    // last, so a card refusing thirty deletes and a thirty-first failing
+    // benignly named the benign one.
+    final byCause = <({bool device, String cause}), int>{};
+    var deleted = 0;
+    var failed = 0;
+    var linkGone = false;
+    for (final entry in queue) {
+      final key = entry.key;
+      if (entry.device) {
+        // `isConnected` used to gate the remote call and nothing else: a link
+        // that was down here - which for a bulk delete over BLE is ordinary -
+        // skipped the device half in silence, deleted the local copy anyway,
+        // and reported the whole thing as done. The file was still on the
+        // Flipper and the next sync pulled it straight back. #373.
+        //
+        // Waited out before it counts as a failure, the way the sync loop
+        // waits: auto-reconnect is on with a 600ms settle, and a settle
+        // landing inside a delete of forty files is not a reason to abandon
+        // the other thirty-nine.
+        if (!linkGone && !_client.isConnected && !await _linkIsBack()) {
+          linkGone = true;
+        }
+        if (linkGone) {
+          // Nothing local for this key either: a delete asked for on both
+          // sides is all of it or none of it, and the half-applied state is
+          // the one that reads as success and comes back on the next sync.
+          // A skip and not a break, because a key further down that needs no
+          // link - a purge behind a live key - is not waiting on a transport
+          // and has no reason to be abandoned with it.
+          continue;
+        }
+        try {
+          await _deleteOnDevice(key);
+        } catch (e) {
+          failed++;
+          byCause.update(
+            (device: true, cause: _groupableCause(e)),
+            (n) => n + 1,
+            ifAbsent: () => 1,
+          );
+          // The local copy stays: it is the only thing left on this phone
+          // pointing at a file the device still holds.
+          continue;
+        }
+      }
+      if (!entry.phone) {
+        deleted++;
+        continue;
+      }
       try {
-        if (remote && _client.isConnected && !key.isDeleted) {
-          await _client.storageDelete(
-            DeleteRequest(path: key.remotePath, recursive: false),
-            timeout: const Duration(seconds: 30),
-          );
-        }
-        if (local && (key.inLocal || key.localPath != null)) {
-          await _storage.hardDelete(
-            _deviceName,
-            key.category,
-            key.fileName,
-            flipperDir: key.flipperDir,
-            subFolder: key.subFolder,
-          );
-        }
+        await _storage.hardDelete(
+          _deviceName,
+          key.category,
+          key.fileName,
+          flipperDir: key.flipperDir,
+          subFolder: key.subFolder,
+        );
+        deleted++;
       } catch (e) {
-        _lastError = _lastFailure = '$e';
-        LogService.warn('[Archive] delete failed: $e');
+        failed++;
+        // #373 inverted, and the worse direction of it: the device copy is
+        // gone, the local one is not, and the next upload puts the file back
+        // on the card. Which half failed is in the kept line, so a report
+        // says that rather than "not deleted".
+        byCause.update(
+          (device: false, cause: _groupableCause(e)),
+          (n) => n + 1,
+          ifAbsent: () => 1,
+        );
       }
     }
+    // Three, and the rest dropped. The map is bounded by the distinct faults,
+    // but both of these strings are read by somebody - one on screen, one in
+    // a report - and a tally of eleven is a paragraph in a toast.
+    final causes = byCause.entries.take(3);
+    String joined(String Function(({bool device, String cause}) k) name) =>
+        causes.isEmpty
+        ? ''
+        : ' (${causes.map((e) => '${name(e.key)} x${e.value}').join(', ')})';
+    // The user reads the cause; a report also needs to know which half of the
+    // delete produced it.
+    final tail = joined((k) => k.cause);
+    final keptTail = joined(
+      (k) => '${k.device ? 'device' : 'local'} ${k.cause}',
+    );
+    if (linkGone) {
+      _lastError = _lastFailure =
+          '${l10n.archiveDeleteStoppedEarly(deleted, queue.length)}$tail';
+      // The kept line is not the localized sentence, unlike the sync summary
+      // next door: a body that changes with the reader's language groups as
+      // one issue per locale. It also spells out the failure count, which the
+      // sentence leaves implicit in the causes. #374.
+      LogService.warn(
+        '[Archive] delete stopped after $deleted of ${queue.length}, '
+        '$failed failed$keptTail',
+      );
+    } else if (failed > 0) {
+      _lastError = _lastFailure =
+          '${l10n.archiveDeleteSummary(failed, queue.length)}$tail';
+      LogService.warn(
+        '[Archive] delete: $failed of ${queue.length} failed$keptTail',
+      );
+    }
     await refresh();
+  }
+
+  /// Deletes [key] on the device, asking once more after a link drop.
+  ///
+  /// `storageDelete` has no restart of its own, unlike `storageWriteChunked`,
+  /// so a drop mid-request loses this delete - though not the queue behind
+  /// it. Without the retry the key the drop landed on was counted as a
+  /// permanent failure while every key after it got the settle wait, which is
+  /// backwards: a settle lands inside one key's request far more often than
+  /// in the gap between two. `_downloadPending` gives a dropped read the same
+  /// shape, against flipperlib's own definition of the fault a reconnect
+  /// makes whole again.
+  ///
+  /// Once, not a loop: a second drop in the same breath is a link that is not
+  /// settling, and the keys behind this one find that out at their own check.
+  Future<void> _deleteOnDevice(ArchiveKey key) async {
+    Future<void> send() => _client.storageDelete(
+      DeleteRequest(path: key.remotePath, recursive: false),
+      timeout: const Duration(seconds: 30),
+    );
+    try {
+      await send();
+    } catch (e) {
+      if (!_client.isLinkDropError(e) || !await _linkIsBack()) rethrow;
+      await send();
+    }
+  }
+
+  /// Waits out a reconnect settle, answering whether the link came back.
+  ///
+  /// Ten seconds and not the sync loop's thirty. A sync publishes
+  /// [_syncProgress] around its waits, so the screen says what is happening;
+  /// nothing on the delete path publishes anything and the action stays
+  /// tappable, so a long wait is an archive that looks frozen. Ten covers the
+  /// 600ms settle and a reconnect that has to scan first; past that the
+  /// delete reports what it managed and the user can ask again.
+  ///
+  /// The catch is for a promise this does not own: `waitForRpcSession` answers
+  /// a timeout rather than throwing it, but it subscribes to
+  /// `connectionStream` to do that, and an error there does not end that
+  /// stream. A throw escaping here would abandon the queue with nothing set
+  /// and nothing logged - and the sheet's `onTap` is a `VoidCallback`, so the
+  /// rejection would reach the log as an unlabelled `[uncaught]` instead.
+  Future<bool> _linkIsBack() async {
+    try {
+      return await _client.waitForRpcSession(const Duration(seconds: 10));
+    } catch (e) {
+      LogService.caught('[Archive] waiting for the link failed: $e');
+      return false;
+    }
+  }
+
+  /// [e] with whatever varies per file taken out of it.
+  ///
+  /// A `FileSystemException` prints the absolute path it failed on, so a
+  /// tally keyed on `'$e'` holds one entry per file: it puts a path in front
+  /// of the user and hands a report one issue per file instead of one per
+  /// fault. The message and the OS error code are what both readers need,
+  /// and neither moves with the file.
+  String _groupableCause(Object e) => e is io.FileSystemException
+      ? '${e.runtimeType}: ${e.message}'
+            '${e.osError == null ? '' : ' (errno ${e.osError!.errorCode})'}'
+      : '$e';
+
+  /// Refuses an operation that needs the device, and records that it did.
+  ///
+  /// True when `isConnected` says there is no link, in which case the caller
+  /// returns. The three sites in this file that did it inline told the user
+  /// and told nobody else, so "restore does nothing" arrived as a bug report
+  /// with no trace anywhere to read, and `caught_budget_test.dart` could not
+  /// ratchet a call that did not exist. #374.
+  ///
+  /// `isConnected` and not `isRpcReady`, which flipperlib warns is usually
+  /// the right question: `FlipperSession.callRpcFrames` switches to RPC mode
+  /// itself, so the connected-but-not-yet-RPC window needs no refusal here.
+  ///
+  /// [what] is logged and [message] is not: the message is localized, so a
+  /// line carrying it would group as one issue per language. The rate is the
+  /// thing worth seeing - a burst of these means the connection state is
+  /// wrong rather than the user confused.
+  ///
+  /// `caught` and not `warn`: pressing restore with no Flipper connected is
+  /// ordinary, and there is nothing for anyone to act on.
+  bool _refusedWithoutDevice(String what, String message) {
+    if (_client.isConnected) return false;
+    _lastError = _lastFailure = message;
+    LogService.caught('[Archive] $what refused: no device connected');
+    notifyListeners();
+    return true;
+  }
+
+  /// Reports a restore whose local copy is not on this phone any more.
+  ///
+  /// [ArchiveStorage.readBytes] answers null for a file that is gone rather
+  /// than throwing, so this had no catch to be reported from: the entry stayed
+  /// in the deleted list, the toast never appeared - `reportArchiveFailure`
+  /// returns early on a null reason - and nothing was recorded at any level.
+  /// That is #374's own symptom reached by a second route, one line below the
+  /// refusal the issue names.
+  ///
+  /// The body carries the category and not the file name: a selection of forty
+  /// would otherwise be forty distinct bodies, and the category is the part
+  /// that says whether one folder went missing or the archive root did.
+  void _reportNoLocalCopy(ArchiveKey key) {
+    _lastError = _lastFailure = l10n.archiveNoLocalCopy;
+    LogService.caught(
+      '[Archive] restore: no local copy in ${key.category.name}',
+    );
+    notifyListeners();
   }
 
   Future<void> restoreKey(ArchiveKey key) => _task(() => _restoreKey(key));
@@ -1558,11 +1764,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _restoreKey(ArchiveKey key) async {
     _lastFailure = null;
     if (!key.isDeleted) return;
-    if (!_client.isConnected) {
-      _lastError = _lastFailure = l10n.archiveConnectToRestore;
-      notifyListeners();
-      return;
-    }
+    if (_refusedWithoutDevice('restore', l10n.archiveConnectToRestore)) return;
     try {
       final bytes = await _storage.readBytes(
         _deviceName,
@@ -1571,7 +1773,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         flipperDir: key.flipperDir,
         subFolder: key.subFolder,
       );
-      if (bytes == null) return;
+      if (bytes == null) {
+        _reportNoLocalCopy(key);
+        return;
+      }
       await _client.storageWriteChunked(key.remotePath, bytes);
     } catch (e) {
       _lastError = _lastFailure = '$e';
@@ -1588,9 +1793,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _restoreKeys(Iterable<ArchiveKey> keys) async {
     _lastFailure = null;
-    if (!_client.isConnected) {
-      _lastError = _lastFailure = l10n.archiveConnectToRestore;
-      notifyListeners();
+    // A body of its own, not the single-key path's: the two refusals are
+    // indistinguishable in a report otherwise, and `LogService` folds a
+    // consecutive identical body so one of them can also vanish.
+    if (_refusedWithoutDevice(
+      'restore selection',
+      l10n.archiveConnectToRestore,
+    )) {
       return;
     }
     for (final key in keys) {
@@ -1603,7 +1812,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           flipperDir: key.flipperDir,
           subFolder: key.subFolder,
         );
-        if (bytes == null) continue;
+        if (bytes == null) {
+          _reportNoLocalCopy(key);
+          continue;
+        }
         await _client.storageWriteChunked(key.remotePath, bytes);
         final keyId = _keyIdOf(key);
         final existing = _keys[keyId];
@@ -1730,11 +1942,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<bool> writeKeyBytes(ArchiveKey k, List<int> bytes) async {
     _lastFailure = null;
-    if (!_client.isConnected) {
-      _lastError = _lastFailure = l10n.archiveConnectToSave;
-      notifyListeners();
-      return false;
-    }
+    if (_refusedWithoutDevice('save', l10n.archiveConnectToSave)) return false;
     _busyPath = k.remotePath;
     _busyProgress = 0;
     notifyListeners();

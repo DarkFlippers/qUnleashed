@@ -232,9 +232,39 @@ import 'ratchet.dart';
 /// do GPS — while it stays worth reading afterwards, which is §5's audience
 /// split. The on-demand caller's blanket catch simply stops firing for this
 /// class, because nothing throws any more. QUNLEASHED-B.
+///
+/// `pages/archive` rose to 23 for three sites in the archive controller, all
+/// of them failures that previously reached nobody. #373/#374.
+///
+/// The twenty-first is `_refusedWithoutDevice`, which covers three refusals -
+/// a restore, a bulk restore and a save with no device to talk to. Each told
+/// the user in a localized sentence and recorded nothing at any level, so
+/// "restore does nothing" arrived as a report with no trace to read, and this
+/// ledger could not see the gap because there was no call to count. One site
+/// and not three, with the operation's name as the body rather than the
+/// sentence: the three stay distinguishable in a report without any of them
+/// grouping per language.
+///
+/// The twenty-second is `_reportNoLocalCopy`, the same symptom reached a
+/// different way: `readBytes` answers null for a file that is gone rather
+/// than throwing, so a restore whose local copy had been purged had no catch
+/// to be reported from at all. Keyed on the category and not the file name,
+/// so a selection of forty is one body.
+///
+/// The twenty-third is `_linkIsBack`, and it is the only one of the three that
+/// guards a promise rather than a known failure: `waitForRpcSession` answers a
+/// timeout instead of throwing it, but it does that by subscribing to
+/// `connectionStream`, where an error does not end the stream. A throw there
+/// abandons the delete queue with nothing set and nothing logged, and the
+/// sheet's `onTap` is a `VoidCallback`, so it would land as an unlabelled
+/// `[uncaught]`.
+///
+/// The level is §5's audience split for all three: nobody can act on a Flipper
+/// that is not connected or a file the user already moved, while the rate of
+/// either says whether the connection state is wrong.
 const Map<String, int> kBudget = {
   'services': 18,
-  'pages/archive': 20,
+  'pages/archive': 23,
   'pages/tools': 12,
   'pages/flibler': 1,
   'pages/apps': 1,
