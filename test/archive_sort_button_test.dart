@@ -11,7 +11,9 @@ import 'package:qunleashed/theme/theme.dart';
 /// It exists because the archive table has no folder column to tap: a file's
 /// name and the folder it is in share one cell, under one header whose sort
 /// key is the name (#122). A unit test on the comparator cannot say the user
-/// can get to it, and nothing else in `test/` builds this toolbar.
+/// can get to it, and this is where the toolbar's own behaviour is held -
+/// `apps_folder_sort_test.dart` builds it too, for what an apps-manager
+/// control carries into it rather than for what the sheet then does.
 void main() {
   late QAppColors colors;
   late TextEditingController searchCtrl;
@@ -205,7 +207,10 @@ void main() {
   });
 
   testWidgets('stays off where there is nothing to offer', (tester) async {
-    // How the two apps-manager tables keep the toolbar they already had.
+    // The nullable arm, which is how a table with nothing to sort says so -
+    // `toolbar_sort_guard_test.dart` holds that as the only permitted shape and
+    // counts anything else. It was how the two apps-manager tables kept the
+    // toolbar they already had until #314 gave them a sort to pass.
     await pump(tester, withSort: false);
 
     expect(find.byIcon(Icons.sort_rounded), findsNothing);
