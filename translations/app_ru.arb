@@ -1375,7 +1375,7 @@
   },
   "pickerCantFindDevice": "Не вижу своё устройство",
   "@pickerCantFindDevice": {
-    "description": "Button that drops the name filter so every nearby Bluetooth device is listed."
+    "description": "Button that drops the name filter, so everything the picker can see is listed - unrelated USB hardware as well as nearby Bluetooth devices."
   },
   "pickerShowOnlyDevices": "Показывать только устройства",
   "@pickerShowOnlyDevices": {
