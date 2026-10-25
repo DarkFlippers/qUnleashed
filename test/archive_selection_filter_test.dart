@@ -25,9 +25,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/components/archive/models/key.dart';
+import 'package:qunleashed/components/filelist/sync_progress_bar.dart';
 import 'package:qunleashed/components/selection.dart';
 import 'package:qunleashed/pages/archive/overview/category/category_page.dart';
+import 'package:qunleashed/pages/archive/overview/category/favorites_page.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
+import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -69,6 +72,30 @@ void main() {
   late ArchiveController ctrl;
   late ListSelection<CategoryPage> selection;
 
+  /// The three NFC files, on the phone as well as the device.
+  Future<void> seedKeys(ArchiveStorage storage) async {
+    final dir = storage.categoryDir(archiveTestDevice, ArchiveCategory.nfc)
+      ..createSync(recursive: true);
+    for (final name in const ['card', 'carpark', 'door']) {
+      io.File('${dir.path}${io.Platform.pathSeparator}$name.nfc')
+          .writeAsStringSync('Filetype: Flipper NFC device\n');
+    }
+  }
+
+  /// Starred before the page opens: one key and two apps, which is the one
+  /// arrangement the favourites page's row dispatch needs and had never been
+  /// mounted with (#404). `carpark` rather than `card` or `door`, so the two
+  /// category cases below keep their premises about those two.
+  Future<void> starSome(ArchiveStorage storage) async {
+    await storage.writeFavorites(archiveTestDevice, {
+      archiveKeyId(flipperDir: 'nfc', name: 'carpark', extension: 'nfc'),
+    });
+    await storage.writeFapFavorites(archiveTestDevice, const [
+      (path: '/ext/apps/Tools/zeta.fap', name: 'zeta'),
+      (path: '/ext/apps/GPIO/beta.fap', name: 'beta'),
+    ]);
+  }
+
   setUp(() {
     SharedPreferences.setMockInitialValues(const {});
     client = _SyncedPair();
@@ -79,14 +106,7 @@ void main() {
     final mounted = await mountArchivePage(
       tester,
       client: client,
-      seed: (storage) async {
-        final dir = storage.categoryDir(archiveTestDevice, ArchiveCategory.nfc)
-          ..createSync(recursive: true);
-        for (final name in const ['card', 'carpark', 'door']) {
-          io.File('${dir.path}${io.Platform.pathSeparator}$name.nfc')
-              .writeAsStringSync('Filetype: Flipper NFC device\n');
-        }
-      },
+      seed: seedKeys,
       page: (controller, sortSettings) => CategoryPage(
         controller: controller,
         sortSettings: sortSettings,
@@ -100,6 +120,10 @@ void main() {
     expect(find.text('card'), findsOneWidget);
     expect(find.text('carpark'), findsOneWidget);
     expect(find.text('door'), findsOneWidget);
+    // Not syncing, so no bar above the table. The frame takes one when the
+    // page gives it one (`archive_list_frame_test.dart`), and this is what
+    // says the page only gives it one while a sync is running.
+    expect(find.byType(SyncProgressBar), findsNothing);
   }
 
   ArchiveKey keyNamed(String name) =>
@@ -174,6 +198,40 @@ void main() {
     // clear rather than return early.
     expect(selection.selectionMode, isFalse);
     expect(selection.selectedCount, 0);
+  });
+
+  /// The favourites page with **both** kinds of row, which nothing had mounted:
+  /// its list is the starred keys followed by the starred apps, dispatched on
+  /// one index, and with no starred key the offset into the apps is always
+  /// zero. `faps[i]` in place of `faps[i - keys.length]` passed the whole
+  /// suite, and is a `RangeError` on every build of a page that has one of
+  /// each (#404).
+  testWidgets('the favourites list puts starred keys above starred apps', (
+    tester,
+  ) async {
+    final mounted = await mountArchivePage(
+      tester,
+      client: client,
+      seed: (storage) async {
+        await seedKeys(storage);
+        await starSome(storage);
+      },
+      page: (controller, sortSettings) =>
+          FavoritesPage(controller: controller, sortSettings: sortSettings),
+    );
+    ctrl = mounted.controller;
+
+    expect(keyNamed('carpark').favorite, isTrue, reason: "the case's premise");
+    expect(find.text('carpark'), findsOneWidget);
+    expect(find.text('zeta'), findsOneWidget);
+    expect(find.text('beta'), findsOneWidget);
+    // The key is not one of the apps, and the apps are below it.
+    final key = tester.getTopLeft(find.text('carpark')).dy;
+    expect(key, lessThan(tester.getTopLeft(find.text('zeta')).dy));
+    expect(key, lessThan(tester.getTopLeft(find.text('beta')).dy));
+    // And the rows that are not starred stayed behind.
+    expect(find.text('card'), findsNothing);
+    expect(find.text('door'), findsNothing);
   });
 }
 

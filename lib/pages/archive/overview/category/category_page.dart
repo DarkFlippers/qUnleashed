@@ -22,6 +22,8 @@ import '../widgets/key_actions_sheet.dart';
 import '../../../../components/filelist/sync_progress_bar.dart';
 import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
+import '../../../../components/filelist/key_table.dart';
+import '../../../../components/filelist/list_scaffold.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
@@ -263,73 +265,66 @@ class _CategoryPageState extends State<CategoryPage>
           );
         }
 
-        final allPicked = allSelected(filtered.map((k) => k.id));
+        // One record for the toolbar and the table both: two would be two
+        // chances to disagree about what a second tap on a column means. The
+        // getter behind it resolves the sort against this page's own columns,
+        // which allocates both lists, so it is read once here.
+        final resolved = _sort;
+        final sort = (
+          key: resolved.key,
+          asc: resolved.asc,
+          opts: _sortOpts,
+          onSort: _onSort,
+        );
 
-        return PopScope(
-          canPop: !selectionMode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && selectionMode) exitSelection();
-          },
-          child: Scaffold(
-            backgroundColor: colors.background,
-            appBar: AppBar(
-              backgroundColor: catColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleSpacing: categoryTitleSpacing(context),
-              title: CategoryAppBarTitle(cat: _cat),
-              actions: [
-                CategorySyncButton(
-                  syncing: _ctrl.syncing,
-                  enabled: _ctrl.isConnected,
-                  catColor: catColor,
-                  onTap: () => _ctrl.syncCategory(_cat),
-                ),
-                CategoryCountBadge(filtered: filtered.length, total: total),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(50),
-                child: selectionMode
-                    ? CategorySelectionToolbar(
-                        count: selectedCount,
-                        allSelected: allPicked,
-                        catColor: catColor,
-                        onClose: exitSelection,
-                        onToggleAll: () => setAllSelected(
-                          filtered.map((k) => k.id),
-                          selected: !allPicked,
-                        ),
-                        onActions: () => _showBulkActions(context),
-                      )
-                    : CategoryToolbar(
-                        searchCtrl: _searchCtrl,
-                        query: _query,
-                        filterVal: _filterVal,
-                        filterOpts: filterOpts,
-                        sort: (
-                          key: _sort.key,
-                          asc: _sort.asc,
-                          opts: _sortOpts,
-                          onSort: _onSort,
-                        ),
-                        starredOnly: _starredOnly,
-                        catColor: catColor,
-                        colors: colors,
-                        onQueryChanged: (v) => setState(() => _query = v),
-                        onFilterChanged: (v) => setState(() => _filterVal = v),
-                        onStarredToggle: () =>
-                            setState(() => _starredOnly = !_starredOnly),
-                      ),
-              ),
+        return ArchiveListScaffold(
+          headerColor: catColor,
+          title: CategoryAppBarTitle(cat: _cat),
+          actions: [
+            CategorySyncButton(
+              syncing: _ctrl.syncing,
+              enabled: _ctrl.isConnected,
+              catColor: catColor,
+              onTap: () => _ctrl.syncCategory(_cat),
             ),
-            body: Column(
-              children: [
-                if (_ctrl.syncing) _syncBar(catColor),
-                Expanded(child: _buildTable(catColor, colors, filtered)),
-              ],
+            CategoryCountBadge(filtered: filtered.length, total: total),
+          ],
+          selection: selectionControl(
+            filtered.map((k) => k.id),
+            onActions: () => _showBulkActions(context),
+          ),
+          toolbar: CategoryToolbar(
+            searchCtrl: _searchCtrl,
+            query: _query,
+            filterVal: _filterVal,
+            filterOpts: filterOpts,
+            sort: sort,
+            starredOnly: _starredOnly,
+            catColor: catColor,
+            colors: colors,
+            onQueryChanged: (v) => setState(() => _query = v),
+            onFilterChanged: (v) => setState(() => _filterVal = v),
+            onStarredToggle: () => setState(() => _starredOnly = !_starredOnly),
+          ),
+          topBar: _ctrl.syncing ? _syncBar(catColor) : null,
+          body: ArchiveKeyTable(
+            columns: (width) => visibleColumns(_cat, width, filtered),
+            sort: sort,
+            selectionMode: selectionMode,
+            accent: catColor,
+            onRefresh: () => guarded(
+              '[Archive] pull to sync',
+              () => _ctrl.syncCategory(_cat),
             ),
+            empty: () => ArchiveEmptyView(
+              icon: _emptyIcon(),
+              title: _emptyTitle(),
+              subtitle: _ctrl.lastError,
+              actionLabel: _emptyActionLabel(),
+              onAction: _onEmptyAction,
+            ),
+            itemCount: filtered.length,
+            itemBuilder: (i, cols) => _keyRow(filtered[i], cols, colors),
           ),
         );
       },
@@ -351,92 +346,32 @@ class _CategoryPageState extends State<CategoryPage>
     );
   }
 
-  Widget _buildTable(
-    Color catColor,
-    QAppColors colors,
-    List<ArchiveKey> filtered,
-  ) {
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final visibleCols = visibleColumns(
-          _cat,
-          constraints.maxWidth - (selectionMode ? kSelectionIndicatorWidth : 0),
-          filtered,
-        );
-
-        return RefreshIndicator(
-          color: catColor,
-          displacement: 15,
-          // Returns the work rather than starting it: `RefreshIndicator` holds
-          // its spinner only until the future it is given settles, and
-          // `() async => unawaited(...)` settles at once - so the spinner
-          // flashed while the sync had not begun. The same defect as the three
-          // apps tables in #219, and the last one of its shape in `lib/`.
-          onRefresh: () =>
-              guarded('[Archive] pull to sync', () => _ctrl.syncCategory(_cat)),
-          child: filtered.isEmpty
-              ? SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: SizedBox(
-                    height: constraints.maxHeight,
-                    child: ArchiveEmptyView(
-                      icon: _emptyIcon(),
-                      title: _emptyTitle(),
-                      subtitle: _ctrl.lastError,
-                      actionLabel: _emptyActionLabel(),
-                      onAction: _onEmptyAction,
-                    ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    ArchiveColumnHeader(
-                      cols: visibleCols,
-                      sortKey: _sort.key,
-                      sortAsc: _sort.asc,
-                      onSort: _onSort,
-                      colors: colors,
-                      selectionMode: selectionMode,
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: ClampingScrollPhysics(),
-                        ),
-                        itemCount: filtered.length,
-                        itemBuilder: (_, i) {
-                          final key = filtered[i];
-                          final id = key.id;
-                          final selected = isSelected(id);
-                          return ArchiveKeyDragSource(
-                            key: ValueKey(id),
-                            archiveKey: key,
-                            selected: selected,
-                            selection: () => _selectedKeys,
-                            onDropped: exitSelection,
-                            child: ArchiveTableRow(
-                              flipperKey: key,
-                              cols: visibleCols,
-                              colors: colors,
-                              cat: _cat,
-                              progress: _ctrl.progressForKey(key),
-                              selectionMode: selectionMode,
-                              selected: selected,
-                              onTap: () => selectionMode
-                                  ? toggleSelect(id)
-                                  : _showKeyActions(context, key),
-                              onLongPress: () => selectionMode
-                                  ? toggleSelect(id)
-                                  : enterSelection(id),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-        );
-      },
+  /// One row. Built against the page's `context`, never a row's: the actions
+  /// sheet keeps the context it is given across its awaits and tests `mounted`
+  /// on it, and a row that leaves the list - which a failed delete or a rename
+  /// does - would take the failure report with it. #110.
+  Widget _keyRow(ArchiveKey key, List<SizedColumn> cols, QAppColors colors) {
+    final id = key.id;
+    final selected = isSelected(id);
+    return ArchiveKeyDragSource(
+      key: ValueKey(id),
+      archiveKey: key,
+      selected: selected,
+      selection: () => _selectedKeys,
+      onDropped: exitSelection,
+      child: ArchiveTableRow(
+        flipperKey: key,
+        cols: cols,
+        colors: colors,
+        cat: _cat,
+        progress: _ctrl.progressForKey(key),
+        selectionMode: selectionMode,
+        selected: selected,
+        onTap: () =>
+            selectionMode ? toggleSelect(id) : _showKeyActions(context, key),
+        onLongPress: () =>
+            selectionMode ? toggleSelect(id) : enterSelection(id),
+      ),
     );
   }
 

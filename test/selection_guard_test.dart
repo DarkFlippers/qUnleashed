@@ -18,19 +18,20 @@
 // `selectionMode` - `filelist/table.dart`, `browser/widgets/file_table.dart`
 // and `browser/widgets/file_row.dart` - so a page that shows a selection
 // passes that argument, and a page that passes it has to take the state from
-// `ListSelection`. All ten of those arguments in `lib/` are passed by the four
-// pages today.
+// `ListSelection`. Eleven of those arguments sit in `lib/` today: ten in the
+// four pages, and one in `ArchiveKeyTable`, which forwards the page's flag to
+// the column header.
 //
 // The blind spot is a page whose rows learn about a selection some other way:
 // a positional argument, a differently named one, or a fourth row widget. It
 // is empty today and a fourth row widget would be the thing to look at.
 //
-// A forwarder is not an owner: a widget that passes `selectionMode:
-// widget.selectionMode` down to its own child is handing on what its parent
-// gave it. **No widget in `lib/` does that yet** - the three row widgets
-// consume the parameter and pass it to nothing - so that exclusion is
-// pre-emptive, and the shape it describes is the one a row split in two would
-// take.
+// A forwarder is not an owner: a widget handed this flag and passing it to
+// its own child is handing on what its parent gave it. `ArchiveKeyTable` is
+// one (#404) - it takes the page's flag and gives it to the column header -
+// and it is forgiven for declaring `final bool selectionMode`. The
+// `widget.`-prefixed spelling is the same thing from a `State`, and nothing
+// in `lib/` writes that yet, so *that* exclusion is still pre-emptive.
 //
 // An AST walk and not a grep, per ADR 0004: both halves of the question -
 // which class an argument sits in, and what that class mixes in - are about
@@ -56,9 +57,10 @@ const String kSelectionArgument = 'selectionMode';
 /// Whether [node] hands a selection to a widget rather than passing on one it
 /// was given.
 ///
-/// `widget.selectionMode` is the forwarding shape and the only one excluded:
-/// anything else - a field, a local, a getter off the mixin - is a class that
-/// decided what the answer is.
+/// `widget.selectionMode` is one forwarding shape, excluded here; the other -
+/// a `final bool selectionMode` the class was handed - is excluded by
+/// [_readsSharedGetter]. Anything else, a local or a mutable field, is a class
+/// that decided what the answer is.
 bool ownsSelectionArgument(NamedArgument node) {
   if (node.name.lexeme != kSelectionArgument) return false;
   // The deprecated accessor, for the reason `ratchet.dart`'s `namedArgument`
@@ -76,26 +78,57 @@ bool ownsSelectionArgument(NamedArgument node) {
 bool takesSharedSelection(WithClause? clause) =>
     mixinsNamed(clause, kSelectionMixin).isNotEmpty;
 
-/// Whether [node] reads the mixin's own `selectionMode` getter, in a class
-/// that has the mixin to read it from.
+/// Whether [node] passes a `selectionMode` the enclosing class did not decide:
+/// the mixin's getter, or a `final` field somebody handed it.
 ///
-/// The one spelling forgiven, and the reason the forgiveness is per-argument
-/// rather than per-class: a page can take the shared selection for one list
-/// and still keep a hand-written `bool` for a second one, and the class-wide
-/// version of this let the whole file through on the strength of the `with`
-/// clause. Both halves are needed - the bare name alone would forgive a page
-/// that called its own field `selectionMode`, and the `with` clause alone
-/// forgives the second list.
+/// The forgiveness is per-argument rather than per-class, because a page can
+/// take the shared selection for one list and still keep a hand-written `bool`
+/// for a second one - the class-wide version of this let the whole file
+/// through on the strength of the `with` clause.
 ///
-/// A `mixin` cannot have a `with` clause, so a hand-written selection hoisted
-/// into one is never forgiven here, which is the point.
+/// Two ways a bare `selectionMode` is not a decision:
+///
+///  * the class mixes [kSelectionMixin] in, so the name resolves to the
+///    mixin's getter;
+///  * the class declares `final bool selectionMode`, so it was handed one.
+///    That is the shape of a widget between a page and a row -
+///    `ArchiveKeyTable` is the first, and `widget.selectionMode` (excluded in
+///    [ownsSelectionArgument]) is the same thing from a `State`. **`final` is
+///    load-bearing**: a selection changes, so a page's own flag cannot be
+///    final, and a field that cannot change cannot be the page's own.
+///
+/// A `mixin` is not a `ClassDeclaration`, so the lookup below finds no owner
+/// and neither door is open to a selection hoisted into one - which is the
+/// point, and the reason [_wasHandedOne] takes a `ClassDeclaration` at all.
 bool _readsSharedGetter(NamedArgument node) {
   final value = node.argumentExpression;
   if (value is! SimpleIdentifier || value.name != kSelectionArgument) {
     return false;
   }
   final owner = node.thisOrAncestorOfType<ClassDeclaration>();
-  return owner != null && takesSharedSelection(owner.withClause);
+  if (owner == null) return false;
+  return takesSharedSelection(owner.withClause) || _wasHandedOne(owner);
+}
+
+/// Whether [owner] declares `final bool selectionMode` - a parameter it
+/// forwards rather than a flag it keeps.
+///
+/// All three of `final`, `bool` and the name are checked, because each on its
+/// own forgives something that is not a forwarder: a mutable flag of that name
+/// is a page's own, which is what this rule is for; a `final` field of another
+/// name says nothing about this argument; and a `final` of another type is not
+/// the flag the row widgets take.
+bool _wasHandedOne(ClassDeclaration owner) => owner.body.members
+    .whereType<FieldDeclaration>()
+    .any((field) => _isHandedSelection(field.fields));
+
+bool _isHandedSelection(VariableDeclarationList fields) {
+  if (!fields.isFinal) return false;
+  final type = fields.type;
+  if (type is! NamedType || type.name.lexeme != 'bool') return false;
+  return fields.variables.any(
+    (variable) => variable.name.lexeme == kSelectionArgument,
+  );
 }
 
 /// Collects what each declaration in [unit] does about a selection.
@@ -227,8 +260,8 @@ void main() {
     // The half a rename would take out, and the reason this test reads two
     // numbers. The rule above counts `$kSelectionArgument` arguments, not
     // mixin clauses - so spelling that parameter `selecting:` across `lib/`
-    // would leave it at zero for ever while the check above stayed green. Ten
-    // today, all of them in the four pages.
+    // would leave it at zero for ever while the check above stayed green.
+    // Eleven today: ten in the pages, one in `ArchiveKeyTable`.
     expect(
       arguments,
       greaterThanOrEqualTo(10),
@@ -288,6 +321,11 @@ void main() {
         ),
         isEmpty,
       );
+      // A `StatelessWidget` has no `widget.`, so forwarding from one reads as
+      // a bare name - and `ArchiveKeyTable` is that shape (#404): it takes the
+      // flag from the page and hands it to the column header and every row.
+      // What makes it a forwarder rather than an owner is `final`: a selection
+      // changes, so a page's own flag cannot be final.
       expect(
         linesIn(
           'class R extends StatelessWidget {\n'
@@ -295,13 +333,53 @@ void main() {
           '  Widget build(c) => Cell(selectionMode: selectionMode);\n'
           '}',
         ),
-        // A `StatelessWidget` cannot mix the state in - it has no `setState`
-        // and nothing to be mounted - and the bare name is forgiven only
-        // inside a class that has the mixin, so this one is counted: the
-        // rule's blind spot in the safe direction. Zero is still reachable
-        // because no widget in `lib/` forwards it that way today, and the fix
-        // when one does is the shape above - take it as a parameter and pass
-        // `widget.selectionMode`.
+        isEmpty,
+      );
+    });
+
+    test('a mutable field of that name is the page keeping its own', () {
+      // The other side of the `final` line, and the reason it is drawn there:
+      // this is the shape of the four copies #375 removed.
+      expect(
+        linesIn(
+          'class S extends State<P> {\n'
+          '  bool selectionMode = false;\n'
+          '  Widget build(c) => Row(selectionMode: selectionMode);\n'
+          '}',
+        ),
+        hasLength(1),
+      );
+      // A `final` field of the right name but the wrong *type* is not the
+      // flag the row widgets take, so it forgives nothing.
+      expect(
+        linesIn(
+          'class R extends StatelessWidget {\n'
+          '  final String selectionMode;\n'
+          '  Widget build(c) => Cell(selectionMode: selectionMode);\n'
+          '}',
+        ),
+        hasLength(1),
+      );
+      // Nor does a `final bool` of another *name*: what makes a class a
+      // forwarder is having been handed this one.
+      expect(
+        linesIn(
+          'class R extends StatelessWidget {\n'
+          '  final bool enabled;\n'
+          '  Widget build(c) => Cell(selectionMode: selectionMode);\n'
+          '}',
+        ),
+        hasLength(1),
+      );
+      // An argument that is not the bare name is never forgiven, whatever the
+      // class was handed.
+      expect(
+        linesIn(
+          'class R extends StatelessWidget {\n'
+          '  final bool selectionMode;\n'
+          '  Widget build(c) => Cell(selectionMode: _mine);\n'
+          '}',
+        ),
         hasLength(1),
       );
     });
@@ -320,6 +398,21 @@ void main() {
           '  bool _selectionMode = false;\n'
           '  final Set<String> _selected = {};\n'
           '  Widget row() => Row(selectionMode: _selectionMode);\n'
+          '}',
+        ),
+        hasLength(1),
+      );
+    });
+
+    test('even a mixin that declares the flag it hands on', () {
+      // The door `_wasHandedOne` opens is a `ClassDeclaration`'s, and a
+      // `mixin` is not one - so a selection hoisted into a mixin is counted
+      // even when it is spelt exactly like a forwarder.
+      expect(
+        linesIn(
+          'mixin Hoisted<T extends StatefulWidget> on State<T> {\n'
+          '  final bool selectionMode = false;\n'
+          '  Widget row() => Row(selectionMode: selectionMode);\n'
           '}',
         ),
         hasLength(1),
