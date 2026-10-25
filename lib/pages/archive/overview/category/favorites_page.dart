@@ -14,6 +14,7 @@ import '../../../../components/archive/models/key.dart';
 import '../../../../components/codec/fap/icon.dart';
 import '../../../../components/icon.dart';
 import '../../../../components/navigation.dart';
+import '../../../../components/selection.dart';
 import '../../../../components/notification.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../../components/filelist/empty_view.dart';
@@ -49,16 +50,14 @@ class FavoritesPage extends StatefulWidget {
   State<FavoritesPage> createState() => _FavoritesPageState();
 }
 
-class _FavoritesPageState extends State<FavoritesPage> {
+class _FavoritesPageState extends State<FavoritesPage>
+    with ListSelection<FavoritesPage> {
   static const Color _starColor = Color(0xFFFFC107);
 
   final TextEditingController _searchCtrl = TextEditingController();
 
   String _query = '';
   String? _filterVal;
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
 
@@ -181,48 +180,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   List<ArchiveKey> get _selectedKeys =>
-      _starredKeys().where((k) => _selected.contains(_keyId(k))).toList();
-
-  void _enterSelection(ArchiveKey key) {
-    setState(() {
-      _selectionMode = true;
-      _selected.add(_keyId(key));
-    });
-  }
-
-  void _toggleSelect(ArchiveKey key) {
-    final id = _keyId(key);
-    setState(() {
-      if (!_selected.remove(id)) _selected.add(id);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    // Guarded for the reason `deleted_page.dart`'s copy spells out
-    // (QUNLEASHED-P): `_bulkUnstar` below hands this to its own continuation
-    // after an await, so the page can be gone by the time it runs.
-    if (!mounted) return;
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
-  void _onDropped() {
-    if (mounted) _exitSelection();
-  }
-
-  void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
-    setState(() {
-      if (selected) {
-        _selected.addAll(filtered.map(_keyId));
-      } else {
-        _selected.removeAll(filtered.map(_keyId));
-        if (_selected.isEmpty) _selectionMode = false;
-      }
-    });
-  }
+      _starredKeys().where((k) => isSelected(k.id)).toList();
 
   void _onSort(String key) {
     unawaited(
@@ -236,7 +194,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   Future<void> _bulkUnstar() async {
     await _ctrl.setKeysFavorite(_selectedKeys, false);
-    _exitSelection();
+    exitSelection();
   }
 
   Future<void> _showBulkActions(BuildContext context) async {
@@ -253,7 +211,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
         context,
         _ctrl,
         keys,
-        onDone: _exitSelection,
+        onDone: exitSelection,
       ),
     ];
 
@@ -336,9 +294,6 @@ class _FavoritesPageState extends State<FavoritesPage> {
     );
   }
 
-  String _keyId(ArchiveKey k) =>
-      '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -357,13 +312,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
         }
         final keys = _visibleKeys(allKeys);
         final faps = _visibleFaps(allFaps);
-        final allSelected =
-            keys.isNotEmpty && keys.every((k) => _selected.contains(_keyId(k)));
+        final allPicked = allSelected(keys.map((k) => k.id));
 
         return PopScope(
-          canPop: !_selectionMode,
+          canPop: !selectionMode,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _selectionMode) _exitSelection();
+            if (!didPop && selectionMode) exitSelection();
           },
           child: Scaffold(
             backgroundColor: colors.background,
@@ -383,13 +337,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
               ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(50),
-                child: _selectionMode
+                child: selectionMode
                     ? CategorySelectionToolbar(
-                        count: _selected.length,
-                        allSelected: allSelected,
+                        count: selectedCount,
+                        allSelected: allPicked,
                         catColor: headerColor,
-                        onClose: _exitSelection,
-                        onToggleAll: () => _setAllSelected(keys, !allSelected),
+                        onClose: exitSelection,
+                        onToggleAll: () => setAllSelected(
+                          keys.map((k) => k.id),
+                          selected: !allPicked,
+                        ),
                         onActions: () => _showBulkActions(context),
                       )
                     : CategoryToolbar(
@@ -418,7 +375,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 final cols = layoutColumns(
                   deletedColumns(),
                   constraints.maxWidth -
-                      (_selectionMode ? kSelectionIndicatorWidth : 0),
+                      (selectionMode ? kSelectionIndicatorWidth : 0),
                   keys,
                 );
 
@@ -455,7 +412,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               sortAsc: _sort.asc,
                               onSort: _onSort,
                               colors: colors,
-                              selectionMode: _selectionMode,
+                              selectionMode: selectionMode,
                             ),
                             Expanded(
                               child: ListView.builder(
@@ -481,7 +438,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                         favorite: fap,
                                         cols: cols,
                                         colors: colors,
-                                        selectionMode: _selectionMode,
+                                        selectionMode: selectionMode,
                                         onTap: () => _launchFap(fap),
                                         onLongPress: () =>
                                             _showFapActions(context, fap),
@@ -489,15 +446,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                     );
                                   }
                                   final key = keys[i];
-                                  final selected = _selected.contains(
-                                    _keyId(key),
-                                  );
+                                  final id = key.id;
+                                  final selected = isSelected(id);
                                   return ArchiveKeyDragSource(
-                                    key: ValueKey(_keyId(key)),
+                                    key: ValueKey(id),
                                     archiveKey: key,
                                     selected: selected,
                                     selection: () => _selectedKeys,
-                                    onDropped: _onDropped,
+                                    onDropped: exitSelection,
                                     child: ArchiveTableRow(
                                       flipperKey: key,
                                       cols: cols,
@@ -505,10 +461,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                       cat: key.category,
                                       showCategoryIcon: true,
                                       progress: _ctrl.progressForKey(key),
-                                      selectionMode: _selectionMode,
+                                      selectionMode: selectionMode,
                                       selected: selected,
-                                      onTap: () => _selectionMode
-                                          ? _toggleSelect(key)
+                                      onTap: () => selectionMode
+                                          ? toggleSelect(id)
                                           : KeyActionsSheet.show(
                                               context,
                                               _ctrl,
@@ -516,9 +472,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                               onToggleFavorite: () =>
                                                   _ctrl.toggleFavorite(key),
                                             ),
-                                      onLongPress: () => _selectionMode
-                                          ? _toggleSelect(key)
-                                          : _enterSelection(key),
+                                      onLongPress: () => selectionMode
+                                          ? toggleSelect(id)
+                                          : enterSelection(id),
                                     ),
                                   );
                                 },

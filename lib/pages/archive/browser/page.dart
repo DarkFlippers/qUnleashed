@@ -20,6 +20,7 @@ import 'package:flipperlib/flipperlib.dart';
 import '../../../services/storage/fap_icons.dart' as icon_repo;
 import '../../../components/folder_pick.dart';
 import '../../../components/notification.dart';
+import '../../../components/selection.dart';
 import '../../../components/codec/fap/icon.dart';
 import '../emulate/page.dart';
 import '../../../components/archive/category.dart';
@@ -81,15 +82,13 @@ class FileManagerPage extends StatefulWidget {
   State<FileManagerPage> createState() => _FileManagerPageState();
 }
 
-class _FileManagerPageState extends State<FileManagerPage> {
+class _FileManagerPageState extends State<FileManagerPage>
+    with ListSelection<FileManagerPage> {
   late final FileManagerController _ctrl;
   _Clipboard? _clipboard;
 
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   /// Name of the entry whose row should open in inline rename mode.
   String? _pendingRenameName;
@@ -149,8 +148,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _onEntryTap(RemoteEntry e) async {
-    if (_selectionMode) {
-      _toggleSelect(e);
+    if (selectionMode) {
+      toggleSelect(e.name);
       return;
     }
     if (e.isDir) {
@@ -165,13 +164,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _navigateTo(String path) async {
-    _exitSelection();
+    exitSelection();
     await _ctrl.open(path);
   }
 
   Future<bool> _handleBack() async {
-    if (_selectionMode) {
-      _exitSelection();
+    if (selectionMode) {
+      exitSelection();
       return false;
     }
     if (_ctrl.isSearching) {
@@ -185,54 +184,51 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return true;
   }
 
-  void _enterSelection(RemoteEntry e) {
-    setState(() {
-      _selectionMode = true;
-      _selected
-        ..clear()
-        ..add(e.name);
-    });
-  }
+  /// Which of [entries] a selection can hold.
+  ///
+  /// A pending entry - a row standing in for an upload still on its way - is
+  /// left out: nothing in the bulk actions can act on a file the device does
+  /// not have yet, and `_selectAll` has always skipped them. The app bar's
+  /// toggle reads the same list, which it did not before: it asked whether
+  /// *every* row was selected, so with an upload in flight it offered "select
+  /// all" while the tap it labelled would deselect.
+  ///
+  /// Takes the list rather than reading `_ctrl.entries` itself, because
+  /// `entries` filters, concatenates and sorts on every call and `build`
+  /// already holds the answer. Lazy for the same reason: `allSelected` stops
+  /// at the first row that is not selected, which is the first one while
+  /// browsing, and a materialised list would pay for every row before the
+  /// question was asked.
+  static Iterable<String> _selectableNames(List<RemoteEntry> entries) =>
+      entries.where((e) => !e.pending).map((e) => e.name);
 
-  void _toggleSelect(RemoteEntry e) {
-    setState(() {
-      if (!_selected.add(e.name)) _selected.remove(e.name);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    // Guarded for the reason `overview/category/deleted_page.dart`'s copy
-    // spells out (QUNLEASHED-P). This page's instance is `_deleteSelected`,
-    // which calls this after an unbounded loop of remote deletes and then
-    // checks `mounted` two lines further down, for the notification.
-    if (!mounted) return;
-    if (!_selectionMode && _selected.isEmpty) return;
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
+  /// Selects everything selectable, or clears the selection if it already is.
+  ///
+  /// The off direction is [exitSelection] rather than a remove of the same
+  /// ids, so a name that has since left the listing cannot keep the toolbar up
+  /// with nothing visible under it.
   void _selectAll() {
-    final all = _ctrl.entries
-        .where((e) => !e.pending)
-        .map((e) => e.name)
-        .toSet();
-    setState(() {
-      if (_selected.length == all.length) {
-        _selected.clear();
-        _selectionMode = false;
-      } else {
-        _selected
-          ..clear()
-          ..addAll(all);
-      }
-    });
+    // Read twice below, so this one is a list.
+    final names = _selectableNames(_ctrl.entries).toList();
+    if (allSelected(names)) {
+      exitSelection();
+    } else {
+      setAllSelected(names, selected: true);
+    }
   }
 
+  /// The selected rows a bulk action runs over.
+  ///
+  /// `!e.pending` as well as the selection, so a file the device is still
+  /// being written cannot be deleted or downloaded from under the transfer.
+  /// Two things would have to go wrong for that to be reachable - a selected
+  /// name would have to become pending, which needs the file to leave the
+  /// listing mid-selection - and the rows already refuse the gesture
+  /// (`file_table.dart` and `file_row.dart` null `onTap` and `onLongPress`
+  /// while pending). This is the layer that makes it true of the *action*
+  /// rather than of the gesture.
   List<RemoteEntry> get _selectedEntries =>
-      _ctrl.entries.where((e) => _selected.contains(e.name)).toList();
+      _ctrl.entries.where((e) => !e.pending && isSelected(e.name)).toList();
 
   void _stopSearch() {
     _searchCtrl.clear();
@@ -465,11 +461,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return true;
   }
 
-  /// True when every selected entry is a `.fap`, which is the only case where
+  /// True when every one of [items] is a `.fap`, which is the only case where
   /// batch icon indexing makes sense.
-  bool get _selectionAllFap =>
-      _selected.isNotEmpty &&
-      _selectedEntries.every((e) => !e.isDir && e.extension == 'fap');
+  ///
+  /// Asks about the list the sheet is built from rather than about the
+  /// selection: `_selectedEntries` drops a pending row, so a selection of one
+  /// can arrive here empty - and `every` over nothing is true, which would put
+  /// the entry in the sheet over no files at all.
+  static bool _allFap(List<RemoteEntry> items) =>
+      items.isNotEmpty && items.every((e) => !e.isDir && e.extension == 'fap');
 
   Future<void> _indexFapIconsSelected() async {
     final items = _selectedEntries;
@@ -480,7 +480,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       if (await _indexFapIcon(e, silent: true)) indexed++;
       if (!mounted) return;
     }
-    _exitSelection();
+    exitSelection();
     context.showNotification(
       indexed == items.length
           ? context.l10n.fmIndexedIcons(indexed)
@@ -519,7 +519,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       if (!done) failures++;
     }
-    _exitSelection();
+    exitSelection();
     await _ctrl.refresh();
     if (!mounted) return;
     context.showNotification(
@@ -531,16 +531,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _downloadSelected() async {
-    final items = _selectedEntries.toList();
+    final items = _selectedEntries;
     await _downloadEntries(items);
-    if (mounted) _exitSelection();
+    exitSelection();
   }
 
   void _renameSelected() {
     final items = _selectedEntries;
     if (items.length != 1) return;
     final name = items.first.name;
-    _exitSelection();
+    exitSelection();
     setState(() => _pendingRenameName = name);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pendingRenameName = null;
@@ -625,12 +625,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   void _copySelected() {
     _setClipboard(_selectedEntries, isCut: false);
-    _exitSelection();
+    exitSelection();
   }
 
   void _moveSelected() {
     _setClipboard(_selectedEntries, isCut: true);
-    _exitSelection();
+    exitSelection();
   }
 
   Future<void> _paste() async {
@@ -1072,18 +1072,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
         animation: _ctrl,
         builder: (context, _) {
           final entries = _ctrl.entries;
-          final allSelected =
-              entries.isNotEmpty &&
-              entries.every((e) => _selected.contains(e.name));
+          // Gated on the mode: the toolbar that reads this is only built
+          // while selecting, and the walk is the whole folder.
+          final allPicked =
+              selectionMode && allSelected(_selectableNames(entries));
           final canDismiss =
               ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
           final portrait =
               MediaQuery.orientationOf(context) == Orientation.portrait;
           final showLeading =
-              _selectionMode ||
-              _ctrl.isSearching ||
-              _ctrl.canGoUp ||
-              canDismiss;
+              selectionMode || _ctrl.isSearching || _ctrl.canGoUp || canDismiss;
           return Scaffold(
             backgroundColor: colors.background,
             appBar: AppBar(
@@ -1096,28 +1094,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
               automaticallyImplyLeading: false,
               leading: !showLeading
                   ? null
-                  : _selectionMode
+                  : selectionMode
                   ? IconButton(
                       icon: const Icon(Icons.close),
-                      onPressed: _exitSelection,
+                      onPressed: exitSelection,
                     )
                   : BackButton(onPressed: _handleBackButton),
-              title: _selectionMode
+              title: selectionMode
                   ? Text(
-                      context.l10n.selectedCount(_selected.length),
+                      context.l10n.selectedCount(selectedCount),
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
                       ),
                     )
                   : _buildSearchField(colors),
-              actions: _selectionMode
+              actions: selectionMode
                   ? [
                       _BarButton(
-                        icon: allSelected
+                        icon: allPicked
                             ? Icons.deselect_rounded
                             : Icons.select_all_rounded,
-                        label: allSelected
+                        label: allPicked
                             ? context.l10n.selectNone
                             : context.l10n.selectAll,
                         onTap: _selectAll,
@@ -1125,7 +1123,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       _BarButton(
                         icon: Icons.more_horiz_rounded,
                         tooltip: context.l10n.fmMoreActions,
-                        onTap: _selected.isEmpty ? null : _showSelectionActions,
+                        // Never disabled: this whole list is built only while
+                        // selecting, and selecting means something is
+                        // selected. It read `_selected.isEmpty ? null` while
+                        // the flag beside the set could disagree with it.
+                        onTap: _showSelectionActions,
                       ),
                       const SizedBox(width: 8),
                     ]
@@ -1182,7 +1184,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ],
               ),
             ),
-            floatingActionButton: _selectionMode
+            floatingActionButton: selectionMode
                 ? null
                 : FloatingActionButton.small(
                     backgroundColor: accent,
@@ -1287,7 +1289,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
         label: context.l10n.fmMove,
         onTap: _moveSelected,
       ),
-      if (_selectionAllFap)
+      if (_allFap(items))
         ActionItem(
           icon: Icons.image_outlined,
           label: items.length == 1
@@ -1493,7 +1495,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       fileColumns(),
       constraints.maxWidth -
           kFileTrailingWidth -
-          (_selectionMode ? kFileSelectionWidth : 0),
+          (selectionMode ? kFileSelectionWidth : 0),
       entries,
     );
     return Column(
@@ -1503,7 +1505,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           sortKey: _sortKey,
           sortAsc: _ctrl.sortAscending,
           onSort: _onSort,
-          selectionMode: _selectionMode,
+          selectionMode: selectionMode,
         ),
         Expanded(
           child: ListView.builder(
@@ -1521,8 +1523,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   entry: e,
                   cols: cols,
                   actions: _actionsFor(e),
-                  selectionMode: _selectionMode,
-                  selected: _selected.contains(e.name),
+                  selectionMode: selectionMode,
+                  selected: isSelected(e.name),
                   progress: _ctrl.entryProgress(e.name),
                   onCancel: _cancelFor(e),
                   autoEdit: e.name == _pendingRenameName,
@@ -1532,7 +1534,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       () => _onEntryTap(e),
                     ),
                   ),
-                  onLongPress: () => _enterSelection(e),
+                  onLongPress: () => enterSelection(e.name),
                 ),
               );
             },
@@ -1563,14 +1565,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
             key: ValueKey('${e.isDir}:${e.name}'),
             entry: e,
             actions: _actionsFor(e),
-            selectionMode: _selectionMode,
-            selected: _selected.contains(e.name),
+            selectionMode: selectionMode,
+            selected: isSelected(e.name),
             progress: _ctrl.entryProgress(e.name),
             onCancel: _cancelFor(e),
             onTap: () => unawaited(
               guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
             ),
-            onLongPress: () => _enterSelection(e),
+            onLongPress: () => enterSelection(e.name),
           ),
         );
       },
@@ -1608,22 +1610,18 @@ class _FileManagerPageState extends State<FileManagerPage> {
   /// part of it. Folders and rows still arriving stay put.
   Widget _dragSource(RemoteEntry e, Widget child) {
     if (e.isDir || e.pending) return child;
-    final selected = _selectionMode && _selected.contains(e.name);
+    final selected = isSelected(e.name);
     return FileDragSource(
       key: ValueKey('${e.isDir}:${e.name}'),
       file: _dragFile(e),
       group: selected
           ? () => [
               for (final s in _selectedEntries)
-                if (!s.isDir && !s.pending) _dragFile(s),
+                if (!s.isDir) _dragFile(s),
             ]
           : null,
       canStart: () => _mayDownload(selected ? _selectedEntries : [e]),
-      onDropped: selected
-          ? () {
-              if (mounted) _exitSelection();
-            }
-          : null,
+      onDropped: selected ? exitSelection : null,
       child: child,
     );
   }

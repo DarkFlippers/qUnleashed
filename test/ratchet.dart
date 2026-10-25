@@ -10,15 +10,25 @@
 // its own visitor and its own budget - what they share is how a file list is
 // obtained, how a path becomes an area, and how two maps are compared.
 //
-// Seven of them now, and they do not all mean the same thing. Four -
-// `bare_catch`, `build_io`, `client_reach` and `log_level` - count legacy that
-// a sweep is draining. `unawaited` was the first whose budget went in before
-// its sweep rather than after, deliberately, so the figure could not climb
-// while the sweep ran; that sweep is done. `caught` is the only one meant to
-// *rise*, once, as ADR 0013 §5's re-ruling lands. And
-// `sentry_import_guard_test.dart` has no legacy at all: its budget is empty
-// everywhere, because the dependency arrived with the folder allowed to hold
-// it.
+// They do not all mean the same thing. Four - `bare_catch`, `build_io`,
+// `client_reach` and `log_level` - count legacy that a sweep is draining.
+// `unawaited` was the first whose budget went in before its sweep rather than
+// after, deliberately, so the figure could not climb while the sweep ran; that
+// sweep is done. `caught` is the only one meant to *rise*, once, as ADR 0013
+// §5's re-ruling lands.
+//
+// The guards have an empty budget everywhere and no legacy to drain -
+// `picker`, `picker_bytes`, `toolbar_sort`, `selection` and `sentry_import`.
+// All but the last went in with their own final site already moved, so zero
+// was both the count and the target. `sentry_import` never had a site to move:
+// the dependency arrived with the folder allowed to hold it.
+//
+// **No count of the ratchets themselves.** The first line carried one from the
+// third ratchet, and this paragraph said "Seven of them now" from the seventh
+// to the fifteenth; `picker_guard_test.dart` names that as the reason it
+// carries no ordinal either. Nothing checks a number only a human reads, and a
+// stale one reads as a file nobody maintains - `git ls-files test` and a grep
+// for `expectWithinBudget` is the answer that cannot go stale.
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
@@ -207,3 +217,21 @@ NamedArgument? namedArgument(ArgumentList arguments, String name) {
   }
   return null;
 }
+
+/// The types in [clause] named [name], for a rule about a mixin being applied.
+///
+/// Shared on the same grounds as [namedArgument], at the second user: the
+/// visible-surface census reads a `with` clause to find its marker and
+/// `selection_guard_test.dart` reads one to find `ListSelection`. Both want
+/// the matching [NamedType] rather than a bool - one for its offset, one to
+/// ask whether there was a match at all.
+///
+/// Null is empty, so a declaration with no `with` clause needs no special
+/// case at the call site. What the *caller* must not forget is
+/// `ClassTypeAlias`: `class A = B with M;` is the same decision in the other
+/// spelling, and a visitor that overrides only `visitClassDeclaration`
+/// silently misses it.
+Iterable<NamedType> mixinsNamed(WithClause? clause, String name) =>
+    (clause?.mixinTypes ?? const <NamedType>[]).where(
+      (type) => type.name.lexeme == name,
+    );

@@ -6,9 +6,7 @@ import 'package:qunleashed/pages/archive/overview/category/category_page.dart';
 import 'package:qunleashed/pages/archive/overview/category/favorites_page.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/services/archive/sort_settings.dart';
-import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
-import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'archive_fakes.dart';
@@ -29,10 +27,8 @@ import 'kept_lines.dart';
 /// `initialize()` and never touched by the device walk, so the fake client
 /// only has to answer an empty listing.
 ///
-/// The disk setup runs inside [WidgetTester.runAsync]. `testWidgets` drives a
-/// fake clock that does not run real file I/O to completion, so awaiting
-/// `initialize()` outside it hangs until the ten-minute timeout rather than
-/// failing.
+/// The mount is `archive_fakes.dart`'s, which is where the reason the disk
+/// setup has to run inside [WidgetTester.runAsync] is written down (#376).
 class _QuietFlipper with ArchiveRpcFake {
   @override
   List<Main> framesFor(Main request) {
@@ -52,63 +48,40 @@ void main() {
   useTempArchiveRoot('archive_sort_page');
 
   late _QuietFlipper client;
-  late ArchiveController ctrl;
   late ArchiveSortSettings settings;
 
   setUp(() {
     clearKeptLines();
     SharedPreferences.setMockInitialValues(const {});
     client = _QuietFlipper();
-    settings = ArchiveSortSettings();
   });
 
-  /// Bounded pumps rather than `pumpAndSettle`, which does not return here.
-  Future<void> settle(WidgetTester tester) async {
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-  }
-
-  /// Brings up [ctrl] with two folders of starred apps and pumps [page].
+  /// Brings up a controller with two folders of starred apps and pumps [page]
+  /// on it.
   ///
   /// The names disagree with the folders on purpose: by name alone the order
   /// is alpha, beta, zeta, so nothing below that reads folder-first can pass
   /// on a name sort.
-  Future<void> pumpPage(WidgetTester tester, Widget Function() page) async {
-    final storage = ArchiveStorage();
-    await tester.runAsync(() async {
-      await storage.resolveRootDir();
-      final device = storage.deviceDir(archiveTestDevice);
-      if (device.existsSync()) device.deleteSync(recursive: true);
-      await storage.writeLastDeviceName(archiveTestDevice);
-      await storage.writeFapFavorites(archiveTestDevice, const [
+  Future<void> pumpPage(
+    WidgetTester tester,
+    Widget Function(ArchiveController ctrl, ArchiveSortSettings settings) page,
+  ) async {
+    final mounted = await mountArchivePage(
+      tester,
+      client: client,
+      seed: (storage) => storage.writeFapFavorites(archiveTestDevice, const [
         (path: '/ext/apps/Tools/zeta.fap', name: 'zeta'),
         (path: '/ext/apps/Tools/alpha.fap', name: 'alpha'),
         (path: '/ext/apps/GPIO/beta.fap', name: 'beta'),
-      ]);
-      ctrl = ArchiveController(client: client, storage: storage);
-      await ctrl.initialize();
-      await settings.load();
-    });
-    addTearDown(() async {
-      ctrl.dispose();
-      settings.dispose();
-      await client.close();
-    });
-
-    await tester.binding.setSurfaceSize(const Size(900, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
-        home: page(),
-      ),
+      ]),
+      page: page,
     );
-    await settle(tester);
+    settings = mounted.sortSettings;
   }
 
   Future<void> pumpFavorites(WidgetTester tester) => pumpPage(
     tester,
-    () => FavoritesPage(controller: ctrl, sortSettings: settings),
+    (ctrl, settings) => FavoritesPage(controller: ctrl, sortSettings: settings),
   );
 
   /// The app names in the order the table lists them down the screen.
@@ -193,7 +166,7 @@ void main() {
 
     await pumpPage(
       tester,
-      () => CategoryPage(
+      (ctrl, settings) => CategoryPage(
         controller: ctrl,
         sortSettings: settings,
         category: ArchiveCategory.nfc,

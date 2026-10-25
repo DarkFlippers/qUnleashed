@@ -6,10 +6,15 @@ import 'package:flipperlib/flipperlib.dart' as fl show File;
 // Not exported by the package root, and `FlipperClient` declares `transport`,
 // so this mixin has to name the type to answer it.
 import 'package:flipperlib/src/transport/transport.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
+import 'package:qunleashed/pages/archive/overview/controller.dart';
+import 'package:qunleashed/services/archive/sort_settings.dart';
+import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+import 'package:qunleashed/theme/theme.dart';
 
 /// The RPC plumbing every archive fake needs, so only the answers differ.
 ///
@@ -28,6 +33,40 @@ import 'package:qunleashed/services/storage/paths.dart';
 mixin ArchiveRpcFake implements FlipperClient {
   final _connection = StreamController<FlipperConnectionState>.broadcast();
   final _info = StreamController<Map<String, String>>.broadcast();
+
+  /// Suspends the write until it is completed, when a fake sets one.
+  ///
+  /// Opt-in: null is "answer the write at once", which is what every fake here
+  /// did before this existed. [callRpcFramesMulti] is the seam for it because
+  /// it is the one `storageWriteChunked` sends through - CLAUDE.md's rule that
+  /// the client's API is extensions over a small core is what makes it the
+  /// only one - so a test about something outliving an upload or a restore
+  /// holds it here and nowhere else.
+  Completer<void>? writeGate;
+
+  /// Thrown from the write once [writeGate] is let go, when a fake sets one.
+  ///
+  /// [LinkDropped] is the stand-in to reach for: [isLinkDropError] answers
+  /// false for it unless a fake says otherwise, so the operation does not
+  /// retry and the throw lands in the caller's own catch.
+  Object? writeFailure;
+
+  /// How many writes have been started, and how many have returned or thrown.
+  ///
+  /// Worth asserting in any case that gates one: a gate nothing reaches, or a
+  /// continuation that never ran, would make the case pass against any code -
+  /// which is why these are read-only. A case that could write
+  /// `client.writeStarted = true` could satisfy its own `runUntil` and pass
+  /// against anything, and that is the failure CLAUDE.md warns about by name.
+  ///
+  /// Counts rather than flags behind the two getters, so the day a case has
+  /// to tell one write from another the number is already there. Both getters
+  /// read "any write", which is the honest reading of a count above zero.
+  int _started = 0;
+  int _settled = 0;
+
+  bool get writeStarted => _started > 0;
+  bool get writeSettled => _settled > 0;
 
   /// The frames a request is answered with, or a throw for a request that
   /// fails. The one thing each fake decides for itself.
@@ -95,6 +134,9 @@ mixin ArchiveRpcFake implements FlipperClient {
   /// Pumps the sender once and answers nothing, which is every current fake's
   /// behaviour: the write path calls it, and no test asserts on the frames it
   /// sends back.
+  ///
+  /// [writeGate] and [writeFailure] are the two things a fake can change about
+  /// that, and both are null by default.
   @override
   Future<List<Main>> callRpcFramesMulti(
     Future<void> Function(Future<void> Function(Main frame) sendFrame) send, {
@@ -104,8 +146,16 @@ mixin ArchiveRpcFake implements FlipperClient {
     bool retainFrames = true,
     bool interleavable = false,
   }) async {
-    await send((_) async {});
-    return const [];
+    _started++;
+    try {
+      await writeGate?.future;
+      final failure = writeFailure;
+      if (failure != null) throw failure;
+      await send((_) async {});
+      return const [];
+    } finally {
+      _settled++;
+    }
   }
 
   @override
@@ -191,6 +241,118 @@ class ListingFlipper with ArchiveRpcFake {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Bounded pumps, for a page `pumpAndSettle` does not return on.
+///
+/// Every archive page keeps something ticking - the sync bar's animation, the
+/// `DeviceScope` poll above it - so a settle waits out the suite's timeout
+/// instead of returning. One pump for the frame and one for the toolbars'
+/// animation is what the files doing this by hand had each arrived at.
+Future<void> settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+/// Interleaves real-clock slices with pumps until [done], or fails saying
+/// [reason].
+///
+/// **The `pump` inside the loop is load-bearing and not a tidy-up.** Anything
+/// the archive controller does to disk is real file I/O, which `testWidgets`'
+/// fake clock does not run to completion - so it needs [WidgetTester.runAsync]
+/// - while its own flow needs the fake clock advanced between those slices, so
+/// a single `runAsync` with a poll inside it never completes. That fact about
+/// `flutter_test` is why this is here rather than in the one file that first
+/// needed it: every archive test that waits on real I/O has to know it.
+///
+/// Bounded rather than a bare `while`: a condition that never comes true
+/// should fail in seconds rather than hang until the ten-minute timeout.
+/// [steps] is not a measured margin - the live-page case in
+/// `archive_bulk_outlives_page_test.dart` is what certifies it, because that
+/// one fails if the budget is too short for the continuation to run.
+Future<void> runUntil(
+  WidgetTester tester,
+  bool Function() done, {
+  required String reason,
+  int steps = 200,
+}) async {
+  for (var i = 0; i < steps && !done(); i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    );
+    await tester.pump();
+  }
+  expect(done(), isTrue, reason: reason);
+}
+
+/// What [mountArchivePage] built, for a case that has to reach past the page.
+///
+/// No storage: [mountArchivePage] hands that to `seed`, which is the only
+/// thing that wants it.
+typedef MountedArchive = ({
+  ArchiveController controller,
+  ArchiveSortSettings sortSettings,
+});
+
+/// Brings up an archive controller over [client] and pumps [page] on it.
+///
+/// Written out by hand, with small differences, in every archive test that
+/// pumped a page (#376). The disk half alone is still hand-written where no
+/// page is mounted - `archive_partial_walk_test.dart` and
+/// `archive_sync_link_drop_test.dart`. It runs inside [WidgetTester.runAsync]
+/// for the reason [runUntil] gives, and a test that skips that hangs at
+/// `initialize()` until the timeout rather than failing.
+///
+/// [seed] is what each case differs in: it is handed the storage with the root
+/// resolved, the device folder wiped and the device name written, so it can
+/// write the local files or favourites the page is supposed to show. The
+/// controller is built after it returns, so anything seeded is there for the
+/// first refresh.
+///
+/// The controller, the settings and [client] are closed from `addTearDown`;
+/// the surface size is set and restored the same way. `SharedPreferences`
+/// stays with the caller - the sort settings read it, and whether a case wants
+/// mock values or not is the case's business.
+Future<MountedArchive> mountArchivePage(
+  WidgetTester tester, {
+  required ArchiveRpcFake client,
+  required Widget Function(
+    ArchiveController controller,
+    ArchiveSortSettings sortSettings,
+  )
+  page,
+  Future<void> Function(ArchiveStorage storage)? seed,
+}) async {
+  final storage = ArchiveStorage();
+  final settings = ArchiveSortSettings();
+  late ArchiveController controller;
+  await tester.runAsync(() async {
+    await storage.resolveRootDir();
+    final device = storage.deviceDir(archiveTestDevice);
+    if (device.existsSync()) device.deleteSync(recursive: true);
+    await storage.writeLastDeviceName(archiveTestDevice);
+    await seed?.call(storage);
+    controller = ArchiveController(client: client, storage: storage);
+    await controller.initialize();
+    await settings.load();
+  });
+
+  addTearDown(() async {
+    controller.dispose();
+    settings.dispose();
+    await client.close();
+  });
+
+  await tester.binding.setSurfaceSize(const Size(900, 1200));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+      home: page(controller, settings),
+    ),
+  );
+  await settle(tester);
+  return (controller: controller, sortSettings: settings);
 }
 
 /// Points `ArchiveStorage` at a fresh temp directory for the file, and
