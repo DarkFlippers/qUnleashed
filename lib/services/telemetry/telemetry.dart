@@ -711,6 +711,47 @@ class Telemetry {
   /// failure the app records, which is why this hooks it rather than adding
   /// `captureException` to several hundred catch sites.
   ///
+  /// **An event with a message, and deliberately not an exception event.**
+  /// `ReplayEventProcessor` keys on an event with a non-empty `exceptions`
+  /// list: it flushes the replay buffer on both platforms, and on iOS it also
+  /// converts the session to a recorded one, so the rest of the run keeps
+  /// uploading. This sink stands against every `guarded()` call site in the
+  /// app - around a hundred and fifty of them - so as an exception event it
+  /// made every handled, recoverable failure upload a replay, which §8 sets
+  /// `sessionSampleRate: 0` precisely to prevent and which
+  /// `diagnosticsReplaySubtitle` tells the user does not happen. #332 fixed
+  /// the loudest call site; this is the mechanism behind it, and a filter is
+  /// not available anywhere downstream - event processors run before
+  /// `beforeSend`, so a filter there uploads the replay and then drops the
+  /// event. #333.
+  ///
+  /// `captureMessage` is the obvious candidate and is the wrong one: it takes
+  /// no stack trace. `captureEvent` with one keeps the frames - the SDK parses
+  /// them into a thread when there is no exception to hang them on
+  /// (`sentry_client.dart`), and `SentryEvent.stacktrace` falls back to that
+  /// thread, which is what the debug-image processor reads - so obfuscated
+  /// frames still symbolicate.
+  ///
+  /// **Which stack it is goes in the context**, because `attachStacktrace` is
+  /// on: hand the SDK an empty one and it substitutes the reporting site's,
+  /// and the old path at least marked its substitution with `snapshot: true`
+  /// where a thread carries no such flag. Most of flipperlib rejects through a
+  /// bare `completeError`, which `guarded._record` documents and which yields
+  /// `StackTrace.empty`, so the substituted case is the common one - and a
+  /// triager who cannot tell is one who chases `telemetry.dart`.
+  ///
+  /// What is lost is the exception type and value in the issue *header*, and
+  /// with them the server-side `event.type`, the `interface_type` tag and the
+  /// `error.type`/`error.value` search fields - so a console search written
+  /// against those stops matching handled failures. Both fields move into the
+  /// message and the context, where the message is the sentence
+  /// `guarded._record` has already written to the log, so the issue title and
+  /// the log line are the same sentence modulo the scrub below. One further
+  /// cost, and the one worth watching: `Sentry.captureEvent` derives its
+  /// client-report category from `SentryEvent.type`, which a hand-built event
+  /// leaves null, so a report *dropped by queue overflow* is now counted under
+  /// `unknown` rather than `error` - the instrument that measures lost error
+  /// reports no longer sees these in the errors dataset.
   ///
   /// **Fingerprinted on the label and the error type**, which is the best
   /// grouping key the app has. Sentry's default would group on the stack, and
@@ -718,11 +759,20 @@ class Telemetry {
   /// without this, one issue would hold every dropped future in the app. With
   /// it, "[Archive] syncing the category" failing with a `TimeoutException` is
   /// one issue and the same label failing with a `PlatformException` is
-  /// another, which is the split somebody triaging would make by hand.
+  /// another, which is the split somebody triaging would make by hand. The
+  /// type is read off the object, not off the message, so it survives the
+  /// exception leaving the envelope.
   ///
-  /// The label is scrubbed. Every one is a literal at its call site today, so
-  /// there is nothing in one to redact - but it is interpolated at a handful
-  /// of them, and a label is the one field here that becomes an issue *title*.
+  /// **The scrub is in two layers and neither is redundant.** The message is
+  /// left for `beforeSend`, which scrubs it once: scrubbing it here as well
+  /// double-applies the query rule, whose replacement is not a fixed point, so
+  /// a catalog URL arrived as `?<query><query>`. The fingerprint and the
+  /// context are scrubbed here because `scrubEvent` walks neither.
+  ///
+  /// Both strings are built inside the guard: an object whose `toString()`
+  /// throws is real enough that `guarded` documents it, and the cost of one is
+  /// this issue going unfiled - `guarded._record` has already written its own
+  /// line, which still reaches Sentry Logs.
   ///
   /// Nothing is awaited. `_record` is synchronous and must stay that way, and
   /// the SDK queues the send itself; `_guard` is what keeps a rejected capture
@@ -733,18 +783,33 @@ class Telemetry {
     Object error,
     StackTrace stack,
   ) {
-    final label = Scrub.outbound(what);
-    _guard(
-      'a guarded failure was not captured',
-      () => Sentry.captureException(
-        error,
+    _guard('a guarded failure was not captured', () {
+      final described = '$error';
+      final label = Scrub.outbound(what);
+      final type = error.runtimeType.toString();
+      return Sentry.captureEvent(
+        SentryEvent(
+          // Unscrubbed on purpose: `beforeSend` scrubs a message, and doing it
+          // twice is what produced `?<query><query>`.
+          message: SentryMessage('$what $verb: $described'),
+          level: SentryLevel.error,
+        ),
         stackTrace: stack,
         withScope: (scope) {
-          scope.fingerprint = [label, error.runtimeType.toString()];
-          scope.setContexts('guarded', {'what': label, 'verb': verb});
+          scope.fingerprint = [label, type];
+          scope.setContexts('guarded', {
+            'what': label,
+            'verb': verb,
+            // The two fields the issue header used to carry for free.
+            'type': type,
+            'error': Scrub.outbound(described),
+            // Whose frames the thread holds. An empty stack is replaced by the
+            // reporting site's own, which looks like the failure's and is not.
+            'stack': stack == StackTrace.empty ? 'reporter' : 'caught',
+          });
         },
-      ),
-    );
+      );
+    });
   }
 
   /// Turns one classified connect failure into a count, or into an issue.
@@ -1036,7 +1101,7 @@ class Telemetry {
   ///
   /// `try`/`await` rather than `Future.sync(...).catchError(...)`, for the
   /// reason [guarded]'s doc carries at length. It bit harder here: two
-  /// callers hand this `Sentry.captureException`, which is
+  /// callers hand this a `Future<SentryId>`, which is
   /// `Future<SentryId>`, and because this returns `void` the `ArgumentError`
   /// had nobody to reject at and went to the zone as an unlabelled
   /// `[uncaught]` - the one outcome this helper exists to prevent, arriving
@@ -1068,7 +1133,18 @@ class Telemetry {
         } catch (_) {
           described = 'a ${e.runtimeType} whose toString() threw';
         }
-        LogService.error('[Telemetry] $what: $described');
+        // A second `try`, the way `guarded._record` has one: `describe` is
+        // guarded above but `error` is not, `finally` catches nothing, and
+        // `_run` is `async` - so a throw here rejects a future `_guard` has
+        // already dropped and lands in the log as the unlabelled `[uncaught]`
+        // this guard exists to prevent. The new `_reportGuarded` widens what
+        // reaches this block, because its string building is synchronous.
+        try {
+          LogService.error('[Telemetry] $what: $described');
+        } catch (_) {
+          // The logger itself is gone. Nothing can be written, and not
+          // rejecting outranks the line.
+        }
       } finally {
         _reportingAFailure = false;
       }

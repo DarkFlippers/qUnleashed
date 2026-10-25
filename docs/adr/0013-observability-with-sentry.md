@@ -696,14 +696,71 @@ gate it.
    whole amendment turns on: `ReplayEventProcessor` keys on an event with a
    non-empty `exceptions` list. A `captureMessage` is not one, and neither is
    a Sentry Log - so `LogService` at any of its three kept levels is
-   replay-safe, and the level is never the lever. Two things follow. *Every*
-   `guarded()` failure on iOS uploads a replay, through `_reportGuarded`'s
-   `captureException`, so silencing one call site hands the role to the next.
-   And `beforeSend` is not a backstop: event processors run first, so a
-   filter there uploads the replay and then drops the event. If "replay for
-   crashes only" is wanted, the lever is in `_reportGuarded` - a
-   `captureMessage` at error level with the error in a context is reported,
-   grouped and alertable, and carries no `exceptions` list.
+   replay-safe, and the level is never the lever. Two things followed from
+   that. *Every* `guarded()` failure uploaded a replay, through
+   `_reportGuarded`'s `captureException`, so silencing one call site handed the
+   role to the next. And - still true, and the reason the lever had to be the
+   call itself - `beforeSend` is no backstop: event processors run first, so a
+   filter there uploads the replay and then drops the event.
+
+   **That lever has now been pulled** (#333). `_reportGuarded` sends a
+   `captureEvent` carrying a message and no exception, so a handled failure -
+   any `guarded()` call site, and there are around a hundred and fifty - no
+   longer flushes the replay buffer or converts an iOS session to a recorded
+   one. Not the `captureMessage` this paragraph first proposed: that takes no
+   stack trace, and the frames are most of the value. `captureEvent` with a
+   `stackTrace` keeps them, because the SDK parses a stack with no exception to
+   hang it on into a thread, and `SentryEvent.stacktrace` falls back to that
+   thread - which is the field the debug-image processor reads, so obfuscated
+   frames still symbolicate.
+
+   What it costs, in full, because "the exception moves into the message" is
+   only the half a reader notices:
+
+   - The issue header loses the exception type and value. They move into the
+     message - the same sentence `guarded._record` writes to the log - and into
+     the `guarded` context, which gains `type` and `error`. The fingerprint is
+     unchanged, so existing issues keep their grouping; the level is now
+     explicit at `error`, which is what the server defaulted an exception event
+     to anyway.
+   - **Console queries written against the exception interface stop matching
+     handled failures**: the server-side `event.type`, the `interface_type`
+     tag, and the `error.type`/`error.value` search fields are no longer
+     populated for them. Nothing in the repository holds such a query; a saved
+     search or dashboard widget might.
+   - `Sentry.captureEvent` derives its client-report category from
+     `SentryEvent.type`, which a hand-built event leaves null, where
+     `captureException` passed `error` outright. So a guarded report **dropped
+     by queue overflow** is now counted under `unknown`, and the errors-dataset
+     view of client discards - the instrument that measured exactly this kind
+     of loss, §1's envelope-cache eviction - no longer shows them. Setting the
+     event's `type` would buy it back at the price of a payload field the
+     server infers for itself; left alone deliberately, recorded here because
+     it is the one cost nothing else would surface.
+   - The context gains `stack`, which says whose frames the thread carries.
+     `attachStacktrace` is on, so an empty stack is replaced by the reporting
+     site's own; the exception path at least marked its substitution with
+     `snapshot: true`, and a thread carries no such flag. Most of flipperlib
+     rejects through a bare `completeError`, so the substituted case is the
+     common one and a triager who cannot tell is one who reads
+     `telemetry.dart`'s frames as the failure's.
+   - `options.ignoreErrors` now applies to these events, which matched nothing
+     before because they had no message. It is empty, and an entry added to it
+     would silently drop whichever call sites its pattern matches.
+
+   **What still uploads a replay**, and deliberately: an uncaught error, which
+   reaches Sentry through the SDK's own handlers and a native crash through
+   neither of them, and `_reportUnknownConnect` - one issue per platform
+   connect string the classifier has not learned, bounded by the number of
+   distinct strings, and the one handled failure where seeing what the user did
+   *is* the finding. A feedback event would too; the app sends none.
+
+   Both halves are held by a test, because neither can see the other.
+   `test/guarded_replay_test.dart` asserts the behaviour - that a `guarded()`
+   failure carries no `exceptions` list, that the frames are the failure's
+   where it has any, and that grouping, level, context and scrub survive -
+   because the symptom was replay quota in a console, which no count can see.
+   `test/capture_exception_budget_test.dart` counts what can restore it.
 
    Two things this gate still owes. **No surface has been checked in a
    recorded replay on a device** - the test proves the rules the options block
@@ -931,6 +988,10 @@ most of them are expected.
 - A sixth ratchet, a ceiling on `caught` per area — seventh counting the
   import guard above. It is the only one of them whose number is meant to rise
   once and then hold.
+- And a further one, after #333: a ceiling of one on `Sentry.captureException`
+  across `lib/`, because that call is what decides whether a handled failure
+  uploads a session replay (§6) and no filter downstream of it can decline. The
+  one it allows is `_reportUnknownConnect`.
 - #103 stops being a parallel debt and becomes part of this, though less of it
   is left than its text says: the per-area triage is read through everywhere
   but `pages/tools`, and what the issue still holds open is the blind spots the

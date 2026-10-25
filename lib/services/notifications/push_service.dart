@@ -322,11 +322,11 @@ class PushService {
   /// **Nothing here may throw, and that is the point.** `start()` awaits this
   /// through `_applySubscriptions`, and `start()` runs inside
   /// `guarded('[Bootstrap] ambient service "push notifications"', ...)`, which
-  /// reports a rejection with `Sentry.captureException`. The Settings toggles
+  /// reported a rejection with `Sentry.captureException`. The Settings toggles
   /// reach it a second way, from `void` handlers that await nothing, so there
-  /// the rejection went to the zone. Both paths end in an event carrying an
+  /// the rejection went to the zone. Both paths ended in an event carrying an
   /// `exceptions` list, and that is exactly what `ReplayEventProcessor` keys
-  /// on: on iOS it flushes the replay buffer and the session keeps uploading
+  /// on: it flushes the replay buffer, and on iOS the session keeps uploading
   /// afterwards. So an offline launch turned §8's "recorded continuously,
   /// uploaded on failure" into "uploaded always" - Sentry QUNLEASHED-2, and
   /// every iOS replay the project has received so far began at one of its
@@ -341,11 +341,15 @@ class PushService {
   /// reach this far. What lands here is the unexplained remainder, which is a
   /// thing to look at rather than a thing to read about later.
   ///
-  /// This does **not** make the path replay-free, and it should not be read
-  /// as doing so. A `MissingPluginException` from `_apnsReady`, a throw from
-  /// the four preference reads, and every other `guarded()` call site in the
-  /// app all still produce an exception event. 0013 §8 carries what would fix
-  /// that generally.
+  /// The general fix has since landed (#333, 0013 §6): `Telemetry`'s
+  /// `guarded` sink sends an event with a message and no exception, so the
+  /// `guarded` route above - a `MissingPluginException` from `_apnsReady`, a
+  /// throw from the four preference reads, any other call site - no longer
+  /// uploads a replay. What is left on *this* path is the second route: a
+  /// rejection from a `void` handler reaches the zone, which is an uncaught
+  /// error and does carry an exception. So the catch below is still the thing
+  /// standing between an offline toggle and a replay, and the level still is
+  /// not.
   @visibleForTesting
   static Future<void> applyTopics(
     Set<String> active,
