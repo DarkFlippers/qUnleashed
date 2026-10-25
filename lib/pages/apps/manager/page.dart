@@ -377,6 +377,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                 query: _query,
                 filterVal: _folderFilter,
                 filterOpts: folders,
+                sort: _sort.control(_onSort),
                 catColor: header,
                 colors: colors,
                 showStar: false,

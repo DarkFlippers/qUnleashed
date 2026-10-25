@@ -349,6 +349,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
                 query: _query,
                 filterVal: _categoryFilter,
                 filterOpts: _folders,
+                sort: _sort.control(_onSort),
                 catColor: header,
                 colors: colors,
                 showStar: false,

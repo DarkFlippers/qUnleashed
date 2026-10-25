@@ -219,14 +219,21 @@ class CategoryToolbar extends StatelessWidget {
   final String? filterVal;
   final List<String> filterOpts;
 
-  /// The sort button, or null for no button at all - which is how the two
-  /// apps-manager tables keep the toolbar they already had.
+  /// The sort button, or null for no button at all.
   ///
-  /// Their folder is a column of its own with a header to tap, so above the
-  /// 460 logical pixels `appsTableColumns` needs to show it, this sheet would
-  /// add nothing. Below that they have #122's complaint of their own, which
-  /// is their issue to fix and not this one's; the button is off rather than
-  /// absent, so it is one argument away when somebody takes it.
+  /// Every table that has one passes it now, the two apps-manager tables
+  /// included (#314). Their folder is a column of its own with a header to
+  /// tap, so the sheet adds nothing above the 460 logical pixels of *table*
+  /// width `appsTableColumns` needs to show that column - and below it the
+  /// column and its header both go, which left those two tables with #122's
+  /// original complaint and no way at all to reach a folder sort on a phone.
+  /// The window is wider than that figure wherever a rail or page padding
+  /// sits beside the table.
+  ///
+  /// Offered at every width rather than only the narrow ones, which is what
+  /// the archive does: a button that comes and goes with the window is a
+  /// control a user cannot learn, and at a wide width it agrees with the
+  /// header it duplicates.
   ///
   /// One parameter because the four move together and mean nothing apart: a
   /// key with no options behind it, or options with nothing to report them to,
