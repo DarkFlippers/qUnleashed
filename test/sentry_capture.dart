@@ -1,13 +1,21 @@
-// Driving a real Sentry hub with the transport replaced, and reading what it
-// produced.
+// Driving a real Sentry hub with the transport replaced, optionally with the
+// production sinks wired over it, and reading what it produced.
 //
-// Two copies of this had grown, in `traced_test.dart` and
+// Two copies of the transaction half had grown, in `traced_test.dart` and
 // `transfer_restart_count_test.dart`, differing in one line - and
 // `contexts.trace` was picked out of `toJson()` in three places with three
-// spellings. The repo's convention for shared test code is a plain unsuffixed
-// file in `test/`.
+// spellings. [wiredHub] arrived the same way: `connect_failure_report_test.
+// dart` had it and `guarded_replay_test.dart` was about to copy it. The repo's
+// convention for shared test code is a plain unsuffixed file in `test/`.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/services/connection/connect_report.dart';
+import 'package:qunleashed/services/guarded.dart';
+import 'package:qunleashed/services/telemetry/settings.dart';
+import 'package:qunleashed/services/telemetry/telemetry.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+
+import 'quiet_log.dart';
+import 'telemetry_sinks.dart';
 
 /// The project a test reports to, which no test reads back.
 const String _testDsn = 'https://key@o0.ingest.sentry.io/0';
@@ -136,6 +144,42 @@ Future<CapturedSignals> captureSignals() async {
     };
   });
   addTearDown(Sentry.close);
+  return seen;
+}
+
+/// Brings a hub up with the production sinks installed over it.
+///
+/// `Telemetry.start` wires five sinks - `_wireSinks` is the list - and going
+/// through it rather than assigning one by hand is what keeps a test honest:
+/// that list is the one that ships. The two asserted below are the ones every
+/// caller so far drives; `resetTelemetrySinks` puts all five back, and this
+/// registers it, so a file that forgets cannot leave a sink pointing at a
+/// closed hub for the next one to trip over.
+///
+/// **One of the five is `LogService.keptSink`**, so a `recordKeptLines()` has
+/// to come *after* this call or telemetry's own sink replaces the recorder.
+///
+/// The SDK's own init is a no-op: the hub is already up, and
+/// `SentryFlutter.init` would replace it with one nothing can read. Quiet
+/// because `start()` reports the missing `path_provider` plugin at `caught`,
+/// which is a stack per case in a talking build.
+Future<CapturedSignals> wiredHub() async {
+  final seen = await captureSignals();
+  final telemetry = Telemetry(
+    settings: DiagnosticsSettings(),
+    dsn: 'https://key@o1.ingest.de.sentry.io/2',
+    init: (configure) async {},
+    shutdown: () async {},
+  );
+  await quietlyAsync(telemetry.start);
+  // The precondition every case rests on, asserted rather than assumed.
+  // `start()` never throws by design and the line above swallows its console,
+  // so a start that began returning early - a flipped default, a plan that
+  // rejected the fake DSN - would leave every case green and empty, which is
+  // this repo's "passed for a different reason" shape.
+  expect(guardedFailureSink, isNotNull);
+  expect(connectFailureSink, isNotNull);
+  addTearDown(resetTelemetrySinks);
   return seen;
 }
 

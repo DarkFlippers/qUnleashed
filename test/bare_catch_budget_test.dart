@@ -85,7 +85,15 @@ const Map<String, int> kBudget = {
   // escapes the `catchError` callback and rejects the future four queues are
   // promised cannot reject - losing the whole chain rather than one line,
   // which is the loss `guarded`'s own doc says the guard exists to prevent.
-  'services': 9,
+  //
+  // And a seventh of the same kind, in `telemetry.dart`'s `_run`: the pair
+  // `guarded.dart` has, around the `LogService.error` that reports a failure
+  // to report. It was the one of the two that had no guard, and #333 widened
+  // what reaches it - the `guarded` sink's string building is synchronous now,
+  // so a throw there lands in `_run` rather than in `_record`'s sink-catch.
+  // `_run` is `async` and `_guard` drops its future, so an unguarded throw
+  // becomes the unlabelled `[uncaught]` that `_guard` exists to prevent.
+  'services': 10,
   // Was 12. Five went: a display that would not come up and said nothing
   // while the screen sat blank, a preview that failed the same way, a draft
   // folder left behind by "save as" and listed beside its own copy, and a

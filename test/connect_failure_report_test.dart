@@ -16,8 +16,6 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/connection/connect_report.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
-import 'package:qunleashed/services/telemetry/settings.dart';
-import 'package:qunleashed/services/telemetry/telemetry.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -25,34 +23,6 @@ import 'kept_lines.dart';
 import 'quiet_log.dart';
 import 'sentry_capture.dart';
 import 'telemetry_sinks.dart';
-
-/// A hub that keeps what it is given, with the production hooks installed.
-///
-/// `Telemetry.start` is what fills `connectFailureSink`, and going through it
-/// rather than assigning the sink by hand is what keeps this file honest: the
-/// assignment in `_wireSinks` is the one that ships.
-///
-/// The SDK's own init is a no-op here - the hub is already up, and
-/// `SentryFlutter.init` would replace it with one nothing can read. Quiet
-/// because `start()` reports the missing `path_provider` plugin at `caught`,
-/// which is a stack per case in a talking build.
-Future<CapturedSignals> _wiredHub() async {
-  final seen = await captureSignals();
-  final telemetry = Telemetry(
-    settings: DiagnosticsSettings(),
-    dsn: 'https://key@o1.ingest.de.sentry.io/2',
-    init: (configure) async {},
-    shutdown: () async {},
-  );
-  await quietlyAsync(telemetry.start);
-  // The precondition every case rests on, asserted rather than assumed.
-  // `start()` never throws by design and the line above swallows its console,
-  // so a start that began returning early - a flipped default, a plan that
-  // rejected the fake DSN - would leave every case here green and empty, which
-  // is this repo's "passed for a different reason" shape.
-  expect(connectFailureSink, isNotNull);
-  return seen;
-}
 
 /// A thrown object that classifies, with [text] as its whole content.
 class _ConnectError implements Exception {
@@ -116,7 +86,7 @@ void main() {
   /// together - and differ only in the pair, so the pair is all they should
   /// have to say.
   Future<List<String>> fingerprintsFor(List<String> messages) async {
-    final seen = await _wiredHub();
+    final seen = await wiredHub();
     for (final message in messages) {
       // Anchored rather than assumed. Every case here is about how an
       // *unclassified* string is filed, so a message the classifier has since
@@ -148,7 +118,7 @@ void main() {
 
   group('a kind the classifier knows', () {
     test('is counted, with the dimensions §2 asks for', () async {
-      final seen = await _wiredHub();
+      final seen = await wiredHub();
 
       reportConnectFailure(
         _ConnectError('connect timed out'),
@@ -174,7 +144,7 @@ void main() {
     test(
       'is not an issue: nobody is paged for a Flipper out of range',
       () async {
-        final seen = await _wiredHub();
+        final seen = await wiredHub();
 
         reportConnectFailure(
           _ConnectError('bluetooth is powered off'),
@@ -200,7 +170,7 @@ void main() {
       // Not `flipperlib`, which is §4's timeline: an event carrying both has
       // to say which of the two said this. The transport is read off the same
       // line, which is where `usb` is pinned for a known kind.
-      final seen = await _wiredHub();
+      final seen = await wiredHub();
 
       reportConnectFailure(
         _ConnectError('too many paired devices'),
@@ -221,7 +191,7 @@ void main() {
 
   group('an unknown string over BLE', () {
     test('is an issue and not a count', () async {
-      final seen = await _wiredHub();
+      final seen = await wiredHub();
 
       reportConnectFailure(
         _ConnectError('GATT writes are embargoed on Tuesdays'),
@@ -371,7 +341,7 @@ void main() {
       // `scrubEvent` walks neither a fingerprint nor a context, so this hook
       // is the whole of §6.2 for both fields - and an unclassified platform
       // string is exactly the kind that arrives carrying a path.
-      final seen = await _wiredHub();
+      final seen = await wiredHub();
 
       reportConnectFailure(
         _ConnectError(r'dial failed reading /ext/nfc/Office badge.nfc'),
@@ -395,7 +365,7 @@ void main() {
     // written against BLE stacks, so an unmatched USB string has nothing to be
     // learned into - and an issue per occurrence is an issue per replug.
     test('is counted at kind unknown rather than raised', () async {
-      final seen = await _wiredHub();
+      final seen = await wiredHub();
 
       reportConnectFailure(
         _ConnectError('LIBUSB_ERROR_ACCESS claiming the interface'),
@@ -416,7 +386,7 @@ void main() {
     });
 
     test('and still leaves the timeline a breadcrumb', () async {
-      final seen = await _wiredHub();
+      final seen = await wiredHub();
 
       reportConnectFailure(
         _ConnectError('LIBUSB_ERROR_ACCESS claiming the interface'),
@@ -466,7 +436,7 @@ void main() {
         // Every call site is a `catch` with a user waiting on a dialog. The
         // classifier calls `toString()`, which `guarded` documents as real
         // enough to catch.
-        await _wiredHub();
+        await wiredHub();
         // Recorded after wiring, deliberately: `start()` installs its own kept
         // sink, so a recorder put in before would be the one it replaced.
         recordKeptLines();
