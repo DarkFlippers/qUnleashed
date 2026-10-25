@@ -483,7 +483,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
         return Scaffold(
           backgroundColor: colors.background,
           appBar: QPageAppBar(
-            client: DeviceScope.of(context).client,
+            client: DeviceScope.clientOf(context),
             title: 'Flibler',
             backgroundColor: colors.accent,
             foregroundColor: colors.onAccent,

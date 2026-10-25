@@ -245,10 +245,14 @@ class ListingFlipper with ArchiveRpcFake {
 
 /// Bounded pumps, for a page `pumpAndSettle` does not return on.
 ///
-/// Every archive page keeps something ticking - the sync bar's animation, the
-/// `DeviceScope` poll above it - so a settle waits out the suite's timeout
-/// instead of returning. One pump for the frame and one for the toolbars'
-/// animation is what the files doing this by hand had each arrived at.
+/// Every archive page keeps the sync bar's animation ticking, so a settle
+/// waits out the suite's timeout instead of returning. One pump for the frame
+/// and one for the toolbars' animation is what the files doing this by hand
+/// had each arrived at.
+///
+/// The `DeviceScope` poll above the page used to be named here as a second
+/// source. Its timer still runs, but no archive page depends on the scope
+/// since #344, so it no longer rebuilds one.
 Future<void> settle(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));

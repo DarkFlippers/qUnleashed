@@ -87,7 +87,7 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: widget.category.displayName,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

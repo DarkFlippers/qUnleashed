@@ -274,10 +274,10 @@ class ToolsPage extends StatelessWidget {
 }
 
 Widget _buildRecoverPage(BuildContext context) =>
-    RecoverPage(client: DeviceScope.of(context).client);
+    RecoverPage(client: DeviceScope.clientOf(context));
 
 Widget _buildSeedPage(BuildContext context) =>
-    SeedPage(client: DeviceScope.of(context).client);
+    SeedPage(client: DeviceScope.clientOf(context));
 
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
@@ -296,17 +296,17 @@ Future<void> _openSettingsPage(BuildContext context) async {
 }
 
 Widget _buildPaintPage(BuildContext context) =>
-    ProjectManagerPage(client: DeviceScope.of(context).client);
+    ProjectManagerPage(client: DeviceScope.clientOf(context));
 
 Future<void> _openFliblerPage(BuildContext context) async {
   await openRoute(context, AppRoute.fliblerProject);
 }
 
 Widget _buildRemoteControlPage(BuildContext context) =>
-    RemoteControlPage(client: DeviceScope.of(context).client);
+    RemoteControlPage(client: DeviceScope.clientOf(context));
 
 Future<void> _openCliPage(BuildContext context) async {
-  final client = DeviceScope.of(context).client;
+  final client = DeviceScope.clientOf(context);
   await Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => CliPage(client: client, links: LinkService.instance),

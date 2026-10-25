@@ -97,11 +97,18 @@ class _AppDetailPageState extends State<AppDetailPage> {
   /// The body carries up to three `SelectionArea`s over `flutter_html`, and a
   /// rebuild throws away a live text selection in them. A selection handle
   /// dragged across that rebuild then crashes inside a gesture callback, where
-  /// nothing on this page can catch it. Both of the tickers that used to reach
-  /// the whole body now stop at the widget they describe: the scope at
-  /// [_DetailAppBar], the controller at the bar's actions and the install
-  /// button. `test/app_detail_rebuild_scope_test.dart` holds the mechanism and
-  /// the two notification rates. QUNLEASHED-F.
+  /// nothing on this page can catch it. Neither ticker reaches the body: the
+  /// catalog controller stops at [_DetailAppBar] and at the install button,
+  /// and the device-info poll no longer rebuilds anything this page builds at
+  /// all, now that the bar reads `DeviceScope.clientOf` and depends on
+  /// nothing. `test/app_detail_rebuild_scope_test.dart` holds the mechanism
+  /// and both notification rates. QUNLEASHED-F, #344.
+  ///
+  /// The poll is not *absent* from the subtree - `QPageAppBar`'s title widget
+  /// takes its own `deviceInfoUpdates` subscription and `setState`s on each
+  /// patch (`components/appbar.dart`), which is how the subtitle tracks the
+  /// device. That rebuild stops inside the bar, and is the reason the bar
+  /// never wanted the scope's notification in the first place.
   ///
   /// A theme or locale change still rebuilds the body - `context.appColors`
   /// below is an inherited dependency, and `lib/app/app.dart` rebuilds the
@@ -183,9 +190,23 @@ class _AppDetailPageState extends State<AppDetailPage> {
 
 /// The page's bar, and the only place the page reaches for [DeviceScope].
 ///
-/// Both of the things that make this rebuild - the scope's device-info poll
-/// and the catalog controller - stop here rather than at the page, which is
-/// the point of it being its own widget. See [_AppDetailPageState.build].
+/// Its own widget because `Scaffold.appBar` needs a [PreferredSizeWidget] and
+/// an `AnimatedBuilder` is not one.
+///
+/// That is the whole of it, and it is worth stating exactly, because the
+/// obvious reading is wrong twice over. An `AnimatedBuilder` is its own
+/// element and confines its rebuild to its builder *wherever* it is written -
+/// it does not need a class around it to stop anywhere. And the scope's
+/// device-info poll was the second historical reason for this class and is no
+/// longer a reason at all: `DeviceScope.clientOf` registers no dependency, so
+/// that read would be safe from the page's own `build`.
+///
+/// What stays is the type. The bar has to rebuild on the catalog controller -
+/// otherwise the delete action goes stale - so an `AnimatedBuilder` has to be
+/// above the `QPageAppBar`, and something has to answer `preferredSize` for
+/// `Scaffold` before any of it is built. See [_AppDetailPageState.build] and
+/// `components/appbar.dart`'s note on [QPageAppBar.preferredSizeWithoutBottom].
+/// #344.
 class _DetailAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _DetailAppBar({
     required this.controller,
@@ -207,7 +228,7 @@ class _DetailAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) => QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: detail?.card.name ?? context.l10n.appDetailFallbackTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

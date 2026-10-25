@@ -256,7 +256,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: _name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

@@ -15,6 +15,17 @@ import '../controller.dart';
 import 'editor_widgets.dart';
 import '../../../../devices/device_scope.dart';
 
+/// The editor's bar, extracted for the page file's size and nothing else.
+///
+/// **Not a rebuild boundary**, despite looking like one: `_PixelEditorPageState`
+/// holds `_ctrl.addListener` on a listener that calls `setState`, so every
+/// controller tick rebuilds the whole page and this bar with it. Reading
+/// `ctrl.canUndo` here with no listener of its own works *because* of that.
+///
+/// #344 proposed deleting this class on the grounds that it existed to own a
+/// listening `DeviceScope` read. It did not - unlike `_DetailAppBar` in
+/// `apps/catalog/detail_page.dart`, which really is its own widget for a
+/// reason. Said here so the next reader does not repeat the inference.
 class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   const EditorAppBar({
     super.key,
@@ -37,7 +48,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return QPageAppBar(
-      client: DeviceScope.of(context).client,
+      client: DeviceScope.clientOf(context),
       title: context.l10n.paintTitle,
       leading: IconButton(
         onPressed: onClose,

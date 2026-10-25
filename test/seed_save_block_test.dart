@@ -193,10 +193,15 @@ void main() {
     );
 
     test('is not recorded again every time the gate is read', () async {
-      // The #305 shape: `_ResultCard` reads `saveBlock` on every rebuild, and
-      // `DeviceScope` rebuilds this page on a five-second battery poll - so a
-      // line on that read is a burst, which is why the fault is recorded in
+      // The #305 shape: `_ResultCard` reads `saveBlock` on every rebuild, so
+      // a line on that read is a burst, which is why the fault is recorded in
       // `search` instead. Reading the getter is what a rebuild does.
+      //
+      // What drove the rebuilds in #305 was `DeviceScope`'s five-second
+      // battery poll, reaching this page through the listening read in
+      // `tools/overview/page.dart`. That read is `clientOf` as of #344, so the
+      // poll no longer rebuilds this page - the property still holds, and it
+      // is no longer this page's only source of rebuilds that matters.
       //
       // `clearKeptLines` first, because it resets the fold as well as the
       // list: without it a repeat of the body the search already wrote folds

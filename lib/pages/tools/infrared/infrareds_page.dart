@@ -100,7 +100,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     try {
       final content = await _api.getKeyContent(f.id);
       if (!mounted) return;
-      final client = DeviceScope.of(context).client;
+      final client = DeviceScope.clientOf(context);
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => IrContentPage(
@@ -134,7 +134,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: widget.brand.name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

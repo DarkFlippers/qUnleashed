@@ -204,7 +204,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: context.l10n.toolPulsePlotter,
         subtitle: _fileName,
         showDeviceStatus: false,
