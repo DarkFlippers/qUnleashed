@@ -220,7 +220,10 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return;
     }
 
-    final device = _dfuOnly ? DeviceScope.of(context) : null;
+    // `notifierOf`: this is the DFU-only branch of a button press, and all it
+    // does with the controller is call `setRecovering`. The `dfuPresent` read
+    // this widget really depends on is the listening one in `build`. #407.
+    final device = _dfuOnly ? DeviceScope.notifierOf(context) : null;
 
     final FirmwareSource source;
     if (_isCustom) {

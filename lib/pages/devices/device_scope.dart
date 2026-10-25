@@ -67,4 +67,32 @@ class DeviceScope extends InheritedNotifier<DeviceController> {
         .notifier!
         .client;
   }
+
+  /// The controller, without a dependency.
+  ///
+  /// **For calling a method on, or handing to a `Listenable`-taking widget.
+  /// Never for reading state off in a `build`.** The three needs this scope
+  /// serves are the client with no dependency ([clientOf]), live state read in
+  /// a `build` ([of]), and this one, which has six sites: four callbacks
+  /// calling a method - `synchronize()`, `playAlert()`, `buildExportDump()`,
+  /// `setRecovering()` - plus `_openFullInfo`, which takes one snapshot of
+  /// `info` into a sheet it then pushes, and `app/shell.dart`, which hands the
+  /// controller to a `ListenableBuilder` and wants that builder, not the whole
+  /// shell, to be what the poll rebuilds.
+  ///
+  /// This one has no type to hide behind. [clientOf] narrows the surface -
+  /// `info`, `dfuPresent`, `connectionState` and `deviceLoading` are not on a
+  /// client, though `isConnected` and `deviceInfoCache` are, as that
+  /// accessor's own doc says - and this narrows nothing at all: it hands back
+  /// the controller, and with it every stale read [clientOf] keeps out of
+  /// reach. What stands in for the type is the name, this paragraph, and
+  /// `test/device_scope_listen_test.dart`, which counts every call and fails
+  /// on one that reads live state off the result **where it can see it**: the
+  /// rule is syntactic, so a controller taken into a local first is invisible
+  /// to it, and what covers those sites is the census budget's line on each.
+  /// ADR 0011's addendum is the decision and says why the trade is worth
+  /// making for six sites.
+  static DeviceController notifierOf(BuildContext context) {
+    return context.getInheritedWidgetOfExactType<DeviceScope>()!.notifier!;
+  }
 }

@@ -119,12 +119,26 @@ class DeviceTab extends StatelessWidget {
   }
 
   static Future<void> _onRefresh(BuildContext context) async {
-    DeviceScope.of(context).synchronize();
+    // `notifierOf`: a callback calling a method wants the controller, not a
+    // subscription - and a listening read here would outlive the tap, since
+    // nothing clears a dependency on a rebuild. #407.
+    DeviceScope.notifierOf(context).synchronize();
     await FirmwareRepository.instance.refresh();
   }
 
   static void _openFullInfo(BuildContext context) {
-    final ctrl = DeviceScope.of(context);
+    // Takes **one snapshot** of the controller's state - `deviceInfoEntries`
+    // several times and `info` once, all in this call - to fill a sheet that
+    // is pushed and then static, so there is nothing for a later notification
+    // to update.
+    //
+    // This is the awkward site for `notifierOf`'s rule, and the one the
+    // syntactic guard cannot see either way, because the reads go through a
+    // local. What justifies it is the shape, not Flutter's wording about a
+    // value "used once and not cached": the derived values are baked into a
+    // pushed route, which that wording does not cover. The census budget in
+    // `test/device_scope_listen_test.dart` carries the justification. #407.
+    final ctrl = DeviceScope.notifierOf(context);
     showDeviceFullInfoSheet(
       context,
       title: context.l10n.deviceFullInfo,
@@ -206,7 +220,7 @@ class _ConnectedContent extends StatelessWidget {
   }
 
   static Future<void> _playAlert(BuildContext context) async {
-    final ctrl = DeviceScope.of(context);
+    final ctrl = DeviceScope.notifierOf(context);
     final success = await ctrl.playAlert();
     if (!context.mounted) return;
     context.showNotification(
@@ -216,7 +230,7 @@ class _ConnectedContent extends StatelessWidget {
   }
 
   static Future<void> _exportDeviceInfo(BuildContext context) async {
-    final ctrl = DeviceScope.of(context);
+    final ctrl = DeviceScope.notifierOf(context);
     Pasteboard.writeText(ctrl.buildExportDump());
     if (!context.mounted) return;
     context.showNotification(

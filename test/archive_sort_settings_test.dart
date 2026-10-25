@@ -22,10 +22,12 @@ void main() {
   //
   // That makes this the single point of failure for half of #122: delete the
   // call and nothing else fails, while the stored sort is dead on every
-  // launch and every table opens on name ascending for ever. The shell is not
-  // pumpable - `diagnostics_notice_test.dart` says so and why - so this reads
-  // the source, the way the reach and budget tests in this directory do. It
-  // is a weak test; it is stronger than the nothing it replaces.
+  // launch and every table opens on name ascending for ever. Pumping the
+  // shell is not worth it for this - `diagnostics_notice_test.dart` says why,
+  // and it is relevance rather than impossibility:
+  // `shell_poll_rebuild_test.dart` does pump the whole app. So this reads the
+  // source, the way the reach and budget tests in this directory do. It is a
+  // weak test; it is stronger than the nothing it replaces.
   test('the shell reads the stored sort, and is the only one that does', () {
     final shell = File('lib/app/shell.dart').readAsStringSync();
 
