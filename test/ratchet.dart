@@ -186,3 +186,24 @@ bool isLogServiceCall(MethodInvocation node) {
   }
   return false;
 }
+
+/// The argument called [name] in [arguments], or null if it is not passed.
+///
+/// Shared on the same grounds as [isLogServiceCall], and by then four ratchets
+/// had spelt it out: the bytes argument of a pick, the `throwable:` of a Sentry
+/// event, a toolbar's `sort:`, and a folder pick's `what:`.
+///
+/// The reason it is worth a function is the accessor rather than the loop.
+/// `NamedArgument.argumentExpression` carries `@ToBeDeprecated` and
+/// `argumentExpression2` - the one that replaces it - is `@experimental`,
+/// which `flutter analyze` makes fatal in CI, so the copies had to agree on
+/// using the deprecated spelling *and* on why. With one copy, the migration
+/// is one edit here and the argument is written once.
+NamedArgument? namedArgument(ArgumentList arguments, String name) {
+  for (final argument in arguments.arguments) {
+    if (argument is NamedArgument && argument.name.lexeme == name) {
+      return argument;
+    }
+  }
+  return null;
+}

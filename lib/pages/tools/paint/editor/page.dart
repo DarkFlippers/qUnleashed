@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/material.dart';
 
+import '../../../../components/folder_pick.dart';
 import '../../../../components/format.dart';
 import '../../../../components/path.dart';
 import '../../../../components/picked_file.dart';
@@ -91,6 +92,18 @@ class _PaintPageState extends State<PaintPage> {
   // without prompting and autosave is redirected there.
   String? _projectDir;
   String? _projectName;
+
+  /// The last name typed into the export prompt.
+  ///
+  /// Offered back by [_resolveExportName] on every later export prompt, not
+  /// only after a pick that did not happen: nothing in the three export paths
+  /// binds a project, so `_projectName` stays null and a second export of an
+  /// unsaved drawing is the same prompt again. The export that mattered is the
+  /// one that was interrupted - the pick is refused or cancelled *after* the
+  /// name is typed - and a name offered back after a successful export is the
+  /// better default anyway. `_saveProject` does not read this: saving is where
+  /// a name becomes the project's own, and it prompts from `_projectName`.
+  String? _lastExportName;
 
   @override
   void initState() {
@@ -367,45 +380,49 @@ class _PaintPageState extends State<PaintPage> {
   }
 
   /// The export name: the current project name when saved, otherwise prompted.
-  Future<String?> _resolveExportName() {
-    if (_projectName != null) return Future.value(_projectName);
-    return _promptProjectName(initial: _suggestedName());
+  ///
+  /// A prompted name is kept in [_lastExportName] and offered back the next
+  /// time, because the folder pick that follows this can be cancelled or
+  /// refused - and until #353 a refusal looked exactly like a cancellation, so
+  /// the name the user had just typed was gone with no way to resume it.
+  Future<String?> _resolveExportName() async {
+    if (_projectName != null) return _projectName;
+    final name = await _promptProjectName(
+      initial: _lastExportName ?? _suggestedName(),
+    );
+    if (name != null) _lastExportName = name;
+    return name;
   }
 
   /// Opens the system folder picker; returns null when cancelled and when the
   /// picker refused.
   ///
   /// The three export entry points await this *before* their own `try`, and
-  /// each is reached from a sheet entry - so a rejection from here had no
-  /// listener anywhere and landed in the zone as a fatal uncaught error, which
-  /// is the mechanism of QUNLEASHED-K. What reaches the catch is not that
-  /// failure: `getDirectoryPath` swallows its own `PlatformException` on
-  /// Android and iOS, so this is a desktop refusal or a missing plugin.
+  /// each is reached from a sheet entry - so a rejection from here would have
+  /// no listener anywhere and would land in the zone as a fatal uncaught
+  /// error, which is the mechanism of QUNLEASHED-K. [pickFolder] is where that
+  /// is held now: it never rejects, it reports the failure itself, and on
+  /// Android and iOS it sees the refusal the plugin's own call swallowed.
   ///
   /// **The two nulls are not distinguishable, and the callers rely on that.**
   /// All three treat null as "cancelled" and return silently, which is right
-  /// only because the refusal is reported from in here before it answers. A
-  /// `rethrow` in the catch would read as correct - every caller has a `try` -
-  /// and would put the crash back on all three export paths. No test mounts
-  /// this page, so what notices is `test/picker_guard_test.dart`'s fourth
-  /// condition, which is the cheap half of that gap rather than all of it.
+  /// only because the refusal is reported before it answers. What they do keep
+  /// across either one is the name [_resolveExportName] prompted for.
   Future<String?> _pickDestination() async {
-    try {
-      return await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.paintChooseExportLocation,
-      );
-    } catch (e, st) {
-      LogService.caught(
-        '[Paint] the export folder pick failed: ${LogService.describe(e, st)}',
-      );
-      if (mounted) {
-        context.showNotification(
-          context.l10n.commonPickFailed,
-          type: QNotificationType.error,
-        );
-      }
-      return null;
-    }
+    // Mounted first, because this one is reached *after* an await - the three
+    // export paths resolve a name through a dialog above it - and the title is
+    // read from the context here rather than inside [pickFolder]. On a page
+    // the user left while the name prompt was open, `context.l10n` trips
+    // `dependOnInheritedWidgetOfExactType`'s active-ancestor assertion, and
+    // the three entry points are invoked bare from a sheet entry: nothing
+    // would be listening to that throw. The other four sites read their title
+    // synchronously from a tap.
+    if (!mounted) return null;
+    return pickFolder(
+      context,
+      what: '[Paint] the export folder pick',
+      dialogTitle: context.l10n.paintChooseExportLocation,
+    );
   }
 
   /// Binds the editor to [dirPath]/[name] as its project, redirecting autosave
@@ -438,49 +455,24 @@ class _PaintPageState extends State<PaintPage> {
 
   /// Prompts for a project (folder) name, sanitizing the result to a safe
   /// folder name. Returns null when cancelled or left empty.
+  ///
+  /// The field lives in [_NamePrompt] so that its controller is disposed with
+  /// the dialog's own route and not here. `showDialog`'s future completes when
+  /// the route is *popped*, while its exit transition still has frames to run
+  /// and anything that rebuilds this page rebuilds the dialog's subtree inside
+  /// them - and `DeviceScope`'s five-second battery poll does exactly that. A
+  /// `ctrl.dispose()` after the await therefore threw "A TextEditingController
+  /// was used after being disposed" out of `build`, from every dismissal that
+  /// a rebuild landed on. `test/paint_export_name_test.dart` is what found it,
+  /// by being the first test to mount this page and close this dialog.
   Future<String?> _promptProjectName({String? initial}) async {
     if (!mounted) return null;
     final colors = context.appColors;
-    final ctrl = TextEditingController(text: initial ?? '');
     final result = await showDialog<String>(
       context: context,
       barrierColor: colors.dialogBarrier,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text(
-          context.l10n.paintProjectName,
-          style: TextStyle(color: colors.dialogText),
-        ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: context.l10n.paintProjectNameHint,
-            hintStyle: TextStyle(color: colors.dialogMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              context.l10n.commonCancel,
-              style: TextStyle(color: colors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: Text(
-              context.l10n.commonSave,
-              style: TextStyle(color: colors.accent),
-            ),
-          ),
-        ],
-      ),
+      builder: (ctx) => _NamePrompt(initial: initial ?? '', colors: colors),
     );
-    ctrl.dispose();
     if (result == null) return null;
     final name = _sanitizeName(result);
     return name.isEmpty ? null : name;
@@ -870,6 +862,86 @@ class _PaintPageState extends State<PaintPage> {
                 FrameActions(ctrl: _ctrl, colors: colors),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The project-name dialog, which owns the field's controller.
+///
+/// Stateful for the controller's lifetime alone: a `State`'s `dispose` runs
+/// when the route is actually removed, which is after the exit transition that
+/// a controller disposed at the `showDialog` call site was still being
+/// rebuilt in. [_PaintPageState._promptProjectName] has the failure.
+///
+/// **A holdout from `components/dialogs/name.dart`**, which is this skeleton
+/// extracted (#266/#278) and which already owns its controller this way - the
+/// failure above was rediscovered here rather than inherited. Converting is
+/// not a refactor, though: `QNameDialog` takes a required device-shaped
+/// `NameRule` and *refuses* a name the rule rejects, while this one sanitizes
+/// whatever is typed into a folder name, and `name.dart`'s own doc names the
+/// paint editor as the caller waiting on a host-shaped rule.
+/// `test/name_prompt_budget_test.dart` counts the `showDialog<String>` sites
+/// and still reads one for `pages/tools`, which is this.
+class _NamePrompt extends StatefulWidget {
+  const _NamePrompt({required this.initial, required this.colors});
+
+  /// What the field starts with: the current project's name, the last name
+  /// typed into the export prompt, or a suggestion.
+  final String initial;
+
+  final QAppColors colors;
+
+  @override
+  State<_NamePrompt> createState() => _NamePromptState();
+}
+
+class _NamePromptState extends State<_NamePrompt> {
+  late final TextEditingController _ctrl = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    return AlertDialog(
+      backgroundColor: colors.dialogBackground,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text(
+        context.l10n.paintProjectName,
+        style: TextStyle(color: colors.dialogText),
+      ),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        style: TextStyle(color: colors.dialogText),
+        decoration: InputDecoration(
+          hintText: context.l10n.paintProjectNameHint,
+          hintStyle: TextStyle(color: colors.dialogMuted),
+        ),
+        onSubmitted: (v) => Navigator.pop(context, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            context.l10n.commonCancel,
+            style: TextStyle(color: colors.textSecondary),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text),
+          child: Text(
+            context.l10n.commonSave,
+            style: TextStyle(color: colors.accent),
           ),
         ),
       ],

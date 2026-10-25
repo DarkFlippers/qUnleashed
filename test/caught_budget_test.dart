@@ -166,8 +166,10 @@ import 'ratchet.dart';
 /// test a count of one means said once. It would not be safe across two.
 ///
 /// Six pickers already caught before this and were left alone. Three of them
-/// record nothing - two in the file browser and the archive's save dialog -
-/// and that is a smaller fault than a crash and not this issue's. The other
+/// recorded nothing - two in the file browser and the archive's save dialog -
+/// and that was a smaller fault than a crash and not this issue's. The two in
+/// the file browser were folder picks, and #353 took them into the shim
+/// below, which records; the save dialog still does not. The other
 /// three do keep a line, and one of them disagrees with these four:
 /// `firmware_update_button.dart` records the same mechanism at `error` and
 /// shows the user the exception. Under §5's rule these four are right and that
@@ -262,12 +264,52 @@ import 'ratchet.dart';
 /// The level is §5's audience split for all three: nobody can act on a Flipper
 /// that is not connected or a file the user already moved, while the rate of
 /// either says whether the connection state is wrong.
+/// ## #353 and #354, which move three of these into one file
+///
+/// The four picker lines above are two sites now. Every folder pick in `lib/`
+/// goes through `components/folder_pick.dart`, which reports the failure
+/// itself rather than leaving each surface to do it, so `pages/flibler` falls
+/// to 0 and `pages/tools` to 11. `pages/archive` does not move: it loses the
+/// archive category's folder pick and gains a second line in the file
+/// browser's *file* pick, which is #354.
+///
+/// `components` is 3, and all three are the shim's:
+///
+///  * **the folder pick failed** - the four lines above arriving in one place.
+///    The body is the caller's `what` plus `describe`, so the five surfaces
+///    stay apart in a report (`[Archive]`, `[Flibler]`, `[Paint]`, and the
+///    file browser's download and upload), and the fold drops a repeat at one
+///    of them exactly as the paragraph above describes for the four;
+///  * **the pick fell back to the plugin** - the fix going quiet. The shim
+///    talks to the plugin's own method channel, named from its 8.x source,
+///    because the plugin's Dart layer catches the refusal and answers null. A
+///    rename in a major bump leaves folder picks working and refusals
+///    invisible again, which is the state #353 describes and nothing else
+///    would report. It cannot fire on a build where the channel is there.
+///  * **the sentence could not be shown** - the innermost fallback, and the
+///    same shape as `guarded.dart`'s and the pair in `logging.dart`:
+///    `showNotification` reads the root `Overlay` and the theme off the
+///    context it was handed, and five callers with no `try` between them rely
+///    on `pickFolder` answering rather than rejecting. The failure itself is
+///    already on the record one line up, so what this adds is that the user
+///    was told nothing - which is the part a report cannot otherwise show.
+///
+/// **The cause paragraph above now reads differently on mobile.** The three
+/// folder picks could not carry `unknown_path` because `getDirectoryPath`
+/// swallowed it; the shim's own call sees it, so a refused tree URI on Android
+/// is as reportable as the file pick's. The desktop refusals are unchanged.
+///
+/// The file browser's new line is the other half of #354: a multi-select that
+/// came back with none of the chosen files, which used to return silently
+/// beside the cancellation. Why those two are separable, and what is left of
+/// the issue, is in `_uploadFromPath` beside the code.
 const Map<String, int> kBudget = {
   'services': 18,
   'pages/archive': 23,
-  'pages/tools': 12,
-  'pages/flibler': 1,
+  'pages/tools': 11,
+  'pages/flibler': 0,
   'pages/apps': 1,
+  'components': 3,
 };
 
 const String kAdr = 'docs/adr/0013-observability-with-sentry.md';

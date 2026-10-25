@@ -18,6 +18,7 @@ import '../../../theme/theme.dart';
 import 'package:flipperlib/flipperlib.dart';
 
 import '../../../services/storage/fap_icons.dart' as icon_repo;
+import '../../../components/folder_pick.dart';
 import '../../../components/notification.dart';
 import '../../../components/codec/fap/icon.dart';
 import '../emulate/page.dart';
@@ -339,24 +340,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  /// Opens the system folder picker and returns the chosen directory, or null
-  /// if the user cancels or the platform has no directory picker.
-  Future<String?> _pickDestinationDir() async {
-    try {
-      return await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.fmChooseDownloadLocation,
-      );
-    } catch (e) {
-      if (mounted) {
-        context.showNotification(
-          context.l10n.fmFolderPickUnsupported,
-          type: QNotificationType.error,
-        );
-      }
-      return null;
-    }
-  }
-
   /// Downloads [entries] (files and/or whole directory trees) into a folder the
   /// user picks via the system file picker, recreating folders recursively.
   Future<void> _downloadEntries(List<RemoteEntry> entries) async {
@@ -368,7 +351,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
       return;
     }
     if (!_mayDownload(entries)) return;
-    final destDir = await _pickDestinationDir();
+    // Null is a cancellation *or* a failure, and the two do not need telling
+    // apart here: [pickFolder] reports the failure itself, cause and all,
+    // before answering. Both of this page's folder picks used to say
+    // `fmFolderPickUnsupported` ("Choosing a folder is not supported on this
+    // platform") for every throw and record nothing, which was the wrong
+    // sentence for all but one of them - a platform with no picker is a
+    // `MissingPluginException`, and that is the one the shim still says it
+    // for. #353.
+    final destDir = await pickFolder(
+      context,
+      what: '[FileManager] the download folder pick',
+      dialogTitle: context.l10n.fmChooseDownloadLocation,
+    );
     if (!mounted || destDir == null || !_mayDownload(entries)) return;
 
     final int failures;
@@ -761,40 +756,56 @@ class _FileManagerPageState extends State<FileManagerPage> {
       // pick passes `allowMultiple: true`, where the same delegate drops the
       // unreadable item and reports success instead - so a multi-select never
       // arrives here, and `skipped` below cannot see it either, because what
-      // it counts is a file returned with a null path. #352 has that gap.
-      LogService.caught(
-        '[FileManager] the file pick failed: ${LogService.describe(e, st)}',
-      );
-      if (mounted) {
-        context.showNotification(
-          context.l10n.commonPickFailed,
-          type: QNotificationType.error,
-        );
-      }
+      // it counts is a file returned with a null path.
+      //
+      // The all-dropped case is answered below. A *partial* drop is not, and
+      // cannot be from this side: the chosen count never crosses the method
+      // channel, so nothing here can subtract. #354 keeps that half, which
+      // wants the delegate to report selected-versus-returned.
+      _pickFailed('the file pick failed: ${LogService.describe(e, st)}');
       return;
     }
-    if (result == null || result.files.isEmpty) return;
+    if (result == null) return;
+    // Not a cancellation, whatever it looks like. A cancelled pick is null on
+    // both platforms that can drop an item - Android's delegate answers
+    // `finishWithSuccess(null)` for `RESULT_CANCELED`
+    // (`FilePickerDelegate.java:207`) and iOS calls `_result(nil)` from
+    // `documentPickerWasCancelled` - so a non-null result carrying no files is
+    // a pick where every chosen item was dropped. `finishWithSuccess(files)`
+    // runs on an empty list all the same, and `files.isEmpty` used to return
+    // from here beside the cancel, which is what made it silent. #354.
+    if (result.files.isEmpty) {
+      _pickFailed('the file pick returned none of the chosen files');
+      return;
+    }
     await _upload([
       for (final f in result.files)
         if (f.path != null) f.path!,
     ], skipped: result.files.where((f) => f.path == null).length);
   }
 
-  Future<void> _uploadFolder() async {
-    String? dir;
-    try {
-      dir = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.fmChooseFolderToUpload,
+  /// Records [line] and tells the user the pick failed.
+  ///
+  /// The two ways a file pick comes back with nothing - a rejection and a
+  /// result the platform emptied - report the same way, and the shim one file
+  /// over does the same thing for the folder picks. The sentence carries no
+  /// cause, so [line] is what tells the two apart in a report.
+  void _pickFailed(String line) {
+    LogService.caught('[FileManager] $line');
+    if (mounted) {
+      context.showNotification(
+        context.l10n.commonPickFailed,
+        type: QNotificationType.error,
       );
-    } catch (e) {
-      if (mounted) {
-        context.showNotification(
-          context.l10n.fmFolderPickUnsupported,
-          type: QNotificationType.error,
-        );
-      }
-      return;
     }
+  }
+
+  Future<void> _uploadFolder() async {
+    final dir = await pickFolder(
+      context,
+      what: '[FileManager] the upload folder pick',
+      dialogTitle: context.l10n.fmChooseFolderToUpload,
+    );
     if (!mounted || dir == null) return;
     await _upload([dir]);
   }

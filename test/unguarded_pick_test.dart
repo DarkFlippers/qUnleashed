@@ -23,7 +23,10 @@
 //    one the commit's argument rests on: all four sites show the same
 //    cause-free sentence, so the log line is the only thing that can tell two
 //    reports apart. Without it, deleting every `LogService.caught` in the
-//    change leaves the whole suite green - the budgets only fail upward.
+//    change left the whole suite green - the budgets only fail upward. Three
+//    of those four lines have moved into `components/folder_pick.dart` since
+//    (#353), where `folder_pick_test.dart` asserts them; this case is what
+//    holds the fourth, which is the file pick below.
 //
 // Mutations run, with the results: making the catch `rethrow` fails all three
 // through the zone; deleting the notification fails only the second; deleting
@@ -39,7 +42,6 @@
 // the "trusting that a test fails for the reason its name says" shape CLAUDE.md
 // lists.
 import 'package:file_picker/file_picker.dart';
-import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
@@ -66,12 +68,12 @@ final _refused = PlatformException(
 
 void main() {
   late DeviceController device;
-  late _Listing storage;
+  late ListingFlipper storage;
 
   setUp(() {
     recordKeptLines();
     (device, _) = mountedDevice();
-    storage = _Listing();
+    storage = ListingFlipper();
     // Set and not restored, as `oversized_pick_test.dart` does it, and not
     // laziness: `FilePicker.platform` is a `late` field with no value off a
     // real platform, so *reading* it to put it back is what throws. Safe
@@ -147,21 +149,4 @@ class _RefusingPicker extends FilePicker {
     bool lockParentWindow = false,
     bool readSequential = false,
   }) async => throw _refused;
-}
-
-/// One folder with one file in it, and nothing else answered.
-///
-/// `ArchiveRpcFake` carries the rest. The ~90 lines of `callRpcFrames`,
-/// `callRpc` and `runTask` boilerplate that used to sit here is what that
-/// mixin was pulled out of three other files to hold, and the signatures come
-/// from a submodule this repo bumps - so a named parameter added upstream is
-/// one line there instead of a compile error in every copy.
-class _Listing with ArchiveRpcFake {
-  @override
-  List<Main> framesFor(Main request) => request.hasStorageListRequest()
-      ? [Main(storageListResponse: ListResponse()..file.add(tag('notes.txt')))]
-      : const [];
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

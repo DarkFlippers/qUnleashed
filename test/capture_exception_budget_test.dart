@@ -110,10 +110,8 @@ class _CaptureVisitor extends RecursiveAstVisitor<void> {
   }
 
   /// Whether [arguments] hands the event a `throwable`.
-  static bool _throws(ArgumentList arguments) => arguments.arguments.any(
-    (argument) =>
-        argument is NamedArgument && argument.name.lexeme == 'throwable',
-  );
+  static bool _throws(ArgumentList arguments) =>
+      namedArgument(arguments, 'throwable') != null;
 }
 
 /// The lines of the counted sites in [unit], in source order.
