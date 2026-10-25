@@ -7637,6 +7637,37 @@
     "description": "Toast shown when deleting one or more archive keys failed. Followed by the reason, joined with fmFailedBecause."
   },
 
+  "archiveDeleteStoppedEarly": "device disconnected after deleting {deleted} of {total}",
+  "@archiveDeleteStoppedEarly": {
+    "description": "Reason shown under archiveDeleteFailed when the link to the device was down, or dropped and did not come back, so part of the selection was never attempted. Lowercase: it is appended to 'Delete failed' with fmFailedBecause. {deleted} is what actually went, {total} the files the delete had something to do for - the remainder was either refused, in which case its cause is appended in brackets, or never asked for, so a user who sees this should try again. The appended causes are untranslated error text from the device or the operating system.",
+    "placeholders": {
+      "deleted": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "archiveDeleteSummary": "{failed} of {total} not fully deleted",
+  "@archiveDeleteSummary": {
+    "description": "Reason shown under archiveDeleteFailed when the link held but some files could not be deleted - the device refused them, or the copy on this phone could not be removed after the device copy already went, which is why it says 'not fully'. Lowercase: it is appended to 'Delete failed' with fmFailedBecause. Bracketed causes follow it, untranslated error text with a count each, e.g. 'Delete failed: 2 of 5 not fully deleted (Bad state: ERROR_STORAGE_DENIED x1, FileSystemException: Deletion failed (errno 13) x1)'.",
+    "placeholders": {
+      "failed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "archiveNoLocalCopy": "the copy on this phone is gone",
+  "@archiveNoLocalCopy": {
+    "description": "Reason shown under archiveRestoreFailed when a deleted entry cannot be restored to the device because the file it kept on the phone is no longer there. Lowercase: it is appended to 'Restore failed' with fmFailedBecause."
+  },
+
   "archiveRenameFailed": "Rename failed",
   "@archiveRenameFailed": {
     "description": "Toast shown when renaming an archive key failed. Followed by the reason, joined with fmFailedBecause."

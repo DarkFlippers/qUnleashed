@@ -74,6 +74,18 @@ mixin ArchiveRpcFake implements FlipperClient {
   @override
   bool isLinkDropError(Object e) => false;
 
+  /// Whatever [isConnected] says, which for a fake that never moves is the
+  /// honest answer: a fake with a dead link that forgot to override this
+  /// would otherwise be told the link came back, and pass for that reason.
+  ///
+  /// Three waiters reach this through the mixin - the sync loop's retry, the
+  /// delete loop's link check, and flipperlib's own upload restart
+  /// (`client/api/storage.dart`). The third is dormant here only because
+  /// [isLinkDropError] above answers false, which is worth knowing before
+  /// relying on the count.
+  @override
+  Future<bool> waitForRpcSession(Duration timeout) async => isConnected;
+
   @override
   Future<T> runTask<T>(
     FlipperRequestPriority priority,

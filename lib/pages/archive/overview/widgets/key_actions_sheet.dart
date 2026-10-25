@@ -115,13 +115,10 @@ class KeyActionsSheet {
           icon: Icons.restore,
           label: context.l10n.archiveRestore,
           onTap: () async {
-            if (!connected) {
-              context.showNotification(
-                context.l10n.archiveConnectToRestore,
-                type: QNotificationType.warning,
-              );
-              return;
-            }
+            // No pre-check of its own. The controller refuses a restore with
+            // no device and records that it did (#374); refusing here first
+            // showed the same sentence and kept nothing, which is the gap the
+            // issue is about - on the path a user is most likely to take.
             await controller.restoreKey(k);
             if (!context.mounted) return;
             reportArchiveFailure(
