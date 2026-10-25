@@ -16,6 +16,8 @@ import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
 import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
+import '../../../../components/filelist/key_table.dart';
+import '../../../../components/filelist/list_scaffold.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
@@ -191,6 +193,29 @@ class _DeletedPageState extends State<DeletedPage>
     return Icons.delete_outline;
   }
 
+  /// One row. Built against the page's `context`, never a row's: the actions
+  /// sheet keeps the context it is given across its awaits and tests `mounted`
+  /// on it, and a restore that half-fails takes the key off this page - so a
+  /// sheet opened with the row's context would report nothing. #110.
+  Widget _keyRow(ArchiveKey key, List<SizedColumn> cols, QAppColors colors) {
+    final id = key.id;
+    return ArchiveTableRow(
+      key: ValueKey(id),
+      flipperKey: key,
+      cols: cols,
+      colors: colors,
+      cat: key.category,
+      showCategoryIcon: true,
+      progress: _ctrl.progressForKey(key),
+      selectionMode: selectionMode,
+      selected: isSelected(id),
+      onTap: () => selectionMode
+          ? toggleSelect(id)
+          : KeyActionsSheet.show(context, _ctrl, key),
+      onLongPress: () => selectionMode ? toggleSelect(id) : enterSelection(id),
+    );
+  }
+
   String _emptyActionLabel() {
     if (_hasFilter) return context.l10n.commonClear;
     if (!_ctrl.isConnected) return context.l10n.commonConnect;
@@ -238,145 +263,62 @@ class _DeletedPageState extends State<DeletedPage>
           );
         }
         final filtered = _visible(all);
-        final allPicked = allSelected(filtered.map((k) => k.id));
+        // One record for the toolbar and the table both: two would be two
+        // chances to disagree about what a second tap on a column means. The
+        // getter behind it resolves the sort against this page's own columns,
+        // which allocates both lists, so it is read once here.
+        final resolved = _sort;
+        final sort = (
+          key: resolved.key,
+          asc: resolved.asc,
+          opts: _sortOpts,
+          onSort: _onSort,
+        );
 
-        return PopScope(
-          canPop: !selectionMode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && selectionMode) exitSelection();
-          },
-          child: Scaffold(
-            backgroundColor: colors.background,
-            appBar: AppBar(
-              backgroundColor: headerColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleSpacing: categoryTitleSpacing(context),
-              title: const _DeletedAppBarTitle(),
-              actions: [
-                CategoryCountBadge(
-                  filtered: filtered.length,
-                  total: all.length,
-                ),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(50),
-                child: selectionMode
-                    ? CategorySelectionToolbar(
-                        count: selectedCount,
-                        allSelected: allPicked,
-                        catColor: headerColor,
-                        onClose: exitSelection,
-                        onToggleAll: () => setAllSelected(
-                          filtered.map((k) => k.id),
-                          selected: !allPicked,
-                        ),
-                        onActions: () => _showBulkActions(context),
-                      )
-                    : CategoryToolbar(
-                        searchCtrl: _searchCtrl,
-                        query: _query,
-                        filterVal: _filterVal,
-                        filterOpts: filterOpts,
-                        sort: (
-                          key: _sort.key,
-                          asc: _sort.asc,
-                          opts: _sortOpts,
-                          onSort: _onSort,
-                        ),
-                        starredOnly: false,
-                        catColor: headerColor,
-                        colors: colors,
-                        showStar: false,
-                        onQueryChanged: (v) => setState(() => _query = v),
-                        onFilterChanged: (v) => setState(() => _filterVal = v),
-                        onStarredToggle: () {},
-                      ),
-              ),
+        return ArchiveListScaffold(
+          headerColor: headerColor,
+          title: const _DeletedAppBarTitle(),
+          actions: [
+            CategoryCountBadge(filtered: filtered.length, total: all.length),
+          ],
+          selection: selectionControl(
+            filtered.map((k) => k.id),
+            onActions: () => _showBulkActions(context),
+          ),
+          toolbar: CategoryToolbar(
+            searchCtrl: _searchCtrl,
+            query: _query,
+            filterVal: _filterVal,
+            filterOpts: filterOpts,
+            sort: sort,
+            starredOnly: false,
+            catColor: headerColor,
+            colors: colors,
+            showStar: false,
+            onQueryChanged: (v) => setState(() => _query = v),
+            onFilterChanged: (v) => setState(() => _filterVal = v),
+            onStarredToggle: () {},
+          ),
+          body: ArchiveKeyTable(
+            columns: (width) =>
+                layoutColumns(deletedColumns(), width, filtered),
+            sort: sort,
+            selectionMode: selectionMode,
+            accent: headerColor,
+            onRefresh: _ctrl.refresh,
+            empty: () => ArchiveEmptyView(
+              icon: _emptyIcon(),
+              title: _query.isNotEmpty
+                  ? context.l10n.archiveEmptyQuery(_query)
+                  : _filterVal != null
+                  ? context.l10n.archiveNoFilesFilter
+                  : context.l10n.archiveNothingHere,
+              subtitle: _hasFilter ? null : context.l10n.archiveDeletedHint,
+              actionLabel: _emptyActionLabel(),
+              onAction: _onEmptyAction,
             ),
-            body: LayoutBuilder(
-              builder: (ctx, constraints) {
-                final cols = layoutColumns(
-                  deletedColumns(),
-                  constraints.maxWidth -
-                      (selectionMode ? kSelectionIndicatorWidth : 0),
-                  filtered,
-                );
-
-                return RefreshIndicator(
-                  color: headerColor,
-                  displacement: 15,
-                  onRefresh: _ctrl.refresh,
-                  child: filtered.isEmpty
-                      ? SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: constraints.maxHeight,
-                            child: ArchiveEmptyView(
-                              icon: _emptyIcon(),
-                              title: _query.isNotEmpty
-                                  ? context.l10n.archiveEmptyQuery(_query)
-                                  : _filterVal != null
-                                  ? context.l10n.archiveNoFilesFilter
-                                  : context.l10n.archiveNothingHere,
-                              subtitle: _hasFilter
-                                  ? null
-                                  : context.l10n.archiveDeletedHint,
-                              actionLabel: _emptyActionLabel(),
-                              onAction: _onEmptyAction,
-                            ),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            ArchiveColumnHeader(
-                              cols: cols,
-                              sortKey: _sort.key,
-                              sortAsc: _sort.asc,
-                              onSort: _onSort,
-                              colors: colors,
-                              selectionMode: selectionMode,
-                            ),
-                            Expanded(
-                              child: ListView.builder(
-                                physics: const AlwaysScrollableScrollPhysics(
-                                  parent: ClampingScrollPhysics(),
-                                ),
-                                itemCount: filtered.length,
-                                itemBuilder: (_, i) {
-                                  final key = filtered[i];
-                                  final id = key.id;
-                                  return ArchiveTableRow(
-                                    key: ValueKey(id),
-                                    flipperKey: key,
-                                    cols: cols,
-                                    colors: colors,
-                                    cat: key.category,
-                                    showCategoryIcon: true,
-                                    progress: _ctrl.progressForKey(key),
-                                    selectionMode: selectionMode,
-                                    selected: isSelected(id),
-                                    onTap: () => selectionMode
-                                        ? toggleSelect(id)
-                                        : KeyActionsSheet.show(
-                                            context,
-                                            _ctrl,
-                                            key,
-                                          ),
-                                    onLongPress: () => selectionMode
-                                        ? toggleSelect(id)
-                                        : enterSelection(id),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                );
-              },
-            ),
+            itemCount: filtered.length,
+            itemBuilder: (i, cols) => _keyRow(filtered[i], cols, colors),
           ),
         );
       },

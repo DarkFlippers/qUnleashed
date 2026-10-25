@@ -22,6 +22,8 @@ import '../widgets/key_actions_sheet.dart';
 import '../../../../components/filelist/columns.dart';
 import '../../../../components/filelist/folder_sort.dart';
 import 'sort.dart';
+import '../../../../components/filelist/key_table.dart';
+import '../../../../components/filelist/list_scaffold.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
@@ -312,182 +314,138 @@ class _FavoritesPageState extends State<FavoritesPage>
         }
         final keys = _visibleKeys(allKeys);
         final faps = _visibleFaps(allFaps);
-        final allPicked = allSelected(keys.map((k) => k.id));
+        // One record for the toolbar and the table both: two would be two
+        // chances to disagree about what a second tap on a column means. The
+        // getter behind it resolves the sort against this page's own columns,
+        // which allocates both lists, so it is read once here.
+        final resolved = _sort;
+        final sort = (
+          key: resolved.key,
+          asc: resolved.asc,
+          opts: _sortOpts,
+          onSort: _onSort,
+        );
 
-        return PopScope(
-          canPop: !selectionMode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && selectionMode) exitSelection();
-          },
-          child: Scaffold(
-            backgroundColor: colors.background,
-            appBar: AppBar(
-              backgroundColor: headerColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleSpacing: categoryTitleSpacing(context),
-              title: const _FavoritesAppBarTitle(),
-              actions: [
-                CategoryCountBadge(
-                  filtered: keys.length + faps.length,
-                  total: allKeys.length + allFaps.length,
-                ),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(50),
-                child: selectionMode
-                    ? CategorySelectionToolbar(
-                        count: selectedCount,
-                        allSelected: allPicked,
-                        catColor: headerColor,
-                        onClose: exitSelection,
-                        onToggleAll: () => setAllSelected(
-                          keys.map((k) => k.id),
-                          selected: !allPicked,
-                        ),
-                        onActions: () => _showBulkActions(context),
-                      )
-                    : CategoryToolbar(
-                        searchCtrl: _searchCtrl,
-                        query: _query,
-                        filterVal: _filterVal,
-                        filterOpts: filterOpts,
-                        sort: (
-                          key: _sort.key,
-                          asc: _sort.asc,
-                          opts: _sortOpts,
-                          onSort: _onSort,
-                        ),
-                        starredOnly: false,
-                        catColor: headerColor,
-                        colors: colors,
-                        showStar: false,
-                        onQueryChanged: (v) => setState(() => _query = v),
-                        onFilterChanged: (v) => setState(() => _filterVal = v),
-                        onStarredToggle: () {},
-                      ),
-              ),
+        return ArchiveListScaffold(
+          headerColor: headerColor,
+          title: const _FavoritesAppBarTitle(),
+          actions: [
+            CategoryCountBadge(
+              filtered: keys.length + faps.length,
+              total: allKeys.length + allFaps.length,
             ),
-            body: LayoutBuilder(
-              builder: (ctx, constraints) {
-                final cols = layoutColumns(
-                  deletedColumns(),
-                  constraints.maxWidth -
-                      (selectionMode ? kSelectionIndicatorWidth : 0),
-                  keys,
-                );
-
-                return RefreshIndicator(
-                  color: headerColor,
-                  displacement: 15,
-                  onRefresh: _ctrl.refresh,
-                  child: keys.isEmpty && faps.isEmpty
-                      ? SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: constraints.maxHeight,
-                            child: ArchiveEmptyView(
-                              icon: Icons.star_outline_rounded,
-                              title: _query.isNotEmpty
-                                  ? context.l10n.archiveEmptyQuery(_query)
-                                  : _filterVal != null
-                                  ? context.l10n.archiveNoFilesFilter
-                                  : _ctrl.loading
-                                  ? context.l10n.archiveLoading
-                                  : context.l10n.archiveNoStarred,
-                              subtitle:
-                                  (_query.isNotEmpty || _filterVal != null)
-                                  ? null
-                                  : context.l10n.archiveStarHint,
-                            ),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            ArchiveColumnHeader(
-                              cols: cols,
-                              sortKey: _sort.key,
-                              sortAsc: _sort.asc,
-                              onSort: _onSort,
-                              colors: colors,
-                              selectionMode: selectionMode,
-                            ),
-                            Expanded(
-                              child: ListView.builder(
-                                physics: const AlwaysScrollableScrollPhysics(
-                                  parent: ClampingScrollPhysics(),
-                                ),
-                                itemCount: keys.length + faps.length,
-                                itemBuilder: (_, i) {
-                                  if (i >= keys.length) {
-                                    final fap = faps[i - keys.length];
-                                    return FileDragSource(
-                                      key: ValueKey(fap.remotePath),
-                                      file: DragFile(
-                                        id: fap.remotePath,
-                                        name: fap.fileName,
-                                        load: (progress) => _ctrl.exportBytes(
-                                          fap.remotePath,
-                                          onCancel: progress?.onCancel,
-                                          onProgress: progress?.updateProgress,
-                                        ),
-                                      ),
-                                      child: _FapTableRow(
-                                        favorite: fap,
-                                        cols: cols,
-                                        colors: colors,
-                                        selectionMode: selectionMode,
-                                        onTap: () => _launchFap(fap),
-                                        onLongPress: () =>
-                                            _showFapActions(context, fap),
-                                      ),
-                                    );
-                                  }
-                                  final key = keys[i];
-                                  final id = key.id;
-                                  final selected = isSelected(id);
-                                  return ArchiveKeyDragSource(
-                                    key: ValueKey(id),
-                                    archiveKey: key,
-                                    selected: selected,
-                                    selection: () => _selectedKeys,
-                                    onDropped: exitSelection,
-                                    child: ArchiveTableRow(
-                                      flipperKey: key,
-                                      cols: cols,
-                                      colors: colors,
-                                      cat: key.category,
-                                      showCategoryIcon: true,
-                                      progress: _ctrl.progressForKey(key),
-                                      selectionMode: selectionMode,
-                                      selected: selected,
-                                      onTap: () => selectionMode
-                                          ? toggleSelect(id)
-                                          : KeyActionsSheet.show(
-                                              context,
-                                              _ctrl,
-                                              key,
-                                              onToggleFavorite: () =>
-                                                  _ctrl.toggleFavorite(key),
-                                            ),
-                                      onLongPress: () => selectionMode
-                                          ? toggleSelect(id)
-                                          : enterSelection(id),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                );
-              },
+          ],
+          selection: selectionControl(
+            keys.map((k) => k.id),
+            onActions: () => _showBulkActions(context),
+          ),
+          toolbar: CategoryToolbar(
+            searchCtrl: _searchCtrl,
+            query: _query,
+            filterVal: _filterVal,
+            filterOpts: filterOpts,
+            sort: sort,
+            starredOnly: false,
+            catColor: headerColor,
+            colors: colors,
+            showStar: false,
+            onQueryChanged: (v) => setState(() => _query = v),
+            onFilterChanged: (v) => setState(() => _filterVal = v),
+            onStarredToggle: () {},
+          ),
+          body: ArchiveKeyTable(
+            // The columns are laid out against the keys alone: a favourite app
+            // row leaves the key-only columns blank, so it has no width of its
+            // own to contribute.
+            columns: (width) => layoutColumns(deletedColumns(), width, keys),
+            sort: sort,
+            selectionMode: selectionMode,
+            accent: headerColor,
+            onRefresh: _ctrl.refresh,
+            empty: () => ArchiveEmptyView(
+              icon: Icons.star_outline_rounded,
+              title: _query.isNotEmpty
+                  ? context.l10n.archiveEmptyQuery(_query)
+                  : _filterVal != null
+                  ? context.l10n.archiveNoFilesFilter
+                  : _ctrl.loading
+                  ? context.l10n.archiveLoading
+                  : context.l10n.archiveNoStarred,
+              subtitle: (_query.isNotEmpty || _filterVal != null)
+                  ? null
+                  : context.l10n.archiveStarHint,
             ),
+            // Keys first, then the starred apps: one list, so the two kinds
+            // scroll together under one header.
+            itemCount: keys.length + faps.length,
+            itemBuilder: (i, cols) => i >= keys.length
+                ? _fapRow(faps[i - keys.length], cols, colors)
+                : _keyRow(keys[i], cols, colors),
           ),
         );
       },
+    );
+  }
+
+  /// One key row. Built against the page's `context`, never a row's: the
+  /// actions sheet keeps the context it is given across its awaits and tests
+  /// `mounted` on it, and unstarring a key takes it off this page - so a sheet
+  /// opened with the row's context would report nothing. #110.
+  Widget _keyRow(ArchiveKey key, List<SizedColumn> cols, QAppColors colors) {
+    final id = key.id;
+    final selected = isSelected(id);
+    return ArchiveKeyDragSource(
+      key: ValueKey(id),
+      archiveKey: key,
+      selected: selected,
+      selection: () => _selectedKeys,
+      onDropped: exitSelection,
+      child: ArchiveTableRow(
+        flipperKey: key,
+        cols: cols,
+        colors: colors,
+        cat: key.category,
+        showCategoryIcon: true,
+        progress: _ctrl.progressForKey(key),
+        selectionMode: selectionMode,
+        selected: selected,
+        onTap: () => selectionMode
+            ? toggleSelect(id)
+            : KeyActionsSheet.show(
+                context,
+                _ctrl,
+                key,
+                onToggleFavorite: () => _ctrl.toggleFavorite(key),
+              ),
+        onLongPress: () =>
+            selectionMode ? toggleSelect(id) : enterSelection(id),
+      ),
+    );
+  }
+
+  /// A starred app, which is not an [ArchiveKey] and cannot be selected: the
+  /// bulk actions are all about keys, and an app's file lives wherever the
+  /// device put it.
+  Widget _fapRow(FapFavorite fap, List<SizedColumn> cols, QAppColors colors) {
+    return FileDragSource(
+      key: ValueKey(fap.remotePath),
+      file: DragFile(
+        id: fap.remotePath,
+        name: fap.fileName,
+        load: (progress) => _ctrl.exportBytes(
+          fap.remotePath,
+          onCancel: progress?.onCancel,
+          onProgress: progress?.updateProgress,
+        ),
+      ),
+      child: _FapTableRow(
+        favorite: fap,
+        cols: cols,
+        colors: colors,
+        selectionMode: selectionMode,
+        onTap: () => _launchFap(fap),
+        onLongPress: () => _showFapActions(context, fap),
+      ),
     );
   }
 }
