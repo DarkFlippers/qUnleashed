@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/app/app.dart';
 import 'package:qunleashed/app/nav_bar.dart';
+import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/pages/archive/overview/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
@@ -12,6 +13,7 @@ import 'package:qunleashed/services/permissions/center.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
 import 'archive_fakes.dart';
+import 'fake_device.dart';
 import 'firmware_fixture.dart';
 
 /// The one string in the bottom bar, and what each of its six branches is read
@@ -102,6 +104,56 @@ void main() {
   ArchiveController archiveIn(WidgetTester tester) => tester
       .widget<ArchivePage>(find.byType(ArchivePage, skipOffstage: false))
       .controller;
+
+  /// One tag on the device and nothing on the phone, so a sync has a file to
+  /// fetch.
+  ///
+  /// Without it the sync lists ten empty category folders and downloads
+  /// nothing, which leaves the read half of the fake - and the whole
+  /// `storageReadChunked` path - unexercised, and makes "synced" a weaker
+  /// word than it looks.
+  ///
+  /// [failing] makes that one read throw instead. It is the only way to a
+  /// sync that *finishes* with something missing: a `bodies` entry that is
+  /// absent reads as an empty file and saves perfectly well.
+  void seedCard(FakeFlipperClient client, {bool failing = false}) {
+    client.tree['/ext/nfc'] = [tag('badge.nfc')];
+    client.bodies['/ext/nfc/badge.nfc'] =
+        'Filetype: Flipper NFC device\nUID: 00 01 02 03\n';
+    if (failing) client.readFailures.add('/ext/nfc/badge.nfc');
+  }
+
+  /// A full sync walked all the way to `synced`.
+  ///
+  /// Watching that walk is what the case below is about; the three after it
+  /// need it to have happened and then test what is supposed to undo it, so
+  /// they come through here. Both assertions on the way are load-bearing: a
+  /// sync that never started, or one that ended on `idle`, would let a case
+  /// about dropping `synced` pass without `synced` ever existing.
+  Future<void> syncToSynced(
+    WidgetTester tester,
+    FakeFlipperClient client,
+    ArchiveController archive,
+  ) async {
+    seedCard(client);
+    unawaited(archive.syncAll());
+    await tester.pump();
+    expect(
+      archive.syncStatus.value,
+      ArchiveSyncStatus.syncing,
+      reason: 'the sync never started',
+    );
+    await runUntil(
+      tester,
+      () => archive.syncStatus.value != ArchiveSyncStatus.syncing,
+      reason: 'the sync never finished',
+    );
+    expect(
+      archive.syncStatus.value,
+      ArchiveSyncStatus.synced,
+      reason: 'the sync did not reach `synced`, so nothing below is a drop',
+    );
+  }
 
   // ── The branches that need no archive ─────────────────────────────────────
 
@@ -220,7 +272,7 @@ void main() {
   // lucky: if the sync ever became fast enough to be over within the pump,
   // both halves fail together instead of the label quietly reading
   // "connected" for the right value at the wrong moment.
-  testWidgets('follows the archive from connected to syncing and back', (
+  testWidgets('follows the archive from connected through syncing to synced', (
     tester,
   ) async {
     final (device, client) = await pumpApp(tester);
@@ -233,14 +285,7 @@ void main() {
       reason: 'the control: nothing is syncing yet',
     );
 
-    // One tag on the device and nothing on the phone, so the walk has a file
-    // to fetch. Without it the sync lists ten empty category folders and
-    // downloads nothing, which leaves the read half of the fake - and the
-    // whole `storageReadChunked` path - unexercised, and makes "synced" a
-    // weaker word than it looks.
-    client.tree['/ext/nfc'] = [tag('badge.nfc')];
-    client.bodies['/ext/nfc/badge.nfc'] =
-        'Filetype: Flipper NFC device\nUID: 00 01 02 03\n';
+    seedCard(client);
 
     unawaited(archive.syncAll());
     await tester.pump();
@@ -265,11 +310,14 @@ void main() {
     );
 
     // Not `isNot(syncing)`: that also passes for a sync that crashed into
-    // `idle`, and it would leave `_deviceLabel`'s `synced` arm - the ternary
-    // on `deviceInfoConnected` - asserted by nothing at all. This says which
-    // end state the walk reached and which string that state draws.
+    // `idle`, which draws `deviceStateConnected` - the string the bar was
+    // already showing before the sync began, so the pair would hold for a
+    // sync that failed. This says which end state the walk reached and which
+    // string that state draws, and since #420 those are two different
+    // strings - a finished sync is the only way to read `deviceStateSynced`
+    // at all.
     expect(archive.syncStatus.value, ArchiveSyncStatus.synced);
-    expect(label(tester), l10n.deviceStateConnected);
+    expect(label(tester), l10n.deviceStateSynced);
     expect(
       client.requests,
       contains(contains('storageReadRequest')),
@@ -280,18 +328,170 @@ void main() {
 
     await closeDevice(tester, device);
   });
+
+  // ── What "Synced" does not claim ──────────────────────────────────────────
+  //
+  // Three cases for three ways the word would be a lie, and all three were
+  // unobservable before #420 made the string reachable: `idle` and `synced`
+  // drew the same label, so each of the mechanisms below could be deleted
+  // and the whole suite stayed green. Two of them were, to check.
+
+  // A sync that finished with a file missing is not a synced archive, and the
+  // difference is one check in `_syncAll` - `_lastError == null ? synced :
+  // idle`. Collapsing that ternary to `synced` survives every other test in
+  // `test/`, because nothing else reads the status at all.
+  testWidgets('does not say synced when a file failed to come down', (
+    tester,
+  ) async {
+    final (device, client) = await pumpApp(tester);
+    client.arriveWithDevice();
+    await settle(tester);
+    final archive = archiveIn(tester);
+    seedCard(client, failing: true);
+
+    unawaited(archive.syncAll());
+    await tester.pump();
+    expect(
+      archive.syncStatus.value,
+      ArchiveSyncStatus.syncing,
+      reason: 'the sync never started',
+    );
+    await runUntil(
+      tester,
+      () => archive.syncStatus.value != ArchiveSyncStatus.syncing,
+      reason: 'the sync never finished',
+    );
+
+    expect(archive.syncStatus.value, ArchiveSyncStatus.idle);
+    expect(
+      archive.lastError,
+      isNotNull,
+      reason: 'the read was answered after all, so the sync did not fail',
+    );
+    expect(label(tester), l10n.deviceStateConnected);
+
+    await closeDevice(tester, device);
+  });
+
+  // The link going away is what `ArchiveController._onConnectionChange` has
+  // always reset the status for. The reconnect at the end is the half worth
+  // having: it says the status comes back as `idle` and not as whatever the
+  // previous session earned.
+  testWidgets('drops synced when the link goes down', (tester) async {
+    final (device, client) = await pumpApp(tester);
+    client.arriveWithDevice();
+    await settle(tester);
+    final archive = archiveIn(tester);
+    await syncToSynced(tester, client, archive);
+
+    client.depart();
+    client.stir();
+    await settle(tester);
+
+    expect(archive.syncStatus.value, ArchiveSyncStatus.idle);
+    expect(label(tester), l10n.deviceStateDisconnected);
+
+    client.arriveWithDevice();
+    await settle(tester);
+
+    expect(label(tester), l10n.deviceStateConnected);
+
+    await closeDevice(tester, device);
+  });
+
+  // **The swap, which is not a disconnect.** Activating a session that is
+  // already connected - a tap on a held entry in the connection list - emits
+  // one connected event carrying the other device and nothing in between, so
+  // a status keyed on connected-ness alone survives it and the bar reads
+  // "Synced" about a card this app has never opened. #420 made that visible;
+  // `_onConnectionChange` keys on the device id for it.
+  testWidgets('drops synced when another Flipper takes the front', (
+    tester,
+  ) async {
+    final (device, client) = await pumpApp(tester);
+    client.arriveWithDevice();
+    await settle(tester);
+    final archive = archiveIn(tester);
+    await syncToSynced(tester, client, archive);
+
+    client.arriveWithDevice(
+      device: flipperDevice('second', 'OtherFlipper'),
+      info: const {
+        'hardware_name': 'OtherFlipper',
+        'firmware_version': '1.3.4',
+      },
+    );
+    await settle(tester);
+
+    expect(archive.syncStatus.value, ArchiveSyncStatus.idle);
+    expect(label(tester), l10n.deviceStateConnected);
+
+    await closeDevice(tester, device);
+  });
+
+  // One category in step is not the archive in step, and the status is one
+  // word about the whole of it. `_syncCategory` used to promote to `synced`
+  // like `_syncAll` - reachable from a category page's pull-to-refresh, so a
+  // refresh of Sub-GHz alone claimed the lot.
+  testWidgets('does not say synced for one category', (tester) async {
+    final (device, client) = await pumpApp(tester);
+    client.arriveWithDevice();
+    await settle(tester);
+    final archive = archiveIn(tester);
+    seedCard(client);
+
+    unawaited(archive.syncCategory(ArchiveCategory.nfc));
+    await tester.pump();
+    expect(
+      archive.syncStatus.value,
+      ArchiveSyncStatus.syncing,
+      reason: 'the category sync never started',
+    );
+    await runUntil(
+      tester,
+      () => archive.syncStatus.value != ArchiveSyncStatus.syncing,
+      reason: 'the category sync never finished',
+    );
+
+    expect(archive.syncStatus.value, ArchiveSyncStatus.idle);
+    expect(label(tester), l10n.deviceStateConnected);
+    expect(
+      client.requests,
+      contains(contains('storageReadRequest')),
+      reason: 'the category walk fetched nothing, so it synced nothing',
+    );
+
+    await closeDevice(tester, device);
+  });
 }
 
 // ── What this does not pin ───────────────────────────────────────────────────
 //
-// Twenty mutations run across both new files, seventeen killed. The three
-// recorded at the foot of `shell_rebuild_test.dart` that this file was written
-// for all die - the `switch (_syncStatus)` dropped from `_deviceLabel`,
-// `_syncStatus => idle`, and `syncStatus` dropped from the shell's merge - as
-// do swapping either pair of arms in the label, each of the three
+// Twenty mutations run across both new files when they were written,
+// seventeen killed. **#420 added six more, all six killed**, each by the one
+// case named for it:
+//
+//  * `synced` drawing `deviceStateConnected`, the behaviour it replaced;
+//  * `idle` drawing `deviceStateSynced`;
+//  * `_syncAll` reaching `synced` with `_lastError` set;
+//  * `_syncCategory` promoting to `synced`, as it used to;
+//  * `_onConnectionChange` not resetting the status at all;
+//  * `_onConnectionChange` keyed on connected-ness rather than on which
+//    device is in front - killed by the swap case **alone**, which is the
+//    whole reason that case is separate from the link-down one.
+//
+// Two on code #420 did not touch were re-run, and both still die: the
+// `deviceLoading` early return dropped, and the no-device/disconnected
+// ternary inverted.
+//
+// Of the original twenty, the three recorded at the foot of
+// `shell_rebuild_test.dart` that this file was written for all die - the
+// `switch (_syncStatus)` dropped from `_deviceLabel`, `_syncStatus => idle`,
+// and `syncStatus` dropped from the shell's merge - as do each of the three
 // `connectionState` guards, `isConnected => false`, the device taken off the
 // connection event, a sync that never leaves `syncing`, the info patch
-// published in line with the event, and the card left unseeded.
+// published in line with the event, and the card left unseeded. That list is
+// not the whole twenty: the count is the record, not the enumeration.
 //
 // Three survive:
 //

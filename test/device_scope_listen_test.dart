@@ -129,9 +129,9 @@ const Map<String, int> kListeningBudget = {
 const Map<String, int> kNotifierBudget = {
   // `shell.dart` hands the controller to a `ListenableBuilder` and reads
   // state off it **only inside that builder**, where the subscription lives:
-  // `_deviceLabel` reads `connectionState`, `device`, `deviceLoading` and
-  // `deviceInfoConnected`, and the builder re-runs on every notification, so
-  // none of them goes stale. What must not happen is a read in
+  // `_deviceLabel` reads `connectionState`, `device` and `deviceLoading`,
+  // and the builder re-runs on every notification, so none of them goes
+  // stale. What must not happen is a read in
   // `_AppShellState.build` itself - that is the shape this entry exists to
   // keep out, and it is why the budget is 1 and not 0. #407.
   'app': 1,
@@ -177,7 +177,6 @@ const Set<String> kControllerState = {
   'client',
   'device',
   'deviceLoading',
-  'deviceInfoConnected',
   'alertPlaying',
   'dfuPresent',
   'recovering',

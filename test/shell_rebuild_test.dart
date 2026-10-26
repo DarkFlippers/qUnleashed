@@ -23,9 +23,9 @@ import 'firmware_fixture.dart';
 /// `IndexedStack` carrying every tab the user has visited, all of them still
 /// mounted. The only thing in there that depends on either controller is
 /// `deviceLabel` — one string in the bottom bar, read from the device's
-/// `connectionState`, `device`, `deviceLoading` and `deviceInfoConnected` and,
-/// in the `connected` case alone, the archive's `syncStatus` — and the **wide
-/// layout does not draw even that**: `FlipperRootScaffold.build` ignores
+/// `connectionState`, `device` and `deviceLoading` and, in the `connected`
+/// case alone, the archive's `syncStatus` — and the **wide layout does not
+/// draw even that**: `FlipperRootScaffold.build` ignores
 /// `deviceLabel` entirely when `isWide`, so on a desktop window nothing
 /// inside the notification-dependent region displays a value either
 /// controller can change.
