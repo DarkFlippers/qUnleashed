@@ -16,7 +16,7 @@ import 'firmware_fixture.dart';
 /// this is the behaviour that makes moving them worth doing, and the one
 /// consequence of the move that is a real difference rather than a saving.
 ///
-/// `test/shell_poll_rebuild_test.dart` is the other half of `notifierOf`:
+/// `test/shell_rebuild_test.dart` is the other half of `notifierOf`:
 /// what the shell stops rebuilding once the read stops subscribing.
 ///
 /// Every case here asserts a **pair**, because "nothing rebuilt" also passes

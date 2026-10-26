@@ -25,7 +25,7 @@ void main() {
   // launch and every table opens on name ascending for ever. Pumping the
   // shell is not worth it for this - `diagnostics_notice_test.dart` says why,
   // and it is relevance rather than impossibility:
-  // `shell_poll_rebuild_test.dart` does pump the whole app. So this reads the
+  // `shell_rebuild_test.dart` does pump the whole app. So this reads the
   // source, the way the reach and budget tests in this directory do. It is a
   // weak test; it is stronger than the nothing it replaces.
   test('the shell reads the stored sort, and is the only one that does', () {
