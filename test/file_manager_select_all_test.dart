@@ -35,7 +35,7 @@ import 'firmware_fixture.dart';
 /// so `ArchiveKeyDragSource` hands its child straight back - and
 /// `archive_selection_filter_test.dart`, whose rows *are* draggable, has to go
 /// through the mixin instead.
-class _TwoRows with ArchiveRpcFake {
+class _TwoRows with FlipperRpcFake, ArchiveRpcFake {
   @override
   List<Main> framesFor(Main request) => request.hasStorageListRequest()
       ? [

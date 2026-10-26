@@ -259,8 +259,11 @@ void main() {
     // rather than by anything the tick achieved - the first draft used
     // identity, and hoisting `_deviceLabel(device)` out of the builder beside
     // `railGroups`, which freezes the bottom bar at whatever the state was
-    // when the shell last built, passed all 33 cases. Nothing else in the
-    // suite asserts that string.
+    // when the shell last built, passed all 33 cases. This was the only
+    // assertion on that string in the suite until #413;
+    // `shell_device_label_test.dart` now pins each branch of it by value, and
+    // this one stays because what it is about is the *rebuild*, not the
+    // string.
     expect(
       scaffoldIn(tester).deviceLabel,
       isNot(labelBefore),
@@ -514,41 +517,41 @@ void main() {
     await closeDevice(tester, device);
   });
 
-  // **The missing witness, named rather than left to be discovered.**
+  // **Three of the four witnesses this file used to be missing now exist, and
+  // not here.**
   //
-  // Nothing here - or anywhere in `test/` - asserts that `deviceLabel`
-  // follows `ArchiveController.syncStatus`. That read is the whole reason the
-  // sync status is in the merged listenable, so **three** mutations survive
-  // the suite: dropping the `switch (_syncStatus)` from `_deviceLabel`'s
-  // `connected` branch, `_syncStatus => ArchiveSyncStatus.idle`, and dropping
-  // `_archiveController.syncStatus` from the merge altogether. Each leaves
-  // the bottom bar not following a sync, which is the user-visible half of
-  // #410.
+  // `deviceLabel` following `ArchiveController.syncStatus` is the whole reason
+  // the sync status is in the merged listenable, and nothing asserted it while
+  // `FakeFlipperClient` could not be connected: `_deviceLabel` reads the
+  // status only in its `connected` branch, which needs
+  // `DeviceController._device` non-null. `arriveWithDevice` on that fake is
+  // what opened it, and `test/shell_device_label_test.dart` is where the
+  // witness went - a case that holds a real sync open and reads the bar. Two
+  // mutations that survived the whole suite die there now: dropping the
+  // `switch (_syncStatus)`, and `_syncStatus => ArchiveSyncStatus.idle`. #413.
   //
-  // The third got easier to make, not harder, when the subscription narrowed
-  // from the controller to its status notifier: the case above asserts that
-  // an archive notification rebuilds *nothing* of the shell's, which a merge
-  // listening to nothing archive-related satisfies perfectly. That is the
-  // price of the narrowing and it is worth paying - but it is a price, and
-  // this is where it is recorded.
+  // **Dropping `_archiveController.syncStatus` from the merge dies there too**,
+  // which was not expected: the case above asserts an archive notification
+  // rebuilds *nothing* of the shell's, and a merge listening to nothing
+  // archive-related satisfies that perfectly. What catches it is that the
+  // label case holds the sync open, and during that hold the device
+  // controller says nothing at all - so a bar that is not subscribed to the
+  // status never redraws and keeps reading "connected".
   //
-  // A fourth survives for the same reason, and it is the one that would undo
-  // the saving silently: adding a `notifyListeners()` beside
-  // `_syncStatusNotifier.value = status` in `ArchiveController`. The `!=`
-  // dedup is the whole of "three rebuilds a sync rather than eight thousand",
-  // and nothing here would notice it going.
+  // One survives, and a value witness cannot reach it: **a
+  // `_syncStatusNotifier.notifyListeners()` beside the assignment in the
+  // `_syncStatus` setter.** It notifies *more*, so every label and every
+  // identity in both files reads exactly as it should; catching it needs the
+  // status assigned the same value twice with a rebuild count across it, and
+  // nothing outside the controller can assign it at all.
   //
-  // It is not reachable from this fixture, and the reason is specific rather
-  // than a shrug. `_deviceLabel` consults `syncStatus` only when
-  // `connectionState` is `connected`, which needs `DeviceController._device`
-  // non-null - and `FakeFlipperClient.arrive()` carries `device: null` on
-  // purpose, so `_onConnectionState` leaves it null. A fake that connected
-  // would then have to reach a non-`idle` `syncStatus`, and every path that
-  // sets `syncing` runs through `_client.runTask` into `storageList`,
-  // `storageMd5sum` and `storageReadChunked`, none of which this fake
-  // answers.
-  //
-  // So it wants a connected `FakeFlipperClient` with a storage API, which is
-  // its own change - and the same one #407 wanted for `_openFullInfo`. Filed
-  // rather than half-built.
+  // **It is also worth less than #410 claimed.** That PR called the `!=`
+  // dedup "the whole of three rebuilds a sync rather than eight thousand",
+  // which is wrong: the saving is the narrowed subscription - the shell
+  // listens to one `ValueNotifier` instead of a controller that notifies from
+  // forty-one places - and the status is only assigned two or three times in
+  // a sync anyway. What the dedup saves on top of that is the repeated
+  // identical assignments, `idle` over `idle` on every connection event
+  // being the common one. Still worth having, nothing like the headline
+  // figure.
 }

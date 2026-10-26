@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
@@ -26,14 +27,18 @@ import 'package:qunleashed/theme/theme.dart';
 /// `callRpc` underneath them instead. That is ~90 lines of identical
 /// boilerplate, and three files carried it before this was pulled out.
 ///
-/// A class that mixes this in implements [framesFor] and nothing else; it can
-/// still declare any member here itself and its own wins. It also needs its
-/// own `noSuchMethod`, which is what lets the rest of `FlipperClient` go
-/// unimplemented - a mixin cannot supply that for its users.
-mixin ArchiveRpcFake implements FlipperClient {
-  final _connection = StreamController<FlipperConnectionState>.broadcast();
-  final _info = StreamController<Map<String, String>>.broadcast();
-
+/// **Almost no opinion about the connection**, which is what separates it from
+/// [ArchiveRpcFake]: it says the link is in RPC mode and ready, because a fake
+/// answering storage at all is one the RPC layer has to accept, but it does
+/// not say whether a device is *there*. #413.
+///
+/// A class that mixes this in implements [framesFor]; one that mixes in this
+/// alone also has to answer `isConnected`, `connectionStream`,
+/// `deviceInfoUpdates` and the two name reads. It can still declare any
+/// member here and its own wins, and it needs its own `noSuchMethod` - what
+/// lets the rest of `FlipperClient` go unimplemented, and which a mixin
+/// cannot supply for its users.
+mixin FlipperRpcFake implements FlipperClient {
   /// Suspends the write until it is completed, when a fake sets one.
   ///
   /// Opt-in: null is "answer the write at once", which is what every fake here
@@ -72,35 +77,11 @@ mixin ArchiveRpcFake implements FlipperClient {
   /// fails. The one thing each fake decides for itself.
   List<Main> framesFor(Main request);
 
-  Future<void> close() async {
-    await _connection.close();
-    await _info.close();
-  }
-
-  /// `initialize()` subscribes to both before its first refresh. Broadcast and
-  /// never pushed to: a stream that ended would report `hasListener` false to
-  /// anything that looks, and `connectionStream` is documented as a broadcast
-  /// stream an error does not end.
-  @override
-  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
-
-  @override
-  Stream<Map<String, String>> get deviceInfoUpdates => _info.stream;
-
-  @override
-  bool get isConnected => true;
-
   @override
   bool get isRpcReady => true;
 
   @override
   FlipperMode get mode => FlipperMode.rpc;
-
-  @override
-  String? getName() => archiveTestDevice;
-
-  @override
-  Future<String> awaitName() async => archiveTestDevice;
 
   /// Read off the client by `storageWriteChunked` to size its frames, so any
   /// fake on an upload path has to answer it. Null is what every archive fake
@@ -113,9 +94,9 @@ mixin ArchiveRpcFake implements FlipperClient {
   @override
   bool isLinkDropError(Object e) => false;
 
-  /// Whatever [isConnected] says, which for a fake that never moves is the
-  /// honest answer: a fake with a dead link that forgot to override this
-  /// would otherwise be told the link came back, and pass for that reason.
+  /// Whatever [isConnected] says, which is the honest answer for a fake that
+  /// has one: a fake with a dead link that forgot to override this would
+  /// otherwise be told the link came back, and pass for that reason.
   ///
   /// Three waiters reach this through the mixin - the sync loop's retry, the
   /// delete loop's link check, and flipperlib's own upload restart
@@ -200,6 +181,46 @@ mixin ArchiveRpcFake implements FlipperClient {
   }
 }
 
+/// [FlipperRpcFake] over a link that is up and never moves.
+///
+/// What most archive tests want: the controller is the subject, the device is
+/// scenery, and a link that could go down would only be a second thing to
+/// arrange. Not all - `archive_offline_actions_test.dart` declares a mutable
+/// `isConnected` over this and moves it, which works because a class member
+/// wins over a mixin's. A fake that wants the link to arrive and depart as a
+/// *connection event* uses [FakeFlipperClient] instead.
+///
+/// The two halves were one mixin until #413 wanted the plumbing without the
+/// opinion, which is why a fake applies both by name.
+mixin ArchiveRpcFake on FlipperRpcFake {
+  final _connection = StreamController<FlipperConnectionState>.broadcast();
+  final _info = StreamController<Map<String, String>>.broadcast();
+
+  Future<void> close() async {
+    await _connection.close();
+    await _info.close();
+  }
+
+  /// `initialize()` subscribes to both before its first refresh. Broadcast and
+  /// never pushed to: a stream that ended would report `hasListener` false to
+  /// anything that looks, and `connectionStream` is documented as a broadcast
+  /// stream an error does not end.
+  @override
+  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
+
+  @override
+  Stream<Map<String, String>> get deviceInfoUpdates => _info.stream;
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  String? getName() => archiveTestDevice;
+
+  @override
+  Future<String> awaitName() async => archiveTestDevice;
+}
+
 /// The device name every archive fake answers with, and the folder the tests'
 /// local files land in.
 const String archiveTestDevice = 'TestFlipper';
@@ -221,6 +242,23 @@ fl.File dir(String name) => fl.File(name: name, type: File_FileType.DIR);
 fl.File tag(String name, {int size = 64}) =>
     fl.File(name: name, type: File_FileType.FILE, size: size);
 
+/// The frame a listing of [path] in [tree] answers with, or an empty folder.
+///
+/// Shared for the reason [ListingFlipper]'s own comment gives about itself:
+/// what shape a `storageList` answer has is a submodule's business, and three
+/// fakes had written this expression out character for character. The walk
+/// through the tree is each fake's own - they interpose differently, throwing
+/// for a refused path or recording what was asked - but the frame at the end
+/// of it is not.
+Main listingOf(Map<String, List<fl.File>> tree, String path) => Main(
+  storageListResponse: ListResponse()..file.addAll(tree[path] ?? const []),
+);
+
+/// The frame a read answers with, carrying [body] as its bytes.
+Main contentsOf(String body) => Main(
+  storageReadResponse: ReadResponse(file: fl.File(data: utf8.encode(body))),
+);
+
 /// A device whose storage holds one file, `notes.txt`, and nothing else.
 ///
 /// Enough to mount `FileManagerPage` and see that it is still standing, which
@@ -233,7 +271,7 @@ fl.File tag(String name, {int size = 64}) =>
 /// pulling it out early fixes the wrong shape. This is a fixture, and two
 /// copies of a fake whose `framesFor` has to match a submodule's signatures
 /// drift silently - which is the argument the mixin above it was extracted on.
-class ListingFlipper with ArchiveRpcFake {
+class ListingFlipper with FlipperRpcFake, ArchiveRpcFake {
   @override
   List<Main> framesFor(Main request) => request.hasStorageListRequest()
       ? [Main(storageListResponse: ListResponse()..file.add(tag('notes.txt')))]

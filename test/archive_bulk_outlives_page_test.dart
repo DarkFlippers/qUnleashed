@@ -41,7 +41,7 @@ import 'kept_lines.dart';
 /// the read before it and the `refresh()` after it being the other two. The
 /// seam is shared because it is the only one there is: the client's API is
 /// extensions over a small core, so nothing above it can be faked (#376).
-class _HangingFlipper with ArchiveRpcFake {
+class _HangingFlipper with FlipperRpcFake, ArchiveRpcFake {
   /// Nothing on the device, which is what makes the local file read as
   /// deleted rather than synced.
   @override
