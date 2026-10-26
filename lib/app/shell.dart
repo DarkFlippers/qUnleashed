@@ -456,13 +456,24 @@ class _AppShellState extends State<AppShell> {
         return strings.deviceStateRecovering;
       case DeviceConnectionState.connected:
         if (device.deviceLoading) return strings.deviceStateSyncing;
+        // **Three statuses, three strings**, and `synced` draws the one
+        // the ARB describes as "when the archive finished syncing": what
+        // `ArchiveController.syncAll` means by reaching it, and what
+        // `syncCategory` deliberately does not claim.
+        //
+        // The arm used to be guarded on `DeviceController`'s
+        // `deviceInfoConnected`, which says nothing about the archive and is
+        // implied by `connected && !deviceLoading` besides - every route to
+        // `isConnected` runs `_ensureDataLoading`, which leaves one of that
+        // pair set - so the string and its seven translations were
+        // unreachable. The flag was the wrong thing to read, not the branch
+        // the wrong thing to have; a connectedness guard here is the mistake
+        // not to re-add. #420.
         switch (_syncStatus) {
           case ArchiveSyncStatus.syncing:
             return strings.deviceStateSyncing;
           case ArchiveSyncStatus.synced:
-            return device.deviceInfoConnected
-                ? strings.deviceStateConnected
-                : strings.deviceStateSynced;
+            return strings.deviceStateSynced;
           case ArchiveSyncStatus.idle:
             return strings.deviceStateConnected;
         }

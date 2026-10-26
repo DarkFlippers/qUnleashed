@@ -58,7 +58,6 @@ class DeviceController extends ChangeNotifier {
   FlipperClient get client => _client;
   FlipperDevice? get device => _device;
   bool get deviceLoading => _deviceLoading;
-  bool get deviceInfoConnected => _deviceInfoConnected;
   bool get alertPlaying => _alertPlaying;
   bool get dfuPresent => _dfuPresent;
   bool get recovering => _recovering;

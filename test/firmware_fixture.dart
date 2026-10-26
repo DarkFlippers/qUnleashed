@@ -339,7 +339,24 @@ class FakeFlipperClient with FlipperRpcFake implements FlipperClient {
   @override
   Future<String> awaitName() async => name ?? '';
 
-  /// Storage answers out of [tree] and [bodies].
+  /// Device paths whose read throws instead of answering.
+  ///
+  /// The seam for a sync that finishes with files missing rather than one
+  /// that dies: `_readRemoteBytes` catches per file, so the walk completes,
+  /// counts the failure and leaves `lastError` set - which is the difference
+  /// between `ArchiveSyncStatus.idle` and `synced` at the end of a sync, and
+  /// since #420 the difference between two strings on the bottom bar.
+  ///
+  /// A `bodies` entry that is simply absent is **not** this: it reads as an
+  /// empty file and saves successfully.
+  ///
+  /// A `StateError` carrying the firmware's own status name, which is what
+  /// `archive_failure_reason_test.dart` refuses with: the sync keys its
+  /// per-cause tally on `'$error'`, so the shape of the throw is what a
+  /// reader of that summary sees.
+  final Set<String> readFailures = <String>{};
+
+  /// Storage answers out of [tree], [bodies] and [readFailures].
   ///
   /// Only the two requests an archive sync makes - a directory listing and a
   /// file read. Anything else is recorded in [requests] and answered with
@@ -352,7 +369,11 @@ class FakeFlipperClient with FlipperRpcFake implements FlipperClient {
       return [listingOf(tree, request.storageListRequest.path)];
     }
     if (request.hasStorageReadRequest()) {
-      return [contentsOf(bodies[request.storageReadRequest.path] ?? '')];
+      final path = request.storageReadRequest.path;
+      if (readFailures.contains(path)) {
+        throw StateError('ERROR_STORAGE_DENIED');
+      }
+      return [contentsOf(bodies[path] ?? '')];
     }
     return const [];
   }

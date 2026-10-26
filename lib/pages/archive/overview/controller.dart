@@ -118,6 +118,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
+  /// The Flipper [_syncStatus] is about, or null when none is in front.
+  /// Read only by [_onConnectionChange], whose doc is the whole of it.
+  String? _statusDeviceId;
+
   StreamSubscription<FlipperConnectionState>? _connSub;
   StreamSubscription<Map<String, String>>? _deviceInfoSub;
 
@@ -241,10 +245,23 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     if (name != null) _setDeviceName(name);
   }
 
+  /// Keyed on **which** Flipper, not on whether one is there.
+  ///
+  /// Activating a session that is already connected - a tap on a held entry
+  /// in the connection list, `LinkService.connect` taking its `entry.held`
+  /// branch - re-announces the new session as connected and emits no
+  /// disconnect in between (`_activateLocked` in flipperlib). The status is
+  /// device-wide and everything under it is keyed by device name, so a
+  /// `synced` earned on the Flipper that just lost the front would otherwise
+  /// be read straight off the bottom bar for the one that took it. #420.
+  ///
+  /// An event for the same device leaves the status alone, which is what a
+  /// sync in flight needs: a mode change mid-sync is one of these.
   void _onConnectionChange(FlipperConnectionState s) {
-    final connected = s.connected && s.device != null;
-    if (!connected) {
+    final device = s.connected ? s.device : null;
+    if (device?.id != _statusDeviceId) {
       _syncStatus = ArchiveSyncStatus.idle;
+      _statusDeviceId = device?.id;
     }
     notifyListeners();
   }
@@ -967,9 +984,15 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           .map((e) => e.key)
           .toList();
       await _downloadPending(pendingIds);
-      _syncStatus = _lastError == null
-          ? ArchiveSyncStatus.synced
-          : ArchiveSyncStatus.idle;
+      // **Not `synced`, even when it went perfectly.** This status is
+      // device-wide - the bottom bar draws it as one word about the whole
+      // archive - and one category walked says nothing about the five others,
+      // which may be thousands of files behind. Only [_syncAll] earns it.
+      //
+      // Invisible until #420: `synced` and `idle` drew the same string, so a
+      // pull-to-refresh on one category promoting the lot was a claim nobody
+      // could see. #420.
+      _syncStatus = ArchiveSyncStatus.idle;
       await _parseMetaForCategory(category);
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
