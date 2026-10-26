@@ -92,6 +92,43 @@ class FlipperMockupHero extends StatelessWidget {
   final String connectionLabel;
   final IconData connectionIcon;
 
+  /// The gap between the mockup and the text column, spelt once.
+  static const _mockupGap = 24.0;
+
+  /// The least this can be given without overflowing, at [scaler].
+  ///
+  /// The mockup is a fixed [FlipperMockupWidget._templateWidth] - a
+  /// `SizedBox(height: 100)` over a 238:100 `AspectRatio`, so nothing shrinks
+  /// it - plus [_mockupGap] and [titleRowFloor].
+  ///
+  /// **Not a readable width.** It is the width below which this throws, which
+  /// is a different question from the width at which it reads. Above it
+  /// everything here ellipsises or wraps instead; `DevicePageHeader` works
+  /// from both numbers and they are not interchangeable. #417.
+  static double minWidth(TextScaler scaler) =>
+      FlipperMockupWidget._templateWidth + _mockupGap + titleRowFloor(scaler);
+
+  /// The least the title row can be given without overflowing, at [scaler].
+  ///
+  /// That row is `Flexible(title)`, a 10 gap and [_HeroPill], and the pill is
+  /// the half that cannot shrink. Written out, with the gap first:
+  /// `10 + 2 (border) + 16 (padding) + 12 (icon) + 5 (gap) + 1.5 (letter
+  /// spacing, charged for the trailing glyph too) = 46.5`, plus three glyphs
+  /// of a 10 px font - `connectionLabel` is `BLE` or `USB` and never
+  /// translated (`pages/devices/page.dart`). The 52 is that 46.5 with 5.5
+  /// against rounding.
+  ///
+  /// Taking a glyph as wide as its font size is what `flutter_test`'s font
+  /// does and about twice what a proportional one does, so this over-reserves
+  /// rather than under - which is the direction a floor should err in.
+  ///
+  /// [TextScaler.scale] on a **font size** is what it is defined for, unlike
+  /// the box-height guess #411 threw out. The pill's icon is 12 at every
+  /// scale only because `Icon.applyTextScaling` defaults to false and the
+  /// theme sets no `iconTheme`; if that ever changes, this is where it has to
+  /// be paid for.
+  static double titleRowFloor(TextScaler scaler) => 52 + 3 * scaler.scale(10);
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -122,7 +159,7 @@ class FlipperMockupHero extends StatelessWidget {
           height: 100,
           child: FlipperMockupWidget(active: active, dfu: dfu),
         ),
-        const SizedBox(width: 24),
+        const SizedBox(width: _mockupGap),
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,

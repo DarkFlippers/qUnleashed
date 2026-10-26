@@ -64,11 +64,16 @@ final ThemeData _theme = buildAppTheme(
 ///    the shipped app. The claim is the one the bug was about: the layout is
 ///    legal, so what does not fit is ellipsised rather than clipped away
 ///    unannounced.
-///  * For the hero branch, "nothing was thrown" is weaker than it reads. Its
-///    full-info button is a `Positioned` in a `Stack`, and a `Stack` reports no
-///    overflow - a long `deviceFullInfo` paints over the UID line instead,
-///    silently. That overlap is real today and filed as #417 rather than fixed
-///    here, so do not read a green hero case as "the hero fits".
+///  * For the hero branch, "nothing was thrown" is weaker than it reads, and
+///    the third group is here because of it. Its full-info button used to be a
+///    `Positioned` in a `Stack`; a `Stack` constrains no sibling of a
+///    positioned child, so a long `deviceFullInfo` painted over the UID line
+///    and no amount of overlap threw. #417. The button is in the layout now -
+///    beside the hero above 720 and under it below - and what holds that is
+///    geometry rather than `takeException`. The two cannot be swapped for one
+///    another in either direction: the overlap threw nothing, and the cap
+///    that stops the mockup starving is caught by `takeException` before any
+///    geometry is read.
 void main() {
   /// What a connected Flipper's info map carries that the header reads.
   ///
@@ -82,6 +87,14 @@ void main() {
     'firmware_build_date': '2026-10-26',
     'hardware_uid': 'A1B2C3D4E5F60718293A4B5C6D7E',
   };
+
+  /// What the page passes (`ctrl.deviceInfoEntries`), so the branch is
+  /// selected the way the page selects it rather than by a hand-written list.
+  final entries = DeviceInfoReader.infoEntries(info);
+
+  /// Whether [of] had to truncate, which is the paragraph's own answer.
+  bool exceeded(WidgetTester tester, Finder of) =>
+      tester.renderObject<RenderParagraph>(of).didExceedMaxLines;
 
   /// Builds the header at [width] and [textScale] and returns what it threw.
   ///
@@ -226,35 +239,11 @@ void main() {
   });
 
   group('the hero header fits', () {
-    // `DeviceInfoReader.infoEntries` is what the page passes
-    // (`ctrl.deviceInfoEntries`), so the branch is selected the way the page
-    // selects it rather than by a hand-written list.
-    final entries = DeviceInfoReader.infoEntries(info);
-
-    // Every locale here, because the hero builds its own strings -
-    // `fw {version}`, `built {date}`, `UID {uid}` and the button's label -
-    // and the longest of them is what breaks a `Wrap` onto another run. 560
-    // is the narrowest it is ever drawn at and 900 a desktop window; 1200 and
-    // 1600 only give the same `Wrap` more room than it needs.
-    for (final locale in L10n.supportedLocales) {
-      testWidgets('with ${locale.languageCode}\'s metadata', (tester) async {
-        for (final width in const [560.0, 600.0, 900.0]) {
-          expect(
-            await render(
-              tester,
-              width,
-              title: 'MyFlip42',
-              locale: locale,
-              infoEntries: entries,
-              deviceInfo: info,
-            ),
-            isNull,
-            reason: '${locale.languageCode} at $width',
-          );
-        }
-      });
-    }
-
+    // **No locale sweep here, and that is not an omission.** The group below
+    // renders the same eight locales at the same three widths and asserts
+    // this same `isNull` before it measures anything, so a sweep here would
+    // be a strict subset of it - and two sweeps to keep in step is how one
+    // of them quietly stops covering a width the other gained.
     testWidgets('at the branch boundary, with its metadata on screen', (
       tester,
     ) async {
@@ -311,6 +300,218 @@ void main() {
     }
   });
 
+  group('the hero and its button keep out of each other', () {
+    /// The UID line's box and the button's, which is the whole question.
+    ///
+    /// The UID's **box**, not its glyphs: an ellipsised `Text` fills its
+    /// constraint, so the box is as far as the line can reach and the claim
+    /// holds whatever the font does - which is what makes it readable in a
+    /// font twice the width of the real one.
+    (Rect, Rect) boxes(WidgetTester tester) => (
+      tester.getRect(find.textContaining('UID A1B2')),
+      tester.getRect(find.byType(TextButton)),
+    );
+
+    /// Not `button.left >= uid.right`: that is the side-by-side layout's
+    /// version of it, and below 720 the button is underneath instead. Boxes
+    /// that do not intersect is the claim that covers both.
+    void expectApart(WidgetTester tester, String where) {
+      final (uid, button) = boxes(tester);
+      expect(
+        uid.overlaps(button),
+        isFalse,
+        reason: 'the button shares a box with the UID line at $where',
+      );
+    }
+
+    // Every locale, because the button's label is the one thing here that
+    // grows with the locale: the longest is Spanish's "Toda la información",
+    // 19 characters against the English nine. The UID line does not - it is
+    // the same `UID {uid}` in all eight, and its box measured 542 in every
+    // one of them at 560 before the fix. What the locale moves above it is
+    // the `Wrap`, which changes the header's height rather than this.
+    //
+    // 21 of these 24 combinations overlapped before the fix. In the test
+    // font: the three that did not were the short labels at 900, and in a
+    // proportional font the overlap is confined to the 560-600 end, which is
+    // the band `_sideBySideWidth` is about.
+    for (final locale in L10n.supportedLocales) {
+      testWidgets('in ${locale.languageCode}', (tester) async {
+        for (final width in const [560.0, 600.0, 900.0]) {
+          expect(
+            await render(
+              tester,
+              width,
+              title: 'MyFlip42',
+              locale: locale,
+              infoEntries: entries,
+              deviceInfo: info,
+            ),
+            isNull,
+            reason: '${locale.languageCode} at $width',
+          );
+          expectApart(tester, '$width in ${locale.languageCode}');
+        }
+      });
+    }
+
+    // The scales, where the button grows fastest against the tightest width.
+    // 900 as well as 560, because they are different layouts: 560 stacks and
+    // cannot overlap by construction, so only the 900 half of each of these
+    // exercises the cap.
+    for (final scale in const [1.3, 2.0, 3.1]) {
+      testWidgets('at a text scale of $scale', (tester) async {
+        for (final width in const [560.0, 900.0]) {
+          expect(
+            await render(
+              tester,
+              width,
+              title: 'MyFlip42',
+              textScale: scale,
+              locale: const Locale('es'),
+              infoEntries: entries,
+              deviceInfo: info,
+            ),
+            isNull,
+            reason: 'scale $scale at $width',
+          );
+          expectApart(tester, '$width at a scale of $scale');
+        }
+      });
+    }
+
+    // **Where the button sits, in both layouts.** 14 off a box as tall as its
+    // content is the same place `bottom: 14` off the old `Stack` was, and
+    // `CrossAxisAlignment.end` is what makes that true of the row - the
+    // default is `center`, not `start`, so without it the button sits half
+    // way up the header and no assertion above notices.
+    for (final width in const [560.0, 900.0]) {
+      testWidgets('and sits in the corner at $width', (tester) async {
+        expect(
+          await render(
+            tester,
+            width,
+            title: 'MyFlip42',
+            locale: const Locale('en'),
+            infoEntries: entries,
+            deviceInfo: info,
+          ),
+          isNull,
+        );
+
+        final header = tester.getRect(find.byType(DevicePageHeader));
+        final button = tester.getRect(find.byType(TextButton));
+        expect(header.bottom - button.bottom, closeTo(14, 0.01));
+        expect(header.right - button.right, closeTo(14, 0.01));
+      });
+    }
+
+    // **The point of stacking, and the reason a cap alone was not enough.**
+    // Side by side at 560 the button takes everything above the hero's floor
+    // and the column lands exactly on it - 82 px in this font, about eleven
+    // of the UID's thirty-two characters in the shipped one, which is more of
+    // the line than the overlap ever hid. Underneath, the hero keeps the
+    // whole width.
+    testWidgets('and leaves the hero whole below 720', (tester) async {
+      expect(
+        await render(
+          tester,
+          560,
+          title: 'MyFlip42',
+          locale: const Locale('es'),
+          infoEntries: entries,
+          deviceInfo: info,
+        ),
+        isNull,
+      );
+
+      final (uid, button) = boxes(tester);
+      expect(
+        uid.width,
+        // The hero's two 18s, the mockup's 238 and the 24 beside it.
+        closeTo(560 - 36 - 238 - 24, 0.01),
+        reason: 'the column was squeezed, so the button is still beside it',
+      );
+      expect(
+        button.top,
+        greaterThanOrEqualTo(uid.bottom),
+        reason: 'the button is not under the hero at all',
+      );
+    });
+
+    // Above the threshold the column does give way - to the floor and no
+    // further - and what it gives up has to ellipsise rather than clip. A
+    // `Text` whose box is too small raises nothing either way, so boxes that
+    // do not intersect is satisfied by a UID cut mid-character too.
+    testWidgets('and ellipsises what it gives up above it', (tester) async {
+      expect(
+        await render(
+          tester,
+          900,
+          title: 'MyFlip42',
+          locale: const Locale('es'),
+          infoEntries: entries,
+          deviceInfo: info,
+        ),
+        isNull,
+      );
+
+      expect(
+        exceeded(tester, find.textContaining('UID A1B2')),
+        isTrue,
+        reason: 'the UID fitted, so this is not the squeeze it is about',
+      );
+      for (final text in [
+        tester.widget<Text>(find.textContaining('UID A1B2')),
+        tester.widget<Text>(
+          find.text(lookupL10n(const Locale('es')).deviceFullInfo),
+        ),
+      ]) {
+        expect(
+          text.overflow,
+          TextOverflow.ellipsis,
+          reason: '"${text.data}" would truncate with nothing to show for it',
+        );
+      }
+    });
+
+    // **The floor is checked against the thing it models**, rather than only
+    // through the overflow it prevents. `titleRowFloor` is arithmetic about
+    // `_HeroPill`, a private widget in another file: get that arithmetic
+    // wrong and what fails is 'the hero header fits', whose name says nothing
+    // about pills - the failure-for-another-reason CLAUDE.md names. This is
+    // the assertion that would fail for the reason it is about.
+    for (final scale in const [1.0, 1.3, 2.0, 3.1]) {
+      testWidgets('and reserves enough for the pill at $scale', (tester) async {
+        expect(
+          await render(
+            tester,
+            900,
+            title: 'MyFlip42',
+            textScale: scale,
+            locale: const Locale('en'),
+            infoEntries: entries,
+            deviceInfo: info,
+          ),
+          isNull,
+        );
+
+        final pill = tester.getRect(
+          find
+              .ancestor(of: find.text('USB'), matching: find.byType(Container))
+              .first,
+        );
+        expect(
+          FlipperMockupHero.titleRowFloor(TextScaler.linear(scale)),
+          greaterThanOrEqualTo(pill.width + 10),
+          reason:
+              'the floor no longer covers the pill and the 10 beside it, so '
+              'the title row overflows wherever the column reaches it',
+        );
+      });
+    }
+  });
+
   // `Flexible` and not `Expanded`, which is the difference between giving the
   // column the room it needs and giving it all of it. `Expanded` would pin the
   // mockup to the left edge at every width the text fits in, which is a
@@ -352,14 +553,11 @@ void main() {
   // lost characters. These are what hold the bounds that turn that into an
   // ellipsis.
   group('the narrow header truncates rather than clips', () {
-    bool exceeded(WidgetTester tester, String text) =>
-        tester.renderObject<RenderParagraph>(find.text(text)).didExceedMaxLines;
-
     testWidgets('at a width neither line fits', (tester) async {
       expect(await render(tester, 320, title: 'No device'), isNull);
 
-      expect(exceeded(tester, 'No device'), isTrue);
-      expect(exceeded(tester, 'Flipper Zero'), isTrue);
+      expect(exceeded(tester, find.text('No device')), isTrue);
+      expect(exceeded(tester, find.text('Flipper Zero')), isTrue);
       // The witness is `didExceedMaxLines`, which is the paragraph's own
       // answer and goes false the moment either bound is dropped. What cannot
       // be read back is *how* it truncated, because the framework exposes
@@ -378,8 +576,8 @@ void main() {
     testWidgets('and not at a width they do', (tester) async {
       expect(await render(tester, 412, title: 'No device'), isNull);
 
-      expect(exceeded(tester, 'No device'), isFalse);
-      expect(exceeded(tester, 'Flipper Zero'), isFalse);
+      expect(exceeded(tester, find.text('No device')), isFalse);
+      expect(exceeded(tester, find.text('Flipper Zero')), isFalse);
     });
   });
 }
@@ -409,8 +607,36 @@ void main() {
 // apart; asserting `maxLines == 2` would restate the source rather than test
 // it.
 //
-// What is still unpinned is the hero's full-info button - **#417**. It is a
-// `Positioned` over a `Stack`, so no amount of overlap throws, and it paints
-// over the UID line at 560-600 dp today. A case for it needs a geometric
-// assertion rather than `takeException`, and the fix is a change to the hero's
-// own layout rather than to the row this file is about.
+// **#417 added nine mutations, all nine killed**, and which case kills which
+// is the useful half of that - four of them are held by one case each:
+//
+//  * the pre-fix layout, a `Stack` with the button `Positioned` over a hero
+//    laid out beside it at every width, fails 13 of the third group's cases -
+//    and not the two corner ones, which it *should* pass: the stack put the
+//    button in the same corner, and that is all those two assert;
+//  * `_sideBySideWidth` dropped to 560, so the button stays beside the hero
+//    all the way down, fails **only** 'leaves the hero whole below 720'.
+//    Nothing overlaps and nothing overflows in that layout - the cap sees to
+//    both - so that one case is the whole of what holds the threshold, and
+//    the thing it holds is how much of the UID a user gets to read;
+//  * the cap dropped fails the Spanish scale cases at 900, where the button
+//    takes the width the mockup needs and the mockup cannot shrink;
+//  * `titleRowFloor` flattened to its scale-1 value fails the pill cases from
+//    1.3 up and those same scale cases;
+//  * `titleRowFloor` under-reserving the pill by 12 fails **only** the four
+//    pill cases. No width or scale in this file reaches the overflow it would
+//    eventually cause, which is exactly why that assertion is written against
+//    the pill it models rather than against what the floor prevents;
+//  * `CrossAxisAlignment.end` dropped from the row, and the stacked button
+//    aligned left, each fail one corner case and nothing else;
+//  * the UID's ellipsis swapped for a clip, and the button label's own
+//    `maxLines: 1` and ellipsis dropped, each fail the ellipsis case.
+//
+// Those last two die by a structural assertion rather than a behavioural one,
+// and both are the admission the narrow group's note already makes: the
+// framework exposes no way to read back *how* a line truncated. For the label
+// there is not even that much - `TextButton.icon` puts it in a `Flexible`, so
+// an unbounded label soft-wraps inside the button rather than overflowing it,
+// leaving the button's box and every measurement here unchanged. What it
+// costs is two cramped lines in a 36-high button, which is a matter of looks
+// that this font cannot judge.
