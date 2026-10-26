@@ -6,36 +6,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/theme/theme.dart';
 
-/// The device line under a page title.
-///
-/// Sixteen pages build a `QPageAppBar`, so what this widget decides it does
-/// per page it does sixteen times. Two of those decisions are worth pinning:
-/// whether it subscribes to the device at all, and what name it shows.
-///
-/// It had no test, and could not have one - the title built its own client
-/// from `FlipperOneClient()`. It takes one now (ADR 0002), optional and
-/// falling back to the global, because most of those sixteen pages are on
-/// pushed routes with nothing to pass.
-/// Enough of a discovered device to build a [FlipperDevice] with.
-class _Discovered implements DiscoveredDevice {
-  const _Discovered(this.id);
+import 'fake_device.dart';
 
-  @override
-  final String id;
-
-  @override
-  String get name => id;
-
-  @override
-  DeviceTransport get transport => DeviceTransport.usb;
-}
-
-FlipperDevice device(String id, String name) => FlipperDevice(
-  id: id,
-  name: name,
-  link: FlipperLink.usb,
-  source: _Discovered(id),
-);
+// The device line under a page title.
+//
+// Sixteen pages build a `QPageAppBar`, so what this widget decides it does
+// per page it does sixteen times. Two of those decisions are worth pinning:
+// whether it subscribes to the device at all, and what name it shows.
+//
+// It had no test, and could not have one - the title built its own client
+// from `FlipperOneClient()`. It takes one now (ADR 0002), optional and
+// falling back to the global, because most of those sixteen pages are on
+// pushed routes with nothing to pass.
+//
+// Plain comments, not a doc comment: this describes the file, and the stub it
+// used to sit above moved to `fake_device.dart` in #413 - leaving it attached
+// to a fake it does not describe.
 
 class FakeTitleClient implements FlipperClient {
   FakeTitleClient({this.connected = false, this.name, FlipperDevice? attached})
@@ -231,7 +217,7 @@ void main() {
     expect(shows('Kitchen'), isTrue, reason: 'the starting point');
 
     client.name = null;
-    client.link(connected: true, arriving: device('other', 'Bench'));
+    client.link(connected: true, arriving: flipperDevice('other', 'Bench'));
     await tester.pump();
 
     expect(shows('Kitchen'), isFalse);

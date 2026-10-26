@@ -29,7 +29,7 @@ import 'kept_lines.dart';
 ///
 /// The mount is `archive_fakes.dart`'s, which is where the reason the disk
 /// setup has to run inside [WidgetTester.runAsync] is written down (#376).
-class _QuietFlipper with ArchiveRpcFake {
+class _QuietFlipper with FlipperRpcFake, ArchiveRpcFake {
   @override
   List<Main> framesFor(Main request) {
     if (!request.hasStorageListRequest()) return const [];

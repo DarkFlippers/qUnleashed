@@ -21,7 +21,7 @@ import 'kept_lines.dart';
 /// gone. #109.
 const _nfcRoot = '/ext/nfc';
 
-class _WalkingFlipper with ArchiveRpcFake {
+class _WalkingFlipper with FlipperRpcFake, ArchiveRpcFake {
   /// Directory path -> the entries it holds.
   final Map<String, List<fl.File>> tree = {};
 
@@ -61,12 +61,7 @@ class _WalkingFlipper with ArchiveRpcFake {
         Main()..commandStatus = CommandStatus.ERROR_STORAGE_NOT_EXIST,
       );
     }
-    return [
-      Main(
-        storageListResponse: ListResponse()
-          ..file.addAll(tree[path] ?? const []),
-      ),
-    ];
+    return [listingOf(tree, path)];
   }
 
   @override

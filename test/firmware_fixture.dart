@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
+import 'package:flipperlib/flipperlib.dart' as fl show File;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/config.dart';
@@ -14,9 +15,9 @@ import 'package:qunleashed/services/notifications/push_service.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'archive_fakes.dart';
+import 'fake_device.dart';
 import 'kept_lines.dart';
-
-import 'quiet_device_title.dart';
 
 /// What a firmware test needs to keep itself off the network and out of the
 /// previous test's state.
@@ -149,15 +150,73 @@ void resetFirmwareState() {
 List<String> keptAbout(String fragment) =>
     keptLines.where((l) => l.contains(fragment)).toList();
 
-/// Only the connection half of a client.
+/// The connection half of a client, and - since #413 - a Flipper that can
+/// actually be connected, with storage behind it.
 ///
 /// Everything else throws through [noSuchMethod], so a caller that starts
 /// reaching for something new fails here rather than quietly reading a null.
-class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
+///
+/// ## What "connected" needs, and why it took a change
+///
+/// [arrive] has always put a connection event on the stream, but it carries
+/// `device: null`, so `DeviceController._onConnectionState` leaves `_device`
+/// null - and `isConnected` is `_device != null && !_deviceDisconnected`.
+/// `connected` was therefore the one state no whole-app test could observe.
+/// The others were all reachable: `connecting` off the [connecting] field,
+/// `dfu` and `recovering` off the controller's own setters, and both readings
+/// of `disconnected`. [arriveWithDevice] carries a device, and that is the
+/// whole of the difference.
+///
+/// Two things follow from it that a caller has to know:
+///
+///  * **`deviceLoading` is true until device info arrives.** A connection
+///    event runs `_ensureDataLoading`, which sets the flag and subscribes to
+///    [deviceInfoUpdates]. On the stay-connected path nothing clears it but a
+///    non-empty event - a disconnect and a session reset clear it too, and
+///    both are reachable from here through [stir], but neither leaves the
+///    controller connected. The bottom bar reads "Syncing" the whole time,
+///    which is not the state most cases are after - so [arriveWithDevice]
+///    takes an `info` map and publishes it; a caller who wants the loading
+///    state passes `info: const {}`.
+///  * **`connectedDevice` stays null on purpose.** It is what
+///    `DeviceInfoWatchService._runCollection` reads on its first line, and a
+///    null parks the whole collection cycle there - no RPC burst, no battery
+///    timer, nothing for the binding's pending-timer check to find. The
+///    device the controller holds comes off the event instead.
+///
+///    Two things cannot be reached because of it, and the second is the one
+///    worth knowing: the watch service itself, and `DeviceController`'s
+///    **constructor** path - `_device = _client.connectedDevice` with the
+///    `_ensureDataLoading()` that follows it, which is the warm session a
+///    home-screen widget leaves behind. A client that is already connected
+///    when the controller is built cannot be made here at all.
+class FakeFlipperClient with FlipperRpcFake implements FlipperClient {
   final _connection = StreamController<FlipperConnectionState>.broadcast();
   final _sessions = StreamController<List<FlipperSessionInfo>>.broadcast();
+  final _info = StreamController<Map<String, String>>.broadcast();
 
   bool _connected = false;
+
+  /// Directory path -> the entries a list of it returns.
+  ///
+  /// Empty is a Flipper with nothing on its SD card, which is what an archive
+  /// sync over this fake walks unless a case seeds it.
+  final Map<String, List<fl.File>> tree = {};
+
+  /// Remote path -> the bytes a read of it returns.
+  final Map<String, String> bodies = {};
+
+  /// Every request this has been asked for, by its `whichContent()`.
+  final List<String> requests = [];
+
+  /// What [getName] answers: null until a device arrives with a hardware
+  /// name, and settable by a case that wants one sooner.
+  ///
+  /// The least of the three places `ArchiveController._deviceName` comes
+  /// from. `initialize()` reads `getName()` before any device has arrived,
+  /// falls back to `.last_device` on disk, and then takes the `hardware_name`
+  /// off the next info patch - which is the route that names a sync here.
+  String? name;
 
   /// The device coming back: the flag flips and the stream says so.
   ///
@@ -168,10 +227,10 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   /// **Also the stand-in for the five-second device-info poll.**
   /// `DeviceController` turns this into the same `notifyListeners` that
   /// `services/connection/device_info_watch.dart` produces, and the poll
-  /// itself cannot be driven from here - this client carries connection events
-  /// and nothing else. Every test that asserts something does or does not
-  /// rebuild on the poll fires this instead, and the scope does not care which
-  /// of the two it was.
+  /// itself cannot be driven from here - the watch service is parked, for the
+  /// reason this class's doc gives. Every test that asserts something does
+  /// or does not rebuild on the poll fires this instead, and the scope does
+  /// not care which of the two it was.
   void arrive() {
     _connected = true;
     _connection.add(
@@ -182,6 +241,70 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
       ),
     );
   }
+
+  /// A Flipper arriving **with a device**, which is what makes the controller
+  /// read as connected.
+  ///
+  /// [info] is published straight after, because a connection event on its own
+  /// leaves `deviceLoading` true - see the note on this class. The default
+  /// carries a hardware name, since that is what the device screen's title and
+  /// the archive's folder are both read from.
+  void arriveWithDevice({
+    FlipperDevice? device,
+    Map<String, String> info = const {
+      'hardware_name': archiveTestDevice,
+      'firmware_version': '1.3.4',
+    },
+  }) {
+    _connected = true;
+    if (info.containsKey('hardware_name')) name = info['hardware_name'];
+    _connection.add(
+      FlipperConnectionState(
+        mode: FlipperMode.rpc,
+        device: device ?? flipperDevice('fake', archiveTestDevice),
+        connected: true,
+      ),
+    );
+    // **After the connection event has been delivered, not with it.**
+    // `DeviceController` subscribes to `deviceInfoUpdates` from inside its
+    // connection handler - `_ensureDataLoading` is what opens it - and a
+    // broadcast stream delivers an event only to the listeners it had when
+    // the event was added. Published in line, the patch lands before that
+    // subscription exists and is dropped on the floor, which leaves
+    // `deviceLoading` true for ever and the bottom bar reading "syncing" in
+    // a case that is about anything else. One microtask is the whole of the
+    // ordering: the `add` above queues the delivery, and this queues behind
+    // it.
+    if (info.isNotEmpty) scheduleMicrotask(() => publish(info));
+  }
+
+  /// A device-info patch, as the watch service's collection cycle would
+  /// publish one.
+  ///
+  /// `DeviceController` drops an empty map, so this is also the only way to
+  /// move `deviceLoading` to false.
+  ///
+  /// Accumulated as well as broadcast, because the real session does both
+  /// (`session.dart`'s `_deviceInfoWatchSnapshot`), and the archive's storage
+  /// cards seed from the snapshot on subscribe rather than waiting for a
+  /// patch - so [deviceInfoWatchSnapshot] existing is not optional. The first
+  /// run of `shell_device_label_test.dart` threw
+  /// `has no instance getter 'deviceInfoWatchSnapshot'` out of a card
+  /// rebuild. Nothing yet distinguishes accumulating from answering
+  /// `const {}`.
+  final Map<String, String> _watchSnapshot = {};
+
+  void publish(Map<String, String> info) {
+    _watchSnapshot.addAll(info);
+    _info.add(info);
+  }
+
+  @override
+  Map<String, String> get deviceInfoWatchSnapshot =>
+      Map.unmodifiable(_watchSnapshot);
+
+  @override
+  Stream<Map<String, String>> get deviceInfoUpdates => _info.stream;
 
   /// Connected, with nothing said on the stream.
   void arriveQuietly() => _connected = true;
@@ -207,6 +330,31 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   Future<void> close() async {
     await _sessions.close();
     await _connection.close();
+    await _info.close();
+  }
+
+  @override
+  String? getName() => name;
+
+  @override
+  Future<String> awaitName() async => name ?? '';
+
+  /// Storage answers out of [tree] and [bodies].
+  ///
+  /// Only the two requests an archive sync makes - a directory listing and a
+  /// file read. Anything else is recorded in [requests] and answered with
+  /// nothing, which is how a sync over an empty tree walks to completion
+  /// rather than throwing.
+  @override
+  List<Main> framesFor(Main request) {
+    requests.add(request.whichContent().toString());
+    if (request.hasStorageListRequest()) {
+      return [listingOf(tree, request.storageListRequest.path)];
+    }
+    if (request.hasStorageReadRequest()) {
+      return [contentsOf(bodies[request.storageReadRequest.path] ?? '')];
+    }
+    return const [];
   }
 
   /// Whether anything is still listening.
@@ -237,9 +385,10 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   @override
   String? get scopedDeviceId => 'fake';
 
-  /// Nothing connected at construction. `DeviceController` reads this once in
-  /// its constructor, and a null keeps it out of `_ensureDataLoading`, which
-  /// would reach for `deviceInfoUpdates` this does not answer.
+  /// Nothing connected at construction, which is load-bearing twice over:
+  /// `DeviceController` reads it once in its constructor, and
+  /// `DeviceInfoWatchService` reads it on the first line of its collection
+  /// cycle. See this class's doc for what that buys and what it costs.
   @override
   FlipperDevice? get connectedDevice => null;
 

@@ -30,7 +30,7 @@ import 'kept_lines.dart';
 /// at whatever file it happened to reach.
 const _nfcRoot = '/ext/nfc';
 
-class _SyncFlipper with ArchiveRpcFake {
+class _SyncFlipper with FlipperRpcFake, ArchiveRpcFake {
   /// Directory path -> the entries it holds.
   final Map<String, List<fl.File>> tree = {};
 
@@ -67,13 +67,7 @@ class _SyncFlipper with ArchiveRpcFake {
   @override
   List<Main> framesFor(Main request) {
     if (request.hasStorageListRequest()) {
-      final path = request.storageListRequest.path;
-      return [
-        Main(
-          storageListResponse: ListResponse()
-            ..file.addAll(tree[path] ?? const []),
-        ),
-      ];
+      return [listingOf(tree, request.storageListRequest.path)];
     }
     if (request.hasStorageReadRequest()) {
       final path = request.storageReadRequest.path;

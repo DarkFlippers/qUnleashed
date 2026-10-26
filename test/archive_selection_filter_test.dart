@@ -44,7 +44,7 @@ import 'archive_fakes.dart';
 ///
 /// Only the NFC listing is answered, so the walk's other categories come back
 /// empty rather than finding the same two files in all of them.
-class _SyncedPair with ArchiveRpcFake {
+class _SyncedPair with FlipperRpcFake, ArchiveRpcFake {
   @override
   List<Main> framesFor(Main request) {
     if (!request.hasStorageListRequest()) return const [];

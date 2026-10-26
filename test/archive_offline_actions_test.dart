@@ -36,7 +36,7 @@ import 'kept_lines.dart';
 /// asking once the link is declared gone, that a device copy which did go is
 /// not reported as "not deleted", and that what is kept is a locale- and
 /// path-independent body rather than the sentence shown to the user.
-class _DeletingFlipper with ArchiveRpcFake {
+class _DeletingFlipper with FlipperRpcFake, ArchiveRpcFake {
   bool connected = true;
 
   /// What [waitForRpcSession] answers - false is a link that never came back.
