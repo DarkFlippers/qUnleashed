@@ -240,10 +240,90 @@ The sharp edge is the wide layout: `FlipperRootScaffold.build` ignores
 `deviceLabel` entirely when `isWide`, so on a desktop window the poll was
 rebuilding the whole app for a value nothing displayed.
 
-`test/shell_poll_rebuild_test.dart` holds both halves. It drives
-`DeviceController.setRecovering` rather than a connection event, because
-`ArchiveController` listens to `connectionStream` too and `_AppShellState`
-answers *its* notifications with a `setState` that does not ask what changed —
-a second path to the same waste, filed as #410 rather than fixed here. Which
-of the two costs more is not measured: the poll's rate is known and the
-archive controller's is not.
+`test/shell_rebuild_test.dart` holds both halves. It drives
+`DeviceController.setRecovering` rather than a connection event, because both
+controllers listen to `connectionStream` — the archive controller notifies on
+every event, the device controller on every event that is not `connecting` —
+so a connection event is the one notification a rebuild witness cannot
+attribute to a source.
+
+At the time this was written the archive side of that was a `setState` in
+`_AppShellState` that did not ask what changed — a second path to the same
+waste, filed as #410 rather than fixed here, with the note that which of the
+two cost more was not measured. It was fixed next; see below.
+
+## Addendum: the builder takes a status, not a controller (2026-10-26, #410)
+
+Not a decision about `DeviceScope`, but it changes the widget the two addenda
+above describe, so the description would otherwise go stale.
+
+#410 supposed the shell read no *value* off the archive controller, in which
+case its listener could simply go. It reads one: `_deviceLabel` consults
+`ArchiveController.syncStatus` for the `connected` case. Dropping the
+notification would have stopped the bottom bar following a sync — **lagging,
+not freezing**, because the device controller is in the same merge and
+notifies on every five-second info tick, so the label is recomputed within
+about five seconds anyway, longer across the ticks a sync's own `storageBusy`
+makes the watcher skip. What the subscription buys is the label moving when
+the sync does.
+
+**The rate question the paragraph above left open is answered the other way
+round.** The archive controller notifies from forty-one places, and
+`_downloadPending` reaches four of them per file it downloads — the `checking`
+tick, `publish(0)`, `publish(1.0)` and the completion tick, three of them past
+the throttle, which only guards `0 < p < 1` — plus one throttled progress
+notification per 150 ms of transfer. So the archive was the larger of the two
+sources, not the poll.
+
+### Why the subscription is on one enum and not on the controller
+
+The first fix moved the listener off `_AppShellState`, where its `setState`
+re-ran `build` and constructed a new `IndexedStack`, onto the
+`ListenableBuilder` that already held the device's — `Listenable.merge([device,
+_archiveController])`. That stopped the pages rebuilding, which is what #410
+asked for, and left the nav bar being rebuilt by all forty-one notify sites
+for one enum it reads.
+
+`syncStatus` has **exactly one reader in `lib/`**, so the narrower fix was
+available and is the one taken. `ArchiveController` holds it in a
+`ValueNotifier` and exposes it as a `ValueListenable`; the shell merges that:
+
+```dart
+final repaint = Listenable.merge([device, _archiveController.syncStatus]);
+```
+
+Every assignment inside the controller still writes `_syncStatus`, now a
+private getter/setter pair over the notifier's value, so the sites read as
+plain field writes and the `notifyListeners()` beside each of them is
+untouched — the archive tables depend on those and on nothing here. A
+`ValueNotifier` only notifies on `!=`, and the status moves idle → syncing →
+synced once per sync, so the nav bar is rebuilt **two or three times a sync**
+rather than four times per file downloaded plus a progress tick every 150 ms.
+On a two-thousand-file sync that is three rebuilds where there were about
+eight thousand.
+
+### Merged in `build`, not held in a field
+
+The archive tables do it the other way (`_repaint` in `category_page.dart`).
+The resubscribe cost is per `State.build` and not per notification — a
+notification rebuilds only the builder closure, on the same widget instance,
+so there is no `didUpdateWidget` and no resubscribe — and a table's own
+search, filter, sort and selection `setState`s run its `build` often. The
+shell's runs on a tab tap, any `MediaQuery` size change, a theme or locale
+change, a permission re-read or a diagnostics change, the last two because it
+depends on `PermissionScope` through `_bluetoothBlocks` and on
+`DiagnosticsScope` through the post-frame read in `initState`. None of those
+is a transport notification, which is the property the choice rests on.
+
+A field would also have to capture whatever `notifierOf` returned. That
+invariant does hold and is recorded on `DeviceScope.clientOf` — one controller
+for the run, `late final` in the only state that builds a `DeviceScope` — so
+this is a preference for the spelling with no captured lifetime rather than a
+claim that the field would be wrong.
+
+**What is not pinned:** nothing asserts that `deviceLabel` follows
+`syncStatus`, so the merge's own justification is untested, and narrowing the
+subscription made the mutation that drops it from the merge *easier* to miss.
+The reason, and the three surviving mutations, are in the note at the foot of
+`test/shell_rebuild_test.dart` — it needs a connected `FakeFlipperClient` with
+a storage API, the same fixture #407 wanted for `_openFullInfo`. Filed.

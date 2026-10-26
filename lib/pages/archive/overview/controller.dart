@@ -4,10 +4,12 @@ import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
+// `widgets.dart` re-exports only `Brightness` and `UniqueKey` from
+// `foundation.dart`, so `ValueListenable` needs its own import.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../components/codec/fap/icon.dart';
@@ -78,7 +80,29 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   String _deviceName = '';
   bool _loading = false;
   bool _syncing = false;
-  ArchiveSyncStatus _syncStatus = ArchiveSyncStatus.idle;
+
+  /// Where a sync has got to, as a notifier of its own.
+  ///
+  /// Separate from `notifyListeners` because it has exactly one reader in
+  /// `lib/` - `AppShell`'s bottom-bar label - while this controller notifies
+  /// from forty-one places, four of them per file a sync downloads. Listening
+  /// to the whole controller for one enum woke the nav bar on every one of
+  /// those; a `ValueNotifier` only notifies on `!=`, so it wakes it as often
+  /// as the status actually moves, which is two or three times a sync. #410.
+  ///
+  /// Every site below still writes `_syncStatus`, which is this notifier's
+  /// value, so they read as plain field assignments and the
+  /// `notifyListeners()` beside each of them is untouched. The archive tables
+  /// depend on those and on nothing here.
+  final ValueNotifier<ArchiveSyncStatus> _syncStatusNotifier = ValueNotifier(
+    ArchiveSyncStatus.idle,
+  );
+
+  ArchiveSyncStatus get _syncStatus => _syncStatusNotifier.value;
+
+  set _syncStatus(ArchiveSyncStatus status) =>
+      _syncStatusNotifier.value = status;
+
   SyncProgress? _syncProgress;
   String? _busyPath;
   double _busyProgress = 0;
@@ -99,7 +123,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get loading => _loading;
   bool get syncing => _syncing;
-  ArchiveSyncStatus get syncStatus => _syncStatus;
+  ValueListenable<ArchiveSyncStatus> get syncStatus => _syncStatusNotifier;
   SyncProgress? get syncProgress => _syncProgress;
 
   /// Inline transfer progress (0..1) for [k] while it is being downloaded from
@@ -318,6 +342,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _connSub?.cancel();
     _deviceInfoSub?.cancel();
+    _syncStatusNotifier.dispose();
     super.dispose();
   }
 

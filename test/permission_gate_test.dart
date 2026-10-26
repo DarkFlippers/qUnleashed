@@ -37,6 +37,13 @@ void main() {
   /// timer wherever libusb is present, and the binding checks for live timers
   /// before `tearDown` runs. `device_scope_reach_test.dart` records the same
   /// trap.
+  /// **The size below does nothing**, so every case here runs the desktop
+  /// rail. `setSurfaceSize` overrides the render view's configuration only;
+  /// `MediaQuery` is built from `View.of(context)` and keeps answering the
+  /// default 800x600, which `FlipperRootScaffold.isWide` reads as wide.
+  /// `shell_rebuild_test.dart` hit this and switched to `tester.view`; nothing
+  /// asserted here is layout-dependent, so it is filed as #414 with the other
+  /// nine files rather than fixed one at a time.
   Future<DeviceController> pumpApp(
     WidgetTester tester,
     PermissionCenter permissions,

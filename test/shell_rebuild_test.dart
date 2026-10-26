@@ -2,22 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/app/app.dart';
 import 'package:qunleashed/app/nav_bar.dart';
+import 'package:qunleashed/pages/archive/overview/controller.dart';
+import 'package:qunleashed/pages/archive/overview/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 import 'package:qunleashed/services/permissions/center.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
 import 'firmware_fixture.dart';
 
-/// What a device-info poll tick is allowed to rebuild in the shell, and what
-/// it is not.
+/// What a notification is allowed to rebuild in the shell, and what it is not.
+///
+/// Two sources reach it and both used to rebuild everything: the five-second
+/// device-info poll (#407) and archive activity (#410). The poll cases fire
+/// `setRecovering`; the archive case fires `notifyListeners` on the
+/// controller. 'the visible slot survives a layout flip' fires neither — it
+/// covers the locals the #407 hoist created, which a layout flip is what
+/// moves.
 ///
 /// `AppShell` holds the whole app: a `FlipperRootScaffold` whose `child` is an
 /// `IndexedStack` carrying every tab the user has visited, all of them still
-/// mounted. The only thing in there that depends on the device is
-/// `deviceLabel` — one string in the bottom bar — and the **wide layout does
-/// not draw even that**: `FlipperRootScaffold.build` ignores `deviceLabel`
-/// entirely when `isWide`, so on a desktop window nothing inside the
-/// device-dependent region displays a device-dependent value at all.
+/// mounted. The only thing in there that depends on either controller is
+/// `deviceLabel` — one string in the bottom bar, read from the device's
+/// `connectionState`, `device`, `deviceLoading` and `deviceInfoConnected` and,
+/// in the `connected` case alone, the archive's `syncStatus` — and the **wide
+/// layout does not draw even that**: `FlipperRootScaffold.build` ignores
+/// `deviceLabel` entirely when `isWide`, so on a desktop window nothing
+/// inside the notification-dependent region displays a value either
+/// controller can change.
+///
+/// The two sources are not symmetric any more, and the archive case turns on
+/// it. The shell listens to the **whole** device controller, so a poll tick
+/// rebuilds the nav bar; it listens only to `ArchiveController.syncStatus`, a
+/// `ValueNotifier`, so an archive notification rebuilds nothing of the
+/// shell's at all.
 ///
 /// Two things used to make a tick rebuild all of it, and both are needed:
 ///
@@ -55,22 +72,32 @@ import 'firmware_fixture.dart';
 ///
 /// **The tick is `setRecovering`, not a connection event**, and that is the
 /// second thing the first draft got wrong. `FakeFlipperClient.arrive()` puts
-/// an event on `connectionStream`, which `ArchiveController` is also
-/// subscribed to (`archive/overview/controller.dart`) — and `_AppShellState`
-/// holds `_archiveController.addListener(_onArchiveChanged)`, whose body is an
-/// unconditional `setState`. So a connection event rebuilds the whole shell
-/// through a path that has nothing to do with `DeviceScope`, and the cases
-/// below would have failed for a reason they were not about. #410 is that
-/// listener.
+/// an event on `connectionStream` and **both controllers are subscribed to
+/// it**: `ArchiveController._onConnectionChange` notifies on every event, and
+/// `DeviceController._onConnectionState` on every event that is not
+/// `connecting`. So `arrive()`'s event reaches both, and a case built on a
+/// rebuild or an identity witness cannot say which source the shell answered.
 ///
-/// `setRecovering` notifies the device controller and nothing else, which is
-/// the notification this change is about. Not `setDfuPresent`, which was the
-/// second attempt: the controller subscribes `DfuDetector.presence` to it, and
-/// the detector's one-second poll runs inside `pumpAndSettle` and pushes
-/// `false` straight back - so the label returned to its old value and the
-/// assertion on it failed for a reason that had nothing to do with the shell.
-/// `setRecovering` also stops that detector, and `connectionState` checks
-/// `_recovering` first. #407.
+/// A case built on a *value* witness could — the value is the claim, whatever
+/// fired. None here is, and the note at the foot of this file says why the one
+/// that wants to be cannot.
+///
+/// When the first draft ran, the archive side of that was a whole-shell
+/// `setState` in `_AppShellState._onArchiveChanged`, so the device cases
+/// failed outright. #410 removed that listener, which is why the last two
+/// cases exist.
+///
+/// So the device cases fire `setRecovering`, which notifies the device
+/// controller alone, and the archive cases fire `notifyListeners()` on the
+/// controller itself.
+///
+/// Not `setDfuPresent` for the device half, which was the second attempt: the
+/// controller subscribes `DfuDetector.presence` to it, and the detector's
+/// one-second poll runs inside `pumpAndSettle` and pushes `false` straight
+/// back - so the label returned to its old value and the assertion on it
+/// failed for a reason that had nothing to do with the shell. `setRecovering`
+/// also stops that detector, and `connectionState` checks `_recovering`
+/// first. #407.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -84,12 +111,31 @@ void main() {
   /// so it is the base case rather than a long translation. That is a real bug
   /// and it is not this one, so it is filed as #411 rather than worked
   /// around silently; do not narrow this back without reading it.
+  ///
+  /// **The window is sized through `tester.view`, not `setSurfaceSize`**, and
+  /// this file used the latter until #410. `setSurfaceSize` overrides the
+  /// render view's configuration and nothing else: `MediaQuery` is built from
+  /// `View.of(context)`, so it kept answering the default 800x600 - which
+  /// `FlipperRootScaffold.isWide` reads, and 800 by 600 is wide. Every case
+  /// here ran on the desktop rail, the one named for a narrow window and the
+  /// layout flip included. `_surfaceSize` feeds only
+  /// `createViewConfigurationFor`, which is the mechanism; the framework's doc
+  /// recommends `TestFlutterView.physicalSize` instead, and four other files
+  /// here already use it.
+  ///
+  /// So the three cases below named for a narrow window are **new coverage**,
+  /// not coverage this change preserved. They pass, including through the
+  /// device page's own narrow branch, which #411 lives in.
+  ///
+  /// `devicePixelRatio` is pinned to 1 so [size] is read in logical pixels -
+  /// the test binding's default is 3, which would make 500 a 167dp window.
   Future<(DeviceController, FakeFlipperClient)> pumpApp(
     WidgetTester tester,
     Size size,
   ) async {
-    await tester.binding.setSurfaceSize(size);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
 
     final (device, client) = mountedDevice();
     await tester.pumpWidget(
@@ -147,6 +193,48 @@ void main() {
     final index = stack.index;
     expect(index, isNotNull, reason: 'the shell always selects a slot');
     return stack.children[index!] is! SizedBox;
+  }
+
+  /// The archive controller the shell built, taken back out of the tree.
+  ///
+  /// `_AppShellState` constructs it from `widget.client` and keeps it private,
+  /// so there is no seam to reach it through - but it hands the same instance
+  /// to every archive page, and the overview slot is in `_mounted` from the
+  /// first frame on a narrow layout. Reading it back costs the production
+  /// code nothing, which a constructor parameter added for this would not.
+  ///
+  /// Narrow only, and **only once the archive tab is the selected one**:
+  /// `_page` blanks the overview slot when `wide`, and `find.byType` skips
+  /// offstage widgets - a non-selected `IndexedStack` child is offstage, so
+  /// the page is mounted but not found. Both archive cases select the tab
+  /// first, which is also the situation they are about: somebody watching the
+  /// archive screen while a sync runs.
+  ArchiveController archiveIn(WidgetTester tester) =>
+      tester.widget<ArchivePage>(find.byType(ArchivePage)).controller;
+
+  /// The `Scaffold` the overview page's own `AnimatedBuilder` returns.
+  ///
+  /// Scoped to inside [ArchivePage], so the shell's own scaffold cannot be
+  /// mistaken for it. Not `.first`: the page builds exactly one `Scaffold`, so
+  /// a bare `tester.widget` throws the day the subtree gains a second rather
+  /// than quietly taking the outer one.
+  Scaffold archivePageBody(WidgetTester tester) => tester.widget<Scaffold>(
+    find.descendant(
+      of: find.byType(ArchivePage),
+      matching: find.byType(Scaffold),
+    ),
+  );
+
+  /// Puts the archive overview on screen and settles.
+  ///
+  /// `pumpAndSettle` is safe here only because the controller is idle: the
+  /// sync bar's indeterminate `CircularProgressIndicator` is not mounted, so
+  /// there is no animation to wait out. A case that put the controller into
+  /// `syncing` - the one the note at the foot of this file wants - would hang
+  /// instead, and `settle()` in `archive_fakes.dart` is the existing answer.
+  Future<void> showArchive(WidgetTester tester) async {
+    scaffoldIn(tester).onTabSelected(FlipperRootTab.archive);
+    await tester.pumpAndSettle();
   }
 
   testWidgets('a poll tick rebuilds the nav bar and not the page stack', (
@@ -234,8 +322,7 @@ void main() {
     // and it pins the other half of the hoist at the same time: `currentTab`
     // moved out of the builder in this change, so a tap that no longer
     // switched tabs would be the regression nothing else here would catch.
-    scaffoldIn(tester).onTabSelected(FlipperRootTab.archive);
-    await tester.pumpAndSettle();
+    await showArchive(tester);
 
     expect(
       scaffoldIn(tester).currentTab,
@@ -274,14 +361,27 @@ void main() {
     // check above only asked whether the rail list had changed. This case is
     // the net, and it asserts the symptom rather than a private slot number -
     // the pane the user is looking at is not empty.
+    //
+    // **And until #410 it was not a flip**, because `setSurfaceSize` left
+    // `MediaQuery` at 800x600 and both sizes below read as wide. See `pumpApp`.
     final (device, _) = await pumpApp(tester, const Size(500, 900));
 
-    scaffoldIn(tester).onTabSelected(FlipperRootTab.archive);
-    await tester.pumpAndSettle();
+    await showArchive(tester);
     expect(visibleSlotIsDrawn(tester), isTrue, reason: 'blank while narrow');
-    expect(selectedRailItems(tester), 1, reason: 'nothing lit while narrow');
+    // Zero, and the narrow layout is right to show nothing: `_railGroups` has
+    // no destination for the overview slot at all - the rail reaches the
+    // archive through favourites, the categories and deleted, and the overview
+    // is the bottom bar's entry point. So no rail item matches the current
+    // slot, which is what the fallback below exists to fix.
+    expect(
+      selectedRailItems(tester),
+      0,
+      reason:
+          'a rail destination matched the overview slot, so the wide '
+          'fallback below is not the only thing lighting one',
+    );
 
-    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    tester.view.physicalSize = const Size(1200, 800);
     await tester.pumpAndSettle();
 
     expect(
@@ -333,4 +433,121 @@ void main() {
 
     await closeDevice(tester, device);
   });
+
+  testWidgets('an archive notification reaches the archive page and nothing '
+      'else', (tester) async {
+    // #410, and it is one case rather than two because every claim here is
+    // that something did *not* rebuild - so without a control it would pass
+    // just as well on a notification that never arrived, which is the trap
+    // this file records at the device cases above.
+    //
+    // The control is the overview page's own body, and it earns its place
+    // twice. It proves the notification reached the tree, and it answers the
+    // risk the three claims create: if the pages leant on the shell's
+    // `setState` to follow the controller, keeping the `IndexedStack`
+    // identical would leave the archive screen stale and the saving would be
+    // a bug. They do not lean on it - the four pages that take the controller
+    // wrap their whole build in an `AnimatedBuilder` over it (`animation:
+    // _ctrl` in the overview, `_repaint` in the three category pages) and not
+    // one of them declares a `didUpdateWidget`, so nothing of theirs was ever
+    // driven by its widget being replaced from above. #405 is where that came
+    // from. `FileManagerPage` shares the stack but takes the client, not the
+    // controller, so an archive notification never reached it either way.
+    //
+    // Only the overview is covered, because `archiveIn` is narrow-only and
+    // the other three are the wide layout's. Their `_repaint` is exercised
+    // page-level in `archive_bulk_outlives_page_test.dart` and
+    // `archive_sort_page_test.dart`, so that is a composition gap rather than
+    // an unguarded mechanism.
+    final (device, _) = await pumpApp(tester, const Size(500, 900));
+    await showArchive(tester);
+
+    final archive = archiveIn(tester);
+    final scaffoldBefore = scaffoldIn(tester);
+    final groupsBefore = scaffoldBefore.railGroups;
+    final stackBefore = pageStack(tester);
+    final bodyBefore = archivePageBody(tester);
+
+    // The stand-in for all forty-one of the controller's own notify sites -
+    // `notifyListeners` is a public override on `ArchiveController`. Which
+    // site produced it is the controller's business; what is pinned here is
+    // what the shell does when one arrives.
+    archive.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(
+      archivePageBody(tester),
+      isNot(same(bodyBefore)),
+      reason:
+          'the overview page did not answer the notification on its own, so '
+          'the three claims below are about a notification that arrived '
+          'nowhere - and skipping the page stack would leave the archive '
+          'screen drawing stale state',
+    );
+    expect(
+      scaffoldIn(tester),
+      same(scaffoldBefore),
+      reason:
+          'the nav bar was rebuilt for a notification it draws nothing from - '
+          'the merge is listening to the whole controller rather than to its '
+          'syncStatus notifier',
+    );
+    // Live only because of the tab tap in the second device case above: a
+    // memoised `_railGroups` would satisfy this forever, and nothing in *this*
+    // case would notice. Do not split that case away from this one.
+    expect(
+      scaffoldIn(tester).railGroups,
+      same(groupsBefore),
+      reason:
+          '_AppShellState.build re-ran, which is what _onArchiveChanged cost '
+          'on every notification',
+    );
+    expect(
+      pageStack(tester),
+      same(stackBefore),
+      reason:
+          'a new IndexedStack re-runs every mounted page build - four times '
+          'per file a sync downloads',
+    );
+
+    await closeDevice(tester, device);
+  });
+
+  // **The missing witness, named rather than left to be discovered.**
+  //
+  // Nothing here - or anywhere in `test/` - asserts that `deviceLabel`
+  // follows `ArchiveController.syncStatus`. That read is the whole reason the
+  // sync status is in the merged listenable, so **three** mutations survive
+  // the suite: dropping the `switch (_syncStatus)` from `_deviceLabel`'s
+  // `connected` branch, `_syncStatus => ArchiveSyncStatus.idle`, and dropping
+  // `_archiveController.syncStatus` from the merge altogether. Each leaves
+  // the bottom bar not following a sync, which is the user-visible half of
+  // #410.
+  //
+  // The third got easier to make, not harder, when the subscription narrowed
+  // from the controller to its status notifier: the case above asserts that
+  // an archive notification rebuilds *nothing* of the shell's, which a merge
+  // listening to nothing archive-related satisfies perfectly. That is the
+  // price of the narrowing and it is worth paying - but it is a price, and
+  // this is where it is recorded.
+  //
+  // A fourth survives for the same reason, and it is the one that would undo
+  // the saving silently: adding a `notifyListeners()` beside
+  // `_syncStatusNotifier.value = status` in `ArchiveController`. The `!=`
+  // dedup is the whole of "three rebuilds a sync rather than eight thousand",
+  // and nothing here would notice it going.
+  //
+  // It is not reachable from this fixture, and the reason is specific rather
+  // than a shrug. `_deviceLabel` consults `syncStatus` only when
+  // `connectionState` is `connected`, which needs `DeviceController._device`
+  // non-null - and `FakeFlipperClient.arrive()` carries `device: null` on
+  // purpose, so `_onConnectionState` leaves it null. A fake that connected
+  // would then have to reach a non-`idle` `syncStatus`, and every path that
+  // sets `syncing` runs through `_client.runTask` into `storageList`,
+  // `storageMd5sum` and `storageReadChunked`, none of which this fake
+  // answers.
+  //
+  // So it wants a connected `FakeFlipperClient` with a storage API, which is
+  // its own change - and the same one #407 wanted for `_openFullInfo`. Filed
+  // rather than half-built.
 }

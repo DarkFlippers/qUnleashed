@@ -76,7 +76,9 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    _archiveController.addListener(_onArchiveChanged);
+    // No listener on the archive controller here: its notification is taken
+    // by the `ListenableBuilder` in `build`, which is the whole of #410 - see
+    // the note there for what it used to cost.
     _archiveController.initialize();
     // Started as early as there is anywhere to start it, so the stored sort
     // is normally in hand before an archive table is reachable - but this is
@@ -116,7 +118,6 @@ class _AppShellState extends State<AppShell> {
       _onWidgetPickRequest,
     );
     PushService.instance.taps.removeListener(_onPushTap);
-    _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
     _archiveSort.dispose();
     super.dispose();
@@ -148,10 +149,6 @@ class _AppShellState extends State<AppShell> {
     final url = intent.url;
     if (intent.type != PushIntent.typeApp || url == null) return;
     await openUrl(context, url);
-  }
-
-  void _onArchiveChanged() {
-    if (mounted) setState(() {});
   }
 
   /// Whether a Bluetooth denial leaves this app with nothing to do.
@@ -212,8 +209,9 @@ class _AppShellState extends State<AppShell> {
     //
     // The controller's state *is* read, by `_deviceLabel`, but only from
     // inside the builder - whose element holds the subscription, so the label
-    // follows the device. Nothing in the lines below this one reads state off
-    // it, which is what makes a non-listening read correct here. #407.
+    // follows the device. Nothing below reads a *value* off it; the merge at
+    // the foot of this method only subscribes to it. That is what makes a
+    // non-listening read correct here. #407.
     final device = DeviceScope.notifierOf(context);
 
     // Tier 1. The only permission that reaches it is Bluetooth on iOS,
@@ -239,27 +237,41 @@ class _AppShellState extends State<AppShell> {
     // positions survived either way. What they paid was a `build` per mounted
     // page, twelve times a minute.
     //
-    // The only thing in here that depends on the device is `deviceLabel` - one
-    // string, drawn in the bottom bar - and the wide layout does not draw even
-    // that: `FlipperRootScaffold` ignores `deviceLabel`, `currentTab` and
-    // `onTabSelected` entirely when `isWide`, so on desktop the poll was
-    // rebuilding the whole app for a value nothing displayed. #407.
+    // The only thing in here that depends on either controller is
+    // `deviceLabel` - one string, drawn in the bottom bar - and the wide
+    // layout does not draw even that: `FlipperRootScaffold` ignores
+    // `deviceLabel`, `currentTab` and `onTabSelected` entirely when `isWide`,
+    // so on desktop a tick was rebuilding the whole app for a value nothing
+    // displayed. #407, #410.
     final pages = IndexedStack(
       index: slot,
       children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
     );
 
-    // Out here with it: neither depends on the device, and `_railGroups`
-    // builds a fresh list of lists, with a `FlipperRailIcon` per item, every
-    // time it is called. Inside the builder they were recomputed on every
-    // tick along with the label.
-    // `deviceLabel` is the only thing in the scaffold that a notification can
-    // change, so it is the only thing left inside.
+    // Out here with it: neither depends on either controller, and
+    // `_railGroups` builds a fresh list of lists, with a `FlipperRailIcon` per
+    // item, every time it is called. Inside the builder they were recomputed
+    // on every tick along with the label.
     final railGroups = _railGroups(colors, slot);
     final currentTab = _tabOf(slot);
 
+    // **Only the sync status, not the archive controller.** `_deviceLabel`
+    // reads `syncStatus` for the `connected` case and nothing else off that
+    // controller, and `ArchiveController` exposes it as a `ValueNotifier` -
+    // which notifies on `!=` - so the bottom bar follows a sync without being
+    // woken by the forty-one places the controller notifies from. ADR 0011's
+    // #410 addendum has the rates, and why this is merged in `build` rather
+    // than held in a field.
+    //
+    // #410 supposed the shell read no *value* off the archive controller at
+    // all, in which case its listener could simply have gone. Dropping it
+    // would have stopped the bar following a sync - lagging to the next
+    // five-second device tick rather than freezing, because the device
+    // controller is in this same merge.
+    final repaint = Listenable.merge([device, _archiveController.syncStatus]);
+
     return ListenableBuilder(
-      listenable: device,
+      listenable: repaint,
       child: pages,
       builder: (context, child) {
         return FlipperRootScaffold(
@@ -457,5 +469,5 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  ArchiveSyncStatus get _syncStatus => _archiveController.syncStatus;
+  ArchiveSyncStatus get _syncStatus => _archiveController.syncStatus.value;
 }
