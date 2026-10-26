@@ -173,7 +173,13 @@ mixin FlipperRpcFake implements FlipperClient {
       if (picked != null) items.add(picked);
     }
     return FlipperRpcBatch<T>(
-      commandId: 0,
+      // The request's own, as the real client does (`client.dart`'s
+      // `callRpc`). Nothing in `lib/` reads `batch.commandId` today, so a
+      // zero here was invisible - but this forwarder is shared by nine fakes
+      // since #413, which makes it the one copy worth having right. #267
+      // measured eleven hand-written forwarders passing zero and one -
+      // `seed_fakes.dart`'s - passing this.
+      commandId: request.commandId,
       request: request,
       frames: frames,
       items: items,
