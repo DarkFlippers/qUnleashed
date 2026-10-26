@@ -105,12 +105,13 @@ void main() {
 
   /// The app at [size], with a real controller, settled.
   ///
-  /// The narrow cases use 500 and not a more typical phone width, because at
-  /// 420 the device page's own header overflows its `Row` by 41 pixels and
-  /// `flutter_test` turns that into a failure - with default English strings,
-  /// so it is the base case rather than a long translation. That is a real bug
-  /// and it is not this one, so it is filed as #411 rather than worked
-  /// around silently; do not narrow this back without reading it.
+  /// The narrow cases use 360, the common Android baseline. They ran at 500
+  /// until #411, because the device page's own header overflowed its `Row`
+  /// below about 400 and `flutter_test` turns a layout overflow into a
+  /// failure - so this file was failing on a bug of someone else's and the
+  /// width was raised rather than the bug papered over. The header carries a
+  /// flex factor now and `test/device_header_fit_test.dart` holds it to every
+  /// phone width in every locale; this is the whole-app half of that.
   ///
   /// **The window is sized through `tester.view`, not `setSurfaceSize`**, and
   /// this file used the latter until #410. `setSurfaceSize` overrides the
@@ -128,7 +129,7 @@ void main() {
   /// device page's own narrow branch, which #411 lives in.
   ///
   /// `devicePixelRatio` is pinned to 1 so [size] is read in logical pixels -
-  /// the test binding's default is 3, which would make 500 a 167dp window.
+  /// the test binding's default is 3, which would make 360 a 120dp window.
   Future<(DeviceController, FakeFlipperClient)> pumpApp(
     WidgetTester tester,
     Size size,
@@ -240,7 +241,7 @@ void main() {
   testWidgets('a poll tick rebuilds the nav bar and not the page stack', (
     tester,
   ) async {
-    final (device, _) = await pumpApp(tester, const Size(500, 900));
+    final (device, _) = await pumpApp(tester, const Size(360, 900));
 
     final stackBefore = pageStack(tester);
     final labelBefore = scaffoldIn(tester).deviceLabel;
@@ -297,7 +298,7 @@ void main() {
     // making the shell's read listening again left it green. `.first` was
     // finding a builder from the framework's own tree, above the shell and
     // never rebuilt - a case that passed for a reason it was not about.
-    final (device, _) = await pumpApp(tester, const Size(500, 900));
+    final (device, _) = await pumpApp(tester, const Size(360, 900));
 
     final groupsBefore = scaffoldIn(tester).railGroups;
     final indexBefore = pageStack(tester).index;
@@ -364,7 +365,7 @@ void main() {
     //
     // **And until #410 it was not a flip**, because `setSurfaceSize` left
     // `MediaQuery` at 800x600 and both sizes below read as wide. See `pumpApp`.
-    final (device, _) = await pumpApp(tester, const Size(500, 900));
+    final (device, _) = await pumpApp(tester, const Size(360, 900));
 
     await showArchive(tester);
     expect(visibleSlotIsDrawn(tester), isTrue, reason: 'blank while narrow');
@@ -459,7 +460,7 @@ void main() {
     // page-level in `archive_bulk_outlives_page_test.dart` and
     // `archive_sort_page_test.dart`, so that is a composition gap rather than
     // an unguarded mechanism.
-    final (device, _) = await pumpApp(tester, const Size(500, 900));
+    final (device, _) = await pumpApp(tester, const Size(360, 900));
     await showArchive(tester);
 
     final archive = archiveIn(tester);
