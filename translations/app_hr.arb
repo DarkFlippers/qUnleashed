@@ -3621,6 +3621,9 @@
     "description": "Body of the stop confirmation dialog."
   },
   "mfRunAgain": "Pokreni ponovno",
+  "@mfRunAgain": {
+    "description": "Button that starts the MIFARE key recovery over again, offered once a run has finished or been stopped."
+  },
   "mfStopConfirm": "Zaustavi",
   "@mfStopConfirm": {
     "description": "Button that stops the running key recovery."
@@ -6622,6 +6625,46 @@
   "widgetGroupCaption": "Natpis",
   "@widgetGroupCaption": {
     "description": "Header of the widget caption switch and size choice."
+  },
+  "androidWidgetDescription": "Pošaljite ključ iz arhive na Flipper jednim dodirom",
+  "@androidWidgetDescription": {
+    "description": "Description of the home-screen widget, shown by the Android launcher in its own widget picker before the app has run. One sentence, and keep it short - some launchers show only two lines. 'Flipper' is the product name and stays in Latin script."
+  },
+  "androidWidgetChooseKey": "Odaberi ključ",
+  "@androidWidgetChooseKey": {
+    "description": "Caption on a home-screen widget that has no key assigned yet, prompting the user to open the app and pick one. The widget can be resized but its smallest size is one cell, so prefer two short words."
+  },
+  "androidWidgetStateConnecting": "Povezivanje…",
+  "@androidWidgetStateConnecting": {
+    "description": "Caption on the home-screen widget while it opens the connection to the Flipper. A verb in the continuous sense. Keep the trailing ellipsis, and prefer one word - the widget's smallest size is one cell."
+  },
+  "androidWidgetStateEmulating": "Emulacija",
+  "@androidWidgetStateEmulating": {
+    "description": "Caption on the home-screen widget while the Flipper is emulating the key, which lasts until the user stops it. A verb in the continuous sense, one word if your language has one."
+  },
+  "androidWidgetStateSending": "Slanje…",
+  "@androidWidgetStateSending": {
+    "description": "Caption on the home-screen widget while the Flipper is transmitting the key over the air - a gate remote or a wardriving capture. The file is already on the Flipper by this point, so this is not an upload to the device. A verb in the continuous sense; keep the trailing ellipsis and prefer one word."
+  },
+  "androidWidgetStateSent": "Poslano",
+  "@androidWidgetStateSent": {
+    "description": "Caption on the home-screen widget once the Flipper has finished transmitting the key over the air. Nothing was uploaded to the device - the file was already there. Past tense of the verb, one word."
+  },
+  "androidWidgetErrorNoDevice": "Flipper nije pronađen",
+  "@androidWidgetErrorNoDevice": {
+    "description": "Caption on the home-screen widget when no Flipper could be reached at all. 'Flipper' is the product name and stays in Latin script. It shares a one-cell widget with nothing else, so prefer the shortest phrasing your language has."
+  },
+  "androidWidgetErrorBusy": "Flipper je zaposlen",
+  "@androidWidgetErrorBusy": {
+    "description": "Caption on the home-screen widget when the Flipper answers but is running something else, so the key cannot be sent now. 'Flipper' is the product name and stays in Latin script. Prefer the shortest phrasing - this is one of the two longest captions."
+  },
+  "androidWidgetErrorFile": "Datoteka nije pronađena",
+  "@androidWidgetErrorFile": {
+    "description": "Caption on the home-screen widget when the key could not be loaded on the Flipper. Covers every way that fails - the file is gone from the archive, it is corrupt, the read timed out, or the link dropped part-way - and also the case where the key the widget remembered cannot be read back. So prefer wording that does not promise the file is missing."
+  },
+  "androidWidgetErrorFailed": "Neuspjelo",
+  "@androidWidgetErrorFailed": {
+    "description": "Caption on the home-screen widget when sending the key failed for a reason it cannot name. Past tense of the verb, or your language's shortest equivalent of 'it did not work'. One word, fitting a one-cell widget."
   },
   "toolSeedRecovery": "Oporavak SubGHz seedova",
   "@toolSeedRecovery": {
