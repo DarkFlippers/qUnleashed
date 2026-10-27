@@ -4,11 +4,11 @@
 // This tests the real implementation rather than a likeness of it, which is
 // the whole reason the generator is Dart and not Kotlin inside
 // `android/app/build.gradle.kts`. It was Kotlin first. `analysis_options.yaml`
-// excludes `android/**`, nothing here runs Kotlin tests, and the Android build
-// runs only at release time (#35) - so the rule sat where no test could reach
-// it, and the guard test beside this one re-derived the same rule in Dart and
-// compared its own copy against the *callers*. Breaking the generator's own
-// `resourceName` left every case green.
+// excludes `android/**`, nothing here runs Kotlin tests, and no Android build
+// runs on a pull request (#35) - so the rule sat where nothing could reach it
+// before a merge, and the guard test beside this one re-derived the same rule
+// in Dart and compared its own copy against the *callers*. Breaking the
+// generator's own `resourceName` left every case green.
 //
 // Two of the cases below are regressions for defects that draft shipped, both
 // found by review rather than by reading, and both measured against the real
