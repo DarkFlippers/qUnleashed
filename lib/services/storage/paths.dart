@@ -67,10 +67,12 @@ String? normalizeFlipperDeviceName(String? raw) {
 
 /// Stands in for the user's Documents folder while a test runs.
 ///
-/// Every path in this file hangs off [userDocumentsDirectory], and on desktop
-/// that reads `USERPROFILE`/`HOME` directly rather than going through
-/// `path_provider` - so a test that stubs the platform interface still writes
-/// into the real one. It is set by [debugUseDocumentsRoot] and nothing else.
+/// Every path in this file hangs off [userDocumentsDirectory]. On macOS and
+/// Linux that reads `HOME` directly rather than going through `path_provider`
+/// - so a test that stubs the platform interface still writes into the real
+/// one. Windows asks the platform interface first and falls back to the
+/// environment, so a stub does reach it there; either way
+/// [debugUseDocumentsRoot] is what a test should set, and nothing else.
 io.Directory? _debugDocumentsRoot;
 
 /// Points every app path at [dir], or back at the user's own folder for null.
@@ -88,6 +90,8 @@ Future<io.Directory> userDocumentsDirectory() async {
   final sep = io.Platform.pathSeparator;
 
   if (io.Platform.isWindows) {
+    final known = await _windowsDocumentsDirectory();
+    if (known != null) return known;
     final userProfile = io.Platform.environment['USERPROFILE'];
     if (userProfile != null && userProfile.isNotEmpty) {
       return io.Directory('$userProfile${sep}Documents');
@@ -117,6 +121,50 @@ Future<io.Directory> userDocumentsDirectory() async {
   // Documents folder, which is the correct (and only writable) location.
   return getApplicationDocumentsDirectory();
 }
+
+/// Where Windows says Documents is, or null if it will not say.
+///
+/// `%USERPROFILE%\\Documents` is a guess, and on a lot of machines it is the
+/// wrong one: OneDrive's Known Folder Move redirects Documents into
+/// `%USERPROFILE%\\OneDrive\\Documents` and the old path stops existing, and the
+/// folder can be relocated by hand to another drive entirely. The app then
+/// cannot create `Documents\\qUnleashed`, and because every path in this file
+/// hangs off this one, nothing that keeps a file works -
+/// `PathNotFoundException: Creation failed ... errno = 2`, which is
+/// QUNLEASHED-5, still arriving from Windows 10 builds.
+///
+/// `getApplicationDocumentsPath` on Windows is
+/// `getPath(WindowsKnownFolder.Documents)` - `SHGetKnownFolderPath` for
+/// `FOLDERID_Documents` - which is the only answer that follows a redirect.
+/// Checked in `path_provider_windows` rather than assumed: on macOS the same
+/// call would return the *sandbox* container's Documents, which is why that
+/// platform still reads `HOME` below and why this is Windows-only.
+///
+/// Null rather than a throw for every way it can fail, because the caller has
+/// a usable guess and a startup path that must not break on a platform
+/// channel: `path_provider_windows` is pure Dart over FFI, but the interface
+/// can still be stubbed, missing or throw.
+Future<io.Directory?> _windowsDocumentsDirectory() async {
+  try {
+    final documents = await getApplicationDocumentsDirectory();
+    if (documents.path.isNotEmpty) return documents;
+  } catch (e) {
+    // `caught`: the fallback below is a reasonable answer and the user sees
+    // nothing, but a machine where Windows will not name its own known folder
+    // is worth knowing about if the fallback then fails too.
+    LogService.caught('[Paths] Windows would not name Documents: $e');
+  }
+  return null;
+}
+
+/// [_windowsDocumentsDirectory] under test.
+///
+/// Its call site is Windows-only and CI runs the suite on ubuntu, so the two
+/// branches are reached here rather than through [userDocumentsDirectory].
+/// `Scrub.debugHomePatternCount` is the same arrangement for the same reason.
+@visibleForTesting
+Future<io.Directory?> debugWindowsDocumentsDirectory() =>
+    _windowsDocumentsDirectory();
 
 /// Resolves the shared, user-visible Documents directory on Android
 /// (e.g. /storage/emulated/0/Documents) instead of the app-private

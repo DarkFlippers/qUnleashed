@@ -62,11 +62,15 @@ void main() {
 
   setUp(() async {
     root = Directory.systemTemp.createTempSync('manifest_cache_test');
-    // Not through `PathProviderPlatform`: on desktop `userDocumentsDirectory`
-    // reads USERPROFILE or HOME directly and never asks the plugin, so a
-    // stubbed platform interface writes into the developer's real
+    // Not through `PathProviderPlatform`: on macOS and Linux
+    // `userDocumentsDirectory` reads HOME directly and never asks the plugin,
+    // so a stubbed platform interface writes into the developer's real
     // `Documents/qUnleashed` and leaves it there. The first version of this
     // file did exactly that.
+    //
+    // Windows does ask the plugin now, for QUNLEASHED-5 - so a stub would
+    // reach it there. This is still the hook to use: it is the one that works
+    // on every platform, and it is checked before anything else.
     debugUseDocumentsRoot(root);
     clearKeptLines();
     client = FakeCatalogClient();
