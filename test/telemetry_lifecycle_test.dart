@@ -16,6 +16,8 @@
 //    switch said off while the native handler was still up.
 //
 // The DSN, the init and the shutdown are injected for exactly this.
+import 'dart:async';
+
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/widgets.dart' show SizedBox, Widget;
 import 'package:flutter_test/flutter_test.dart';
@@ -37,15 +39,16 @@ import 'telemetry_sinks.dart';
 /// This file is the one that owns `LogService.keptSink`, so the recorder in
 /// `kept_lines.dart` fights it in two ways:
 ///
-///  * [anySinkInstalled] asserts on whether the hook is set *at all*, and a
+///  * [installedSinks] asserts on whether the hook is set *at all*, and a
 ///    recorder sitting in it would make "nothing was installed" unobservable -
 ///    which is exactly what the no-DSN and switch-off cases must show. Hence
 ///    [keptRecorder]: the predicates below discount it, so the recorder can
 ///    stay installed and still be told apart from a sink `Telemetry` wired.
-///  * `Telemetry.stop()` clears all five hooks, so by the time a failed close
-///    is logged the recorder is gone. That one case reads the console, and
-///    [onConsole] is there so it does not silently become vacuous if this file
-///    is ever added to CI's quiet job.
+///  * `start()` put `Telemetry`'s own sink in `keptSink` over the recorder, and
+///    a close that fails returns before `_wireSinks(on: false)` - so when a
+///    failed close is logged the recorder is not listening either way. That one
+///    case reads the console, and [onConsole] is there so it does not silently
+///    become vacuous if this file is ever added to CI's quiet job.
 ///
 /// Everything else reads the recorder, deliberately: `caught` and `error` are
 /// kept in a build that prints nothing, which is the whole of §5, and an
@@ -104,18 +107,35 @@ class _FakeSdk {
 /// Whether `Telemetry` has a kept-log sink in place.
 ///
 /// Discounts the test's own recorder, which `recordKeptLines` leaves in the
-/// same static. Without this every "nothing was installed" assertion below
-/// would be reading the recorder and passing on it.
+/// same static. Without it the recorder would count as a sink, so every
+/// "nothing was installed" assertion below could never see an empty set and
+/// would fail on arrangement rather than on a defect - and [allSinksInstalled]
+/// is the one that would go the other way, passing on the recorder alone.
+///
+/// **The discount is also a blind spot, and it is this slot alone.** A leaked
+/// `_wireSinks(on: true)` that lands *between* cases puts a stale instance's
+/// `_reportKept` here, and the next `setUp`'s `recordKeptLines` overwrites it
+/// with the recorder before any assertion runs - so a recurrence whose only
+/// leaked hook is this one reads as clean. The other four have no such cover.
+/// Found by review, by reproducing the leak: it showed four sinks, not five.
 bool get telemetryKeptSinkInstalled =>
     LogService.keptSink != null && LogService.keptSink != keptRecorder;
 
-/// Whether any of the five hooks is installed.
-bool get anySinkInstalled =>
-    guardedFailureSink != null ||
-    telemetryKeptSinkInstalled ||
-    LogService.breadcrumbSink != null ||
-    AppHttp.exchangeSink != null ||
-    connectFailureSink != null;
+/// Which of the five hooks are installed, by name.
+///
+/// Named rather than counted, because the one time this file has failed on CI
+/// the message was `Expected: false / Actual: <true>` and the investigation had
+/// nothing to go on - #423 could not even say which sink had been wired, let
+/// alone by whom. Every "nothing is installed" assertion below reads this, so
+/// the next occurrence names the hook and narrows the search to the one method
+/// that writes it.
+Set<String> get installedSinks => <String>{
+  if (guardedFailureSink != null) 'guardedFailureSink',
+  if (telemetryKeptSinkInstalled) 'LogService.keptSink',
+  if (LogService.breadcrumbSink != null) 'LogService.breadcrumbSink',
+  if (AppHttp.exchangeSink != null) 'AppHttp.exchangeSink',
+  if (connectFailureSink != null) 'connectFailureSink',
+};
 
 /// The masking rules the options block added, §6.4's gate, as
 /// `'<type>: <decision>'`.
@@ -177,12 +197,12 @@ Iterable<String> maskingRules(SentryFlutterOptions options) =>
         .cast<String>();
 
 /// Whether all five are.
-bool get allSinksInstalled =>
-    guardedFailureSink != null &&
-    telemetryKeptSinkInstalled &&
-    LogService.breadcrumbSink != null &&
-    AppHttp.exchangeSink != null &&
-    connectFailureSink != null;
+///
+/// Derived from [installedSinks] rather than restating the list: `_wireSinks`
+/// is one list in production precisely so that adding a sink means editing one
+/// place, and `telemetry_sinks.dart` is the other half of that argument. This
+/// file should not become the third.
+bool get allSinksInstalled => installedSinks.length == 5;
 
 void main() {
   setUp(recordKeptLines);
@@ -198,15 +218,64 @@ void main() {
 
   tearDown(resetTelemetrySinks);
 
+  /// A `Telemetry` that cannot outlive the case that built it.
+  ///
+  /// `_reconcile` ends in `_guard(..., start/stop)`, which is fire-and-forget
+  /// by design - nothing waits on reporting - so an instance can still have a
+  /// transition in flight when its case returns, and `_wireSinks` is the only
+  /// thing in `lib/` that writes any of the five sinks. A case that finished
+  /// could therefore install hooks into the next one's `expect`, which is the
+  /// shape #423 names.
+  ///
+  /// `closeForExit` and not `stop`, for two reasons. `stop()` returns at its
+  /// own guard while `_settling`, which is exactly the state an in-flight
+  /// transition is in, so it is not a shutdown at all in the case that
+  /// matters. Worse: its `finally` reconciles against a switch that is still
+  /// on, so it starts the SDK again - substituting it here reproduces #423
+  /// deterministically, and the group below records that at length.
+  ///
+  /// `closeForExit` instead sets the one-way `_closedForExit` latch, which
+  /// `start` reads in its entry guard and `_reconcile` reads on entry, so the
+  /// instance can begin nothing further.
+  ///
+  /// `test/firmware_fixture.dart`'s `mountedDevice` does the same for
+  /// `DeviceController`, and for the same reason: an object holding a
+  /// subscription and a timer is shut down inside the case that built it.
+  ///
+  /// **The latch alone is not enough, which is what the pump is for.** `start`
+  /// reads `_closedForExit` once, in that entry guard, and never again across
+  /// `settings.load()`, `BuildIdentity.resolve()` or `_init`; for a transition
+  /// parked in any of those `_running` is still false, so `closeForExit`
+  /// returns early and it finishes anyway. The last case in `closed for exit`
+  /// pins that.
+  ///
+  /// One side effect worth knowing: on the failing-close path `_tearDown`
+  /// returns before `_wireSinks(on: false)`, so the kept sink is still
+  /// `Telemetry`'s when it logs the failure - and this teardown therefore
+  /// drives one more fire-and-forget report after the case's assertions. It is
+  /// harmless (`_guard` catches, the hub is down) but it is real.
   Telemetry build({
     String dsn = 'https://key@o1.ingest.de.sentry.io/2',
     Future<void> Function(void Function(SentryFlutterOptions))? init,
-  }) => Telemetry(
-    settings: settings,
-    dsn: dsn,
-    init: init ?? sdk.init,
-    shutdown: sdk.close,
-  );
+  }) {
+    final telemetry = Telemetry(
+      settings: settings,
+      dsn: dsn,
+      init: init ?? sdk.init,
+      shutdown: sdk.close,
+    );
+    addTearDown(() async {
+      await quietlyAsync(telemetry.closeForExit);
+      // The latch stops a *new* transition; this is what deals with one
+      // already in flight. A continuation that lands here lands inside the
+      // teardown, where the declared `tearDown(resetTelemetrySinks)` - which
+      // runs after this, by `addTearDown`'s documented ordering - still clears
+      // up after it. Without the pump it could land in the next case instead,
+      // which is #423.
+      await pumpEventQueue();
+    });
+    return telemetry;
+  }
 
   group('coming up', () {
     test('installs all five hooks and raises the library pin', () async {
@@ -237,7 +306,11 @@ void main() {
 
       expect(sdk.inits, 0);
       expect(telemetry.running, isFalse);
-      expect(anySinkInstalled, isFalse);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason: 'a sink was wired where nothing should have wired one',
+      );
       expect(keptLines.where((l) => l.contains('no DSN')), hasLength(1));
     });
 
@@ -249,7 +322,11 @@ void main() {
       await quietlyAsync(telemetry.start);
 
       expect(sdk.inits, 0);
-      expect(anySinkInstalled, isFalse);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason: 'a sink was wired where nothing should have wired one',
+      );
       expect(keptLines.where((l) => l.contains('Settings')), hasLength(1));
     });
 
@@ -359,7 +436,11 @@ void main() {
 
       expect(telemetry.running, isFalse);
       expect(sdk.closes, 1, reason: 'the live hub was closed');
-      expect(anySinkInstalled, isFalse);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason: 'a sink was wired where nothing should have wired one',
+      );
       expect(
         keptLines.where((l) => l.contains('[Telemetry] init failed')),
         hasLength(1),
@@ -381,7 +462,11 @@ void main() {
       await telemetry.stop();
 
       expect(telemetry.running, isFalse);
-      expect(anySinkInstalled, isFalse);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason: 'a sink was wired where nothing should have wired one',
+      );
       if (!LogService.printing) {
         expect(Log.level, FlipperLogLevel.warning);
       }
@@ -397,9 +482,11 @@ void main() {
         await telemetry.start();
         sdk.closeThrows = StateError('close refused');
 
-        // The console, and the only case that needs it: `stop()` clears all
-        // five hooks before this is logged, so the recorder is not there to
-        // hear it. `onConsole` rather than 1 so a quiet build reads as "not
+        // The console, and the only case that needs it. `start()` replaced
+        // the recorder in `keptSink` with `Telemetry`'s own, and `_tearDown`
+        // returns inside its `catch` before `_wireSinks(on: false)` - so on
+        // this path the hooks are never taken off and the recorder is gone
+        // regardless. `onConsole` rather than 1 so a quiet build reads as "not
         // observable here" instead of silently asserting nothing.
         final lines = await printedAsync(telemetry.stop);
 
@@ -468,7 +555,11 @@ void main() {
 
       expect(telemetry.running, isFalse);
       expect(sdk.closes, 1);
-      expect(anySinkInstalled, isFalse);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason: 'a sink was wired where nothing should have wired one',
+      );
     });
 
     test('and turning it back on starts it again', () async {
@@ -638,6 +729,191 @@ void main() {
 
       expect(sdk.inits, 1, reason: 'already on, so nothing to do');
       expect(sdk.closes, 0);
+    });
+  });
+
+  // The property `build`'s teardown rests on, asserted rather than assumed.
+  //
+  // Four cases, doing two jobs. The first two prove that latching an instance
+  // is worth anything - a `Telemetry` closed for exit cannot start, and cannot
+  // be made to start by the switch moving - without which registering
+  // `closeForExit` as a teardown would be a gesture. The other two pin its
+  // limits, and both came out of measurement rather than reading: the latch
+  // does not take the hooks off, and it does not stop a transition already in
+  // flight.
+  //
+  // Deterministic, unlike the flake: the latch is a plain one-way flag, read
+  // at exactly two places - `start`'s entry guard and `_reconcile`.
+  //
+  // **#423, reproduced.** Substitute the `stop` the issue itself suggests for
+  // `closeForExit` in `build`'s teardown *and* drop the pump, and the file
+  // fails on the very case the issue quotes - `a build with no DSN installs
+  // nothing and says why once` - with four sinks in the set. `stop()`'s
+  // `finally` runs `_settleAgainIfTheSwitchMoved` against
+  // `_settlingToward == false` while the switch still says on, so it
+  // reconciles, fire-and-forgets a fresh `start()`, and that
+  // `_wireSinks(on: true)` lands in the next case after `resetTelemetrySinks`
+  // has run. The issue's suggested patch causes what it was meant to fix.
+  //
+  // Which also says which half does the work. Measured, all four ways:
+  //
+  //  * `stop` without the pump - red, the above;
+  //  * `stop` with the pump - green, because the leak lands in the teardown
+  //    and the declared `resetTelemetrySinks` clears up after it;
+  //  * `closeForExit` without the pump - green, because nothing in these
+  //    cases is in flight for it to drain;
+  //  * both - what is here.
+  //
+  // So the **pump** is what stops a leak reaching another case, and the latch
+  // is what stops a new transition starting at all. Each alone happens to be
+  // enough for today's cases, for opposite reasons; neither is redundant.
+  //
+  // What none of this proves is that the flake is gone. Five mutations were
+  // killed - dropping the latch check in `start` and in `_reconcile`, giving
+  // `closeForExit` an unconditional `_tearDown`, making [installedSinks]
+  // always report nothing, and taking the `closeForExit` out of the last case
+  // - and three survive: removing the pump, removing the latch, and removing
+  // the whole teardown. They survive because nothing deterministic puts a
+  // transition in flight across a case boundary, which is exactly why the
+  // flake fired once on CI and never again.
+  group('closed for exit', () {
+    test('cannot be started again', () async {
+      final telemetry = build();
+      await quietlyAsync(telemetry.closeForExit);
+
+      await quietlyAsync(telemetry.start);
+      await pumpEventQueue();
+
+      expect(sdk.inits, 0, reason: 'the latch is checked before the init');
+      expect(telemetry.running, isFalse);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason:
+            '_wireSinks is the only writer of these, and start never '
+            'reached it',
+      );
+    });
+
+    test('stops following the switch', () async {
+      // The path that matters for #423: `_reconcile` is a listener, it ends in
+      // a fire-and-forget `_guard(..., start)`, and `_wireSinks` is the only
+      // thing in lib/ that writes any of the five sinks. So "the switch moved
+      // after the case ended" is the one route by which a finished case could
+      // start a transition that lands inside another case, and the latch is
+      // what closes it.
+      final telemetry = build();
+      await telemetry.start();
+      expect(allSinksInstalled, isTrue, reason: 'arrangement, not the claim');
+
+      await quietlyAsync(telemetry.closeForExit);
+      // Asserted before the switch moves, so the count below cannot be blamed
+      // on the switch when it was `closeForExit` that closed.
+      expect(
+        sdk.closes,
+        0,
+        reason: 'nothing was batched, so closeForExit closed nothing',
+      );
+
+      await settings.setShareLogs(false);
+      await settings.setShareLogs(true);
+      await pumpEventQueue();
+
+      // Neither direction moved anything: `_reconcile` returns at the latch
+      // before it reaches its own `_guard`, so the switch going off did not
+      // even close the SDK, let alone bring it back.
+      expect(sdk.inits, 1, reason: 'a closed instance started a second SDK');
+      expect(sdk.closes, 0, reason: 'a closed instance acted on the switch');
+    });
+
+    test('with nothing batched, leaves the sinks wired', () async {
+      // Measured while fixing #423, and it is why `resetTelemetrySinks` stays
+      // in the declared `tearDown` and why `build`'s `addTearDown` has to run
+      // before it rather than instead of it.
+      //
+      // `closeForExit` returns at `!_batchedSinceStart` without reaching
+      // `_tearDown`, so nothing calls `_wireSinks(on: false)`. The instance is
+      // latched - it can start nothing further - and all five of its hooks are
+      // still sitting in the statics.
+      //
+      // Only on this path, and the name says so: once anything has been
+      // batched `closeForExit` does reach `_tearDown` and is a reset as well.
+      // Five of the cases above it take that branch from this very teardown -
+      // measured. So latching is necessary and not sufficient, and the
+      // declared `resetTelemetrySinks` is the other half.
+      final telemetry = build();
+      await telemetry.start();
+      expect(allSinksInstalled, isTrue, reason: 'arrangement');
+
+      await quietlyAsync(telemetry.closeForExit);
+
+      expect(
+        installedSinks,
+        hasLength(5),
+        reason:
+            'if closeForExit ever starts taking the hooks off, this case is '
+            'the one that should fail - and the comment above it is what '
+            'needs rewriting, not the assertion',
+      );
+    });
+
+    test('does not stop a transition already in flight', () async {
+      // The limit of the fix, pinned so it is a known gap rather than a
+      // surprise, and the one shape still able to do what #423 describes.
+      //
+      // `start` reads `_closedForExit` once, in its entry guard, and never
+      // again across `settings.load()`, `BuildIdentity.resolve()` or `_init`.
+      // For a transition parked in any of those `_running` is still false, so
+      // `closeForExit` returns at its own first gate - and the transition then
+      // finishes and wires all five. Wider than `closeForExit`'s own doc,
+      // which speaks only of one "already past `_init`": a start parked in
+      // `settings.load()` does the same.
+      //
+      // A deterministic stand-in for the race: the init waits on a completer,
+      // so the transition is parked inside `_init` with `_running` false.
+      final gate = Completer<void>();
+      final telemetry = build(init: (_) => gate.future);
+
+      final starting = telemetry.start();
+      await pumpEventQueue();
+      await quietlyAsync(telemetry.closeForExit);
+      expect(
+        installedSinks,
+        isEmpty,
+        reason: 'still parked inside the init, so nothing is wired yet',
+      );
+
+      gate.complete();
+      await quietlyAsync(() => starting);
+      await pumpEventQueue();
+
+      expect(
+        installedSinks,
+        hasLength(5),
+        reason:
+            'the transition in flight did not finish, so this case is no '
+            'longer about the gap it is named for',
+      );
+
+      // And the latch did take hold, which is what makes the above a *limit*
+      // of it rather than a fact about `start` alone. Without this, deleting
+      // the `closeForExit` call leaves the case green - review found exactly
+      // that.
+      //
+      // The switch is the observable: the transition left `_running` true, so
+      // flipping sharing off is a disagreement `_reconcile` would act on by
+      // fire-and-forgetting `stop`, which would reach `shutdown`. A second
+      // `start()` would prove nothing here - `_running` refuses it before the
+      // latch is even read - and `sdk.inits` never moves at all, because this
+      // case supplied its own init.
+      await settings.setShareLogs(false);
+      await pumpEventQueue();
+
+      expect(
+        sdk.closes,
+        0,
+        reason: 'the latch did not keep _reconcile from acting on the switch',
+      );
     });
   });
 }
