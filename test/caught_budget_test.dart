@@ -303,8 +303,15 @@ import 'ratchet.dart';
 /// came back with none of the chosen files, which used to return silently
 /// beside the cancellation. Why those two are separable, and what is left of
 /// the issue, is in `_uploadFromPath` beside the code.
+/// **`services` is 19.** The nineteenth is `storage/paths.dart`'s, *Windows
+/// would not name Documents*. Asking the OS for `FOLDERID_Documents` is an
+/// operation, and a machine that refuses it gets the old
+/// `%USERPROFILE%\Documents` guess instead - a usable answer, so the user
+/// sees nothing. That is exactly why the refusal has to be on the record:
+/// when the guess fails too, the `PathNotFoundException` that reaches a
+/// report is the *second* failure, and this line is the first. QUNLEASHED-5.
 const Map<String, int> kBudget = {
-  'services': 18,
+  'services': 19,
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,
