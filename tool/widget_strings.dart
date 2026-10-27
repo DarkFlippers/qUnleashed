@@ -28,11 +28,11 @@
 //
 // It was Kotlin inside `android/app/build.gradle.kts` first, and a review
 // found the hole: `analysis_options.yaml` excludes `android/**`, nothing in
-// this repository runs Kotlin tests, and the Android build runs only at
-// release time (#35). So the rule lived where no test could reach it, and a
-// guard test that re-derived the same rule in Dart compared its own copy
-// against the *callers* rather than against the generator - breaking the
-// generator's own `resourceName` left all of it green.
+// this repository runs Kotlin tests, and no Android build runs on a pull
+// request (#35). So the rule lived where nothing could reach it before a
+// merge, and a guard test that re-derived the same rule in Dart compared its
+// own copy against the *callers* rather than against the generator - breaking
+// the generator's own `resourceName` left all of it green.
 //
 // Here there is one copy, `flutter test` runs it, and
 // `test/widget_strings_test.dart` tests this file rather than a likeness of

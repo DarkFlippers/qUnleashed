@@ -10,11 +10,18 @@
 //
 // ## Why these are asserted from Dart
 //
-// Nothing else notices. `flutter analyze` and `flutter test` do not read
-// Gradle - `analysis_options.yaml` excludes `android/**` outright - and the
-// Android build runs only at release time, which is what #35 is open about:
-// `ci.yml`'s `pull_request` jobs are analyze and test, and `build-android`
-// lives in `auto-release.yml`.
+// Nothing else notices before a merge. `flutter analyze` and `flutter test`
+// do not read Gradle - `analysis_options.yaml` excludes `android/**` outright
+// - and no Android build runs on a pull request, which is what #35 is open
+// about: `ci.yml`'s `pull_request` jobs are analyze and test, and
+// `build-android` lives in `auto-release.yml`.
+//
+// That workflow does run on a push to `main`, and its `paths-ignore` covers
+// only docs, markdown, issue templates, fastlane and LICENSE - so a change
+// under `android/` or `translations/` is built on every merge. A break here
+// therefore lands in the dev build minutes after the merge rather than days
+// later in a release. Loud, and still after the fact: nothing says so while
+// the change can still be reviewed.
 //
 // That makes the four wiring assertions below a stand-in for a build nobody
 // runs on a pull request, and they pin Kotlin *spelling* rather than Kotlin
@@ -238,8 +245,8 @@ void main() {
       isEmpty,
       reason:
           'the Kotlin or the provider XML asks for a string the generator '
-          'will not write, so the resource does not exist - and the build '
-          'that would say so runs at release time (#35). Add the key to '
+          'will not write, so the resource does not exist - and no build that '
+          'would say so runs on a pull request (#35). Add the key to '
           'translations/app_en.arb: widget_error_busy is '
           'androidWidgetErrorBusy',
     );
@@ -361,7 +368,7 @@ void main() {
     // res/values/strings.xml still exists at all, and the file was emptied
     // down to it - so "it is still there" is the assertion worth having.
     // Without it `AndroidManifest.xml`'s `android:label="@string/app_name"`
-    // fails to link, at release time.
+    // fails to link - in the dev build, after the merge.
     expect(
       File('android/app/src/main/res/values/strings.xml').readAsStringSync(),
       contains('name="app_name"'),
