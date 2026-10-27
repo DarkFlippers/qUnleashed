@@ -17,6 +17,8 @@ import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/storage/paths.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 /// The RPC plumbing every archive fake needs, so only the answers differ.
 ///
 /// Shared rather than copied, for the reason `fake_app_client.dart`'s header
@@ -358,7 +360,7 @@ typedef MountedArchive = ({
 /// first refresh.
 ///
 /// The controller, the settings and [client] are closed from `addTearDown`;
-/// the surface size is set and restored the same way. `SharedPreferences`
+/// the window is sized and restored the same way. `SharedPreferences`
 /// stays with the caller - the sort settings read it, and whether a case wants
 /// mock values or not is the case's business.
 Future<MountedArchive> mountArchivePage(
@@ -391,8 +393,19 @@ Future<MountedArchive> mountArchivePage(
     await client.close();
   });
 
-  await tester.binding.setSurfaceSize(const Size(900, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  // **Nothing in the tree moved when this stopped being `setSurfaceSize`**,
+  // which is worth saying because it is not true of every file #414 touched.
+  // The pages behind this helper - `CategoryPage`, `FavoritesPage`,
+  // `DeletedPage` - read no `MediaQuery` at all, so 900x1200 was already the
+  // only size that reached them; what changed is that the query agrees with
+  // it now.
+  //
+  // The orientation reader in this feature is `FileManagerPage`'s
+  // (`archive/browser/page.dart`, where `if (!portrait)` drops the refresh
+  // button), and no caller of this helper mounts that page. The files that do
+  // are elsewhere and mostly unsized, and nothing in `test/` asserts that
+  // button in either orientation.
+  sizeView(tester, const Size(900, 1200));
   await tester.pumpWidget(
     MaterialApp(
       theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),

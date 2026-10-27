@@ -8,6 +8,7 @@ import 'package:qunleashed/services/localization/l10n.dart';
 
 import 'archive_fakes.dart';
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 /// The device screen's "Full Info" sheet, which had no runtime coverage.
 ///
@@ -47,9 +48,7 @@ void main() {
       'hardware_uid': 'A1B2C3D4',
     },
   }) async {
-    tester.view.physicalSize = const Size(400, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, const Size(400, 1400));
 
     final (device, client) = mountedDevice();
     await tester.pumpWidget(wrapWithDevice(const DeviceTab(), device));

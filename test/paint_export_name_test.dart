@@ -40,6 +40,7 @@ import 'package:qunleashed/services/localization/l10n.dart';
 
 import 'firmware_fixture.dart';
 import 'picker_fakes.dart';
+import 'view_size.dart';
 
 void main() {
   late DeviceController device;
@@ -55,9 +56,7 @@ void main() {
 
   /// Mounts the editor on a surface tall enough for its toolbars.
   Future<void> openEditor(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1400, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    sizeView(tester, const Size(1400, 2400));
     await tester.pumpWidget(wrapWithDevice(const PaintPage(), device));
     await tester.pumpAndSettle();
   }

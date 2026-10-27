@@ -21,6 +21,7 @@ import 'package:qunleashed/services/telemetry/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -37,19 +38,21 @@ void main() {
   /// timer wherever libusb is present, and the binding checks for live timers
   /// before `tearDown` runs. `device_scope_reach_test.dart` records the same
   /// trap.
-  /// **The size below does nothing**, so every case here runs the desktop
-  /// rail. `setSurfaceSize` overrides the render view's configuration only;
-  /// `MediaQuery` is built from `View.of(context)` and keeps answering the
-  /// default 800x600, which `FlipperRootScaffold.isWide` reads as wide.
-  /// `shell_rebuild_test.dart` hit this and switched to `tester.view`; nothing
-  /// asserted here is layout-dependent, so it is filed as #414 with the other
-  /// nine files rather than fixed one at a time.
+  /// **The size below is what puts these on the narrow shell**, and until
+  /// #414 it did nothing at all: the file asked for 500x900 through
+  /// `setSurfaceSize`, which does not move `MediaQuery`, so
+  /// `FlipperRootScaffold.isWide` read the binding's default 800x600 and every
+  /// case ran the desktop rail. `view_size.dart` has the mechanism.
+  ///
+  /// They are the bottom-bar shell now - the layout a phone's gate actually
+  /// replaces - which is **new coverage** rather than coverage this kept.
+  /// Nothing asserted here had to change for it, which is the result the
+  /// issue predicted and not a reason the sizing did not matter.
   Future<DeviceController> pumpApp(
     WidgetTester tester,
     PermissionCenter permissions,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(500, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(500, 900));
     final (device, client) = mountedDevice();
     await tester.pumpWidget(
       QUnleashedApp(

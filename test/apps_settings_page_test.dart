@@ -6,6 +6,8 @@ import 'package:qunleashed/pages/apps/data/catalog_mode.dart';
 import 'package:qunleashed/pages/option/pages/apps.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 Widget _wrap(Widget child) => MaterialApp(
   theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
   home: child,
@@ -16,8 +18,7 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(const {});
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(900, 1600));
 
     // The catalog is unreachable from a test, so the resolution has to run
     // outside the fake async zone to reach its manager-only verdict.

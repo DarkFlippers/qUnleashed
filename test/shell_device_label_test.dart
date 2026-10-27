@@ -15,6 +15,7 @@ import 'package:qunleashed/services/telemetry/settings.dart';
 import 'archive_fakes.dart';
 import 'fake_device.dart';
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 /// The one string in the bottom bar, and what each of its six branches is read
 /// from.
@@ -70,9 +71,7 @@ void main() {
   Future<(DeviceController, FakeFlipperClient)> pumpApp(
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(360, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, const Size(360, 900));
 
     final (device, client) = mountedDevice();
     await tester.pumpWidget(

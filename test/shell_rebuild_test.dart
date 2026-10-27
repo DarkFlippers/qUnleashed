@@ -9,6 +9,7 @@ import 'package:qunleashed/services/permissions/center.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 /// What a notification is allowed to rebuild in the shell, and what it is not.
 ///
@@ -113,30 +114,22 @@ void main() {
   /// flex factor now and `test/device_header_fit_test.dart` holds it to every
   /// phone width in every locale; this is the whole-app half of that.
   ///
-  /// **The window is sized through `tester.view`, not `setSurfaceSize`**, and
-  /// this file used the latter until #410. `setSurfaceSize` overrides the
-  /// render view's configuration and nothing else: `MediaQuery` is built from
-  /// `View.of(context)`, so it kept answering the default 800x600 - which
-  /// `FlipperRootScaffold.isWide` reads, and 800 by 600 is wide. Every case
-  /// here ran on the desktop rail, the one named for a narrow window and the
-  /// layout flip included. `_surfaceSize` feeds only
-  /// `createViewConfigurationFor`, which is the mechanism; the framework's doc
-  /// recommends `TestFlutterView.physicalSize` instead, and four other files
-  /// here already use it.
+  /// **The window is sized through [sizeView], not `setSurfaceSize`**, and
+  /// this file used the latter until #410. `view_size.dart` has the mechanism
+  /// and this file is where it was found: `FlipperRootScaffold.isWide` reads
+  /// `MediaQuery.sizeOf`, which `setSurfaceSize` does not move, and 800 by
+  /// 600 is wide. Every case here ran on the desktop rail, the one named for
+  /// a narrow window and the layout flip included.
   ///
-  /// So the three cases below named for a narrow window are **new coverage**,
-  /// not coverage this change preserved. They pass, including through the
-  /// device page's own narrow branch, which #411 lives in.
-  ///
-  /// `devicePixelRatio` is pinned to 1 so [size] is read in logical pixels -
-  /// the test binding's default is 3, which would make 360 a 120dp window.
+  /// So every case below pumped at 360x900, and the layout flip with them,
+  /// is **new coverage** rather than coverage this change preserved. They
+  /// pass, including through the device page's own narrow branch, which #411
+  /// lives in.
   Future<(DeviceController, FakeFlipperClient)> pumpApp(
     WidgetTester tester,
     Size size,
   ) async {
-    tester.view.physicalSize = size;
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, size);
 
     final (device, client) = mountedDevice();
     await tester.pumpWidget(
@@ -385,7 +378,7 @@ void main() {
           'fallback below is not the only thing lighting one',
     );
 
-    tester.view.physicalSize = const Size(1200, 800);
+    sizeView(tester, const Size(1200, 800));
     await tester.pumpAndSettle();
 
     expect(
