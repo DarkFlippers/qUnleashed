@@ -9,6 +9,8 @@ import 'package:qunleashed/pages/tools/remote/desktop/widgets/controls.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/widgets/screen.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 const _tolerance = 0.5;
 
 double _bandWidth(RemoteLayout layout) =>
@@ -168,10 +170,7 @@ void main() {
     for (final surface in surfaces) {
       for (final streamVertical in [false, true]) {
         testWidgets('$surface stream vertical=$streamVertical', (tester) async {
-          await tester.binding.setSurfaceSize(
-            Size(surface.width + 200, surface.height + 200),
-          );
-          addTearDown(() => tester.binding.setSurfaceSize(null));
+          sizeView(tester, Size(surface.width + 200, surface.height + 200));
 
           final layout = RemoteLayout.resolve(
             surface,

@@ -28,6 +28,8 @@ import 'package:qunleashed/services/permissions/scope.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'view_size.dart';
+
 /// The page under a scope, as `MaterialApp.builder` provides one.
 Widget _wrap(PermissionCenter center) => MaterialApp(
   theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
@@ -53,8 +55,7 @@ void main() {
   tearDown(() => PushService.debugSetUnavailable(false));
 
   Future<void> pumpPage(WidgetTester tester, PermissionCenter center) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(900, 1600));
     await tester.pumpWidget(_wrap(center));
     await tester.pumpAndSettle();
   }

@@ -46,6 +46,8 @@ import 'package:qunleashed/components/filelist/table.dart';
 import 'package:qunleashed/components/filelist/toolbar.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 final ThemeData _theme = buildAppTheme(
   Brightness.dark,
   const Color(0xFFCC241D),
@@ -125,9 +127,7 @@ void main() {
     testWidgets('lays the columns out in the width it was given', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(800, 1200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      sizeView(tester, const Size(800, 1200));
 
       await tester.pumpWidget(_table(selectionMode: false));
 
@@ -141,9 +141,7 @@ void main() {
     testWidgets('and in the width left by the selection indicator', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(800, 1200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+      sizeView(tester, const Size(800, 1200));
 
       await tester.pumpWidget(_table(selectionMode: true));
 

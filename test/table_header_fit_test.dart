@@ -7,6 +7,8 @@ import 'package:qunleashed/components/filelist/table.dart';
 import 'package:qunleashed/pages/apps/manager/widgets/apps_table.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 /// That a column header fits the row it is given.
 ///
 /// `appsTableColumns` hands out fixed widths, and one of them - 74 for the
@@ -37,8 +39,7 @@ void main() {
     double width, {
     String sortKey = 'name',
   }) async {
-    await tester.binding.setSurfaceSize(Size(width, 400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, Size(width, 400));
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

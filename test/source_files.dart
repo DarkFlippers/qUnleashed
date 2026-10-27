@@ -39,3 +39,9 @@ List<String> gitVisibleFiles(String pathspec) {
 
 /// Dart under `lib/` that git can see, tracked or not.
 List<String> dartFilesUnderLib() => gitVisibleFiles('lib/*.dart');
+
+/// Dart under `test/` that git can see, tracked or not.
+///
+/// For the one ratchet whose subject is the tests themselves: #414's defect
+/// was in eleven test files and nothing in `lib/` at all.
+List<String> dartFilesUnderTest() => gitVisibleFiles('test/*.dart');

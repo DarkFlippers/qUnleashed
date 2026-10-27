@@ -12,6 +12,7 @@ import 'package:qunleashed/pages/archive/editor/toolbar.dart';
 import 'package:re_editor/re_editor.dart';
 
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 /// The device the editor's title bar shows, kept for [_closeEditor].
 ///
@@ -207,8 +208,7 @@ void main() {
     });
 
     testWidgets('opens a big file without building every line', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(500, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      sizeView(tester, const Size(500, 900));
 
       final lines = List<String>.generate(
         20000,

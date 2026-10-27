@@ -130,16 +130,32 @@ class AreaTally {
 /// ratchets destructure it and none of them wants the accumulator.
 ({Map<String, int> counted, Map<String, List<String>> sites}) countAcrossLib(
   List<int> Function(CompilationUnit unit, String path) linesIn,
-) {
-  final files = dartFilesUnderLib();
+) => countAcross(dartFilesUnderLib(), linesIn, expected: 'the whole of lib/');
+
+/// Walks [files], counting what [linesIn] finds in each.
+///
+/// Split out of [countAcrossLib] at its second caller: #414's ratchet walks
+/// `test/` rather than `lib/`, because that is where its subject lives, and
+/// nothing else about the walk differs. [expected] and [atLeast] carry the
+/// vacuity guard's words with it - "the whole of lib/" is the wrong complaint
+/// for a walk that is not of lib, and a guard whose message is wrong is one
+/// nobody reads. [atLeast] has a default because both trees are in the
+/// hundreds; a ratchet over a small directory lowers it, and a floor bigger
+/// than the tree fails loudly rather than quietly.
+({Map<String, int> counted, Map<String, List<String>> sites}) countAcross(
+  List<String> files,
+  List<int> Function(CompilationUnit unit, String path) linesIn, {
+  required String expected,
+  int atLeast = 100,
+}) {
   // A guard that counts nothing passes every budget. The wrong working
   // directory, a pathspec that stops matching, a submodule layout change - all
   // of them empty this list, and without this the build stays green having
   // looked at nothing at all.
   expect(
     files,
-    hasLength(greaterThan(100)),
-    reason: 'expected the whole of lib/, got ${files.length} files',
+    hasLength(greaterThan(atLeast)),
+    reason: 'expected $expected, got ${files.length} files',
   );
 
   final tally = AreaTally();

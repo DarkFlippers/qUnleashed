@@ -8,6 +8,7 @@ import 'package:qunleashed/pages/flibler/project/git_source.dart';
 import 'package:qunleashed/pages/flibler/project/page.dart';
 
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 void main() {
   group('repository links', () {
@@ -64,8 +65,7 @@ void main() {
         jsonEncode({'kind': 'folder', 'value': '/tmp/project'}),
       ],
     });
-    await tester.binding.setSurfaceSize(const Size(900, 1400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(900, 1400));
 
     // The page's title bar shows the device, so the tree carries one - the
     // page is opened from inside the app's scope. `closeDevice` at the end

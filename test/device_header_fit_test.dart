@@ -7,6 +7,8 @@ import 'package:qunleashed/pages/devices/widgets/page_header.dart';
 import 'package:qunleashed/services/localization/gen/l10n_generated.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 /// Built once: `buildAppTheme` runs an HSL loop per call, and every case here
 /// would pay it again for the same answer.
 final ThemeData _theme = buildAppTheme(
@@ -119,9 +121,7 @@ void main() {
     // overflowing width in the same case throws nothing at all and reads as a
     // pass. Found by measuring: the sweep came back non-monotonic.
     await tester.pumpWidget(const SizedBox.shrink());
-    tester.view.physicalSize = Size(width, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, Size(width, 800));
     await tester.pumpWidget(
       MaterialApp(
         theme: _theme,

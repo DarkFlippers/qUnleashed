@@ -15,6 +15,7 @@ import 'package:qunleashed/pages/archive/browser/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 /// A Flipper with one folder and one file in `/ext`, answering a listing and
 /// nothing else.
@@ -122,9 +123,7 @@ void main() {
     client = _OneFolder();
     final (device, _) = mountedDevice();
 
-    tester.view.physicalSize = const Size(1200, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, const Size(1200, 1600));
 
     await tester.pumpWidget(
       wrapWithDevice(FileManagerPage(client: client), device),

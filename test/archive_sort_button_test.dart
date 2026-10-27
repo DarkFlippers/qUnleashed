@@ -6,6 +6,8 @@ import 'package:qunleashed/components/filelist/toolbar.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 /// The toolbar control that reaches the folder sort.
 ///
 /// It exists because the archive table has no folder column to tap: a file's
@@ -144,8 +146,7 @@ void main() {
     // left to that sort.
     const cat = ArchiveCategory.infrared;
     const narrow = 320.0;
-    await tester.binding.setSurfaceSize(const Size(narrow, 640));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(narrow, 640));
 
     final laidOut = layoutColumns(
       columnsFor(cat),
@@ -175,8 +176,7 @@ void main() {
     // The sort pill went into a row that already held an `Expanded` search
     // field, the filter and the star. 320 is the narrowest width the project
     // declares.
-    await tester.binding.setSurfaceSize(const Size(320, 640));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(320, 640));
 
     await pump(
       tester,
