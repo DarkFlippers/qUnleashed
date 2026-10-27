@@ -106,6 +106,7 @@ A CI check enforces all of this, so a pull request that edits a translated file 
 - Keep product names untranslated: **qUnleashed**, **Flipper**, **Flipper Zero**, and protocol names such as Sub-GHz, NFC, RFID, iButton.
 - Give every new key an `@key` description saying where it appears and, for a bare word, whether it is a verb or a noun. Translators see only the string and that description.
 - Name placeholders for what they hold (`{fileName}`, not `{arg0}`); the name is shown to translators.
+- A key named `androidWidget*` **also becomes an Android string resource**: `androidWidgetErrorBusy` becomes `@string/widget_error_busy`, written at build time by `tool/widget_strings.dart` for the home-screen widget. Its text is drawn by the launcher and by a broadcast receiver with no Flutter engine guaranteed to be running, so it cannot come from `L10n`. No other ARB key becomes a resource, and `widget_strings_guard_test` holds the two sides together.
 
 ## Support ApertureFox projects
 <p align="left">

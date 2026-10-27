@@ -1,3 +1,4 @@
+import java.io.File
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -16,12 +17,14 @@ plugins {
     id("io.sentry.android.gradle")
 }
 
-val keystorePropertiesFile = rootProject.file("key.properties")
-val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        FileInputStream(keystorePropertiesFile).use(::load)
+/// A `.properties` file, or an empty set of properties if it is not there.
+fun propertiesFrom(file: File): Properties = Properties().apply {
+    if (file.exists()) {
+        FileInputStream(file).use(::load)
     }
 }
+
+val keystoreProperties = propertiesFrom(rootProject.file("key.properties"))
 
 fun keystoreProperty(name: String): String? = keystoreProperties.getProperty(name)
 
@@ -172,6 +175,147 @@ flutter {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+// The home-screen widget's Android string resources, written from the ARB.
+//
+// The rule itself is `tool/widget_strings.dart`, which says why the widget's
+// text cannot be a Flutter string, why it is generated, and why none of it is
+// checked in. This is only the wiring.
+//
+// It shells out rather than doing the work here because nothing in this
+// repository can test Kotlin: `analysis_options.yaml` excludes `android/**`,
+// there is no Kotlin test source set, and the Android build runs only at
+// release time (#35).
+//
+// The Dart SDK is always present when this runs: every Android build goes
+// through the `flutter` executable (`.github/scripts/build/android.sh`), and
+// `settings.gradle.kts` already refuses to configure without `flutter.sdk` in
+// `local.properties`.
+
+/// Runs `tool/widget_strings.dart` over `translations/` into a generated
+/// resource directory.
+abstract class GenerateWidgetStrings : DefaultTask() {
+    /// `translations/`, holding every `app_*.arb` - English included, since
+    /// English is what fills the unqualified `values/`.
+    ///
+    /// The directory rather than a file collection, and `@InputDirectory`
+    /// rather than a configuration-time listing: Gradle fingerprints the whole
+    /// tree when it checks the task, so an ARB file the Crowdin sync *adds* is
+    /// seen and re-runs it. A snapshot taken while configuring would not be,
+    /// and the first sync of a new language would have shipped its widget
+    /// strings missing.
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:InputDirectory
+    abstract val arbDirectory: DirectoryProperty
+
+    /// The generator, so that editing it re-runs this.
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    @get:InputFile
+    abstract val generator: RegularFileProperty
+
+    /// `dart`, from the Flutter SDK `local.properties` names.
+    ///
+    /// `@Internal`, because what this task writes does not depend on which
+    /// `dart` binary wrote it - only on the generator and the ARB files. As an
+    /// input it would re-run the task for a contributor who moved or
+    /// reinstalled the SDK, for identical output.
+    @get:Internal
+    abstract val dartExecutable: Property<String>
+
+    /// Set by `addGeneratedSourceDirectory` below, not here.
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val command = listOf(
+            dartExecutable.get(),
+            generator.get().asFile.absolutePath,
+            "--arb-dir", arbDirectory.get().asFile.absolutePath,
+            "--out", outputDirectory.get().asFile.absolutePath,
+        )
+        // `ProcessBuilder` rather than `project.exec`, which is not available
+        // to a task action under the configuration cache, and rather than the
+        // injected `ExecOperations`, which would need the output captured
+        // separately to report it. Merged streams, because the generator names
+        // the locale it skipped on stdout and the file it could not read on
+        // stderr, and a reader wants both in order.
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        val status = process.waitFor()
+        if (output.isNotBlank()) logger.lifecycle(output.trim())
+        if (status != 0) {
+            throw GradleException(
+                "tool/widget_strings.dart failed (exit $status). The widget's " +
+                    "string resources were not written, so @string/" +
+                    "widget_description would not resolve.",
+            )
+        }
+    }
+}
+
+val generateWidgetStrings = tasks.register<GenerateWidgetStrings>("generateWidgetStrings") {
+    description = "Generates the home-screen widget's string resources from the ARB files."
+    // `rootProject` is `android/`, so this is the repository's own
+    // `translations/` - the directory `l10n.yaml` points `arb-dir` at.
+    val repositoryRoot = rootProject.file("..")
+    arbDirectory.set(File(repositoryRoot, "translations"))
+    generator.set(File(repositoryRoot, "tool/widget_strings.dart"))
+    dartExecutable.set(flutterDartExecutable(rootProject.file("local.properties")))
+}
+
+/// The Flutter SDK's `dart`, read the way `settings.gradle.kts` reads the SDK.
+///
+/// Named here rather than assumed on `PATH`: a contributor can have a
+/// different Dart on it than the Flutter this build is pinned to, and the
+/// generator has to be the one that matches the `gen-l10n` reading the same
+/// files.
+///
+/// This is deliberately the narrowest of the three readings of "where is the
+/// Flutter SDK" in this build. Flutter's own plugin honours `-Pflutter.sdk`
+/// and `FLUTTER_ROOT` before falling back to `local.properties`; this reads
+/// `local.properties` only, because that is what `settings.gradle.kts`
+/// requires to configure at all - so if it is absent nothing here ran anyway.
+fun flutterDartExecutable(localProperties: File): String {
+    val sdk = propertiesFrom(localProperties).getProperty("flutter.sdk")
+        ?: throw GradleException(
+            "flutter.sdk is not set in ${localProperties.path}, so the widget " +
+                "strings cannot be generated. settings.gradle.kts needs it too.",
+        )
+    // `.bat` on Windows and nothing on the others, chosen by what is there
+    // rather than by the host's name - the wrapper that exists is the one that
+    // runs.
+    for (candidate in listOf("bin/dart.bat", "bin/dart")) {
+        val dart = File(sdk, candidate)
+        if (dart.isFile) return dart.absolutePath
+    }
+    throw GradleException("No dart executable under $sdk/bin.")
+}
+
+androidComponents {
+    onVariants { variant ->
+        // `addGeneratedSourceDirectory` rather than `res.srcDir(...)`: it
+        // chooses the output location, registers it on the variant and carries
+        // the task dependency, so nothing here has to name a path under
+        // `build/` or remember to make `preBuild` depend on the task.
+        //
+        // A variant with no `res` would otherwise skip that registration in
+        // silence, and the task - having no consumer - would never run, so the
+        // build would fail naming a missing resource instead of the reason.
+        // Not reachable for `com.android.application` today; the throw is so
+        // that it stays not reachable.
+        val res = variant.sources.res ?: throw GradleException(
+            "Variant ${variant.name} has no res sources, so the widget's " +
+                "generated strings would not reach the APK.",
+        )
+        res.addGeneratedSourceDirectory(
+            generateWidgetStrings,
+            GenerateWidgetStrings::outputDirectory,
+        )
     }
 }
 

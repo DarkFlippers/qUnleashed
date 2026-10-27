@@ -20,8 +20,18 @@ The format gate takes its file list from `git ls-files`, because `dart format`
 does not read the analyzer's exclude list. Running `dart format .` reformats
 generated protobuf and the platform folders, which CI then rejects.
 
-There is **no code generation**. No `build_runner`, nothing to run before the
-code compiles.
+There is **no `build_runner`** and no generation step to run by hand. Two
+steps generate from data inside the build: `flutter gen-l10n` compiles
+`translations/*.arb` into `lib/services/localization/gen/`, and Gradle's
+`generateWidgetStrings` runs `tool/widget_strings.dart` over those same files
+to write the home-screen widget's Android string resources, which cannot be
+Flutter strings - that file says why.
+
+Two generated files are gitignored and have to exist before the code
+compiles: `lib/services/notifications/firebase_options.dart`, for which
+`.github/scripts/stub_firebase_config.sh` writes a placeholder on a checkout
+without secrets, and `lib/modules/cpp/faaccrack/faaccrack.c`, which is
+generated outside this repository and must never be committed.
 
 **The version is not yours to pick.** `pubspec.yaml` holds the version being
 built *toward*, every push to `main` publishes a dev build from it, and CI

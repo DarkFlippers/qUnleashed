@@ -32,7 +32,7 @@ speak that one. Left as "English", it puts a second "English" in the list.
 
 ## Placeholders
 
-211 strings carry a placeholder in braces. **Keep every one exactly as it is,
+237 strings carry a placeholder in braces. **Keep every one exactly as it is,
 spelling included** — the app substitutes a value at runtime, and a renamed or
 dropped placeholder is a blank where a number should be, or a crash.
 
@@ -43,7 +43,7 @@ dropped placeholder is a blank where a number should be, or a crash.
 Move them wherever your grammar needs: `{reason} — {message}` is fine.
 `{Reason}` or `{причина}` is not.
 
-Eighteen strings pick a form by a number:
+Twenty-four strings pick a form by a number:
 
 ```
 {count, plural, one{1 frame} other{{count} frames}}
@@ -86,7 +86,7 @@ everyone.
 
 ## Context is already there
 
-All 1308 strings carry a description saying where the string appears and what it
+All 1456 strings carry a description saying where the string appears and what it
 means, and Crowdin shows it beside the string. For a bare word it says whether
 it is a verb or a noun, which English leaves ambiguous and most languages do
 not.
