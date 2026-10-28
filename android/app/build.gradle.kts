@@ -286,12 +286,18 @@ fun flutterDartExecutable(localProperties: File): String {
             "flutter.sdk is not set in ${localProperties.path}, so the widget " +
                 "strings cannot be generated. settings.gradle.kts needs it too.",
         )
-    // `.bat` on Windows and nothing on the others, chosen by what is there
-    // rather than by the host's name - the wrapper that exists is the one that
-    // runs.
+    // The SDK ships both wrappers on every host, so `isFile` cannot tell them
+    // apart - on Unix `bin/dart.bat` is a present-but-non-executable 644 file,
+    // and launching it fails with a permission error (the bug this guard
+    // fixes). The selector differs by host. On Unix `canExecute()` does the
+    // discriminating: it rejects the 644 `dart.bat` and accepts the 755
+    // `dart`. On Windows `canExecute()` is true for every existing file, so
+    // both pass the guard and `.bat` wins only by being listed first - keep
+    // `bin/dart.bat` ahead of `bin/dart`, or Windows returns the extensionless
+    // Unix `dart` shell script, which it cannot launch.
     for (candidate in listOf("bin/dart.bat", "bin/dart")) {
         val dart = File(sdk, candidate)
-        if (dart.isFile) return dart.absolutePath
+        if (dart.isFile && dart.canExecute()) return dart.absolutePath
     }
     throw GradleException("No dart executable under $sdk/bin.")
 }
