@@ -93,6 +93,18 @@ Future<void> showConnectionFailedDialog(
         strings.connectServicesMissingTitle,
         strings.connectServicesMissingBody,
       );
+    // One body for both transports, where every other kind that needs a
+    // transport has two. The fault is in the handset rather than in the link,
+    // so there is nothing transport-specific to say - and the needle behind
+    // this kind reads a Java throwable, which the Android *USB* path can
+    // surface too. `connect_error.dart`'s `permission denied` comment is the
+    // precedent: a sentence named for Bluetooth, reached from a cable, is the
+    // collision to avoid.
+    case FlipperConnectErrorKind.platformFault:
+      return (
+        strings.connectPlatformFaultTitle,
+        strings.connectPlatformFaultBody,
+      );
     case FlipperConnectErrorKind.unknown:
       return (
         strings.connectFailedTitle,

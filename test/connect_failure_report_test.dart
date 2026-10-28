@@ -34,7 +34,8 @@ class _ConnectError implements Exception {
   String toString() => text;
 }
 
-/// The message `universal_ble` handed over for QUNLEASHED-X and QUNLEASHED-W.
+/// The shape `universal_ble` handed over for QUNLEASHED-X and QUNLEASHED-W,
+/// carrying a throwable the classifier does not know.
 ///
 /// Structurally as Sentry received it, and that is the point of building it
 /// here rather than writing a trace that suits the regex: the plugin
@@ -46,6 +47,17 @@ class _ConnectError implements Exception {
 /// message, would pass a hand-written fixture and leave these two events as
 /// two issues.
 ///
+/// **It was the NullPointerException those two issues actually carried, and
+/// `IllegalStateException` now stands in for it.** qUnleashed#436 gave that
+/// exception a kind of its own - `platformFault` - and [fingerprintsFor]
+/// asserts its input is `unknown`, correctly: every case here is about how an
+/// *unclassified* string is filed. The property under test never involved
+/// which throwable it was, only that a trace quoted inside the message is not
+/// part of the grouping string, so the fixture moved to one that is still
+/// unclassified rather than the cases being deleted. flipperlib's own
+/// `connect_error_test.dart` pins that `IllegalStateException` stays
+/// `unknown`, which is what keeps this fixture honest.
+///
 /// The frame list is trimmed from eleven to four. That is the only liberty
 /// taken, and it is taken for readability.
 ///
@@ -53,7 +65,7 @@ class _ConnectError implements Exception {
 /// a frame with no source file differently between the two builds, and the
 /// framework line numbers come from each ROM - which is the whole reason one
 /// bug was filed twice.
-String _npeMessage({required String noSource, required int handlerLine}) {
+String _tracedMessage({required String noSource, required int handlerLine}) {
   final frames = <String>[
     'a2.F0.c($noSource:127)',
     'io.flutter.plugin.platform.k.a($noSource:24)',
@@ -62,8 +74,8 @@ String _npeMessage({required String noSource, required int handlerLine}) {
   ].map((frame) => '\n\tat $frame').join();
   const nested =
       'UniversalBleException: Code: UniversalBleErrorCode.unknownError, '
-      'Message: java.lang.NullPointerException, Details: Cause: null, '
-      'Stacktrace: java.lang.NullPointerException';
+      'Message: java.lang.IllegalStateException, Details: Cause: null, '
+      'Stacktrace: java.lang.IllegalStateException';
   return 'UniversalBleException: Code: UniversalBleErrorCode.unknownError, '
       'Message: $nested$frames\n, Details: $nested$frames\n';
 }
@@ -266,13 +278,18 @@ void main() {
     });
 
     test('while a Java trace inside it is not part of the string', () async {
-      // QUNLEASHED-X and QUNLEASHED-W: one NullPointerException inside
+      // QUNLEASHED-X and QUNLEASHED-W: one Java exception inside
       // `universal_ble`'s Android plugin, filed as two issues because the
       // ROM's own framework line numbers ride along inside the message. The
       // pair below is those two events cut down to the frames that differed -
-      // a OnePlus 6 on Android 11 against a Xiaomi on 16.
-      final onePlus = _npeMessage(noSource: 'Unknown Source', handlerLine: 938);
-      final xiaomi = _npeMessage(noSource: 'SourceFile', handlerLine: 1029);
+      // a OnePlus 6 on Android 11 against a Xiaomi on 16 - with the throwable
+      // swapped for one the classifier still does not know, which
+      // `_tracedMessage` explains.
+      final onePlus = _tracedMessage(
+        noSource: 'Unknown Source',
+        handlerLine: 938,
+      );
+      final xiaomi = _tracedMessage(noSource: 'SourceFile', handlerLine: 1029);
       // So that a failure below is read as the fingerprint's and not the
       // scrubber's. `Scrub.outbound` runs first and has rules that a frame
       // can trip - its bare-filename allow-list includes `ir`, and a
@@ -284,7 +301,7 @@ void main() {
       final prints = await fingerprintsFor([onePlus, xiaomi]);
 
       expect(prints.first, prints.last);
-      expect(prints.first, contains('NullPointerException <frames>'));
+      expect(prints.first, contains('IllegalStateException <frames>'));
       // Both blocks collapsed, not just the one at the end.
       expect(
         RegExp('<frames>').allMatches(prints.first).length,
@@ -314,8 +331,8 @@ void main() {
       // an empty replacement would have merged them - trading the split this
       // case fixes for a different one.
       final prints = await fingerprintsFor([
-        'UniversalBleException: java.lang.NullPointerException',
-        'UniversalBleException: java.lang.NullPointerException\n'
+        'UniversalBleException: java.lang.IllegalStateException',
+        'UniversalBleException: java.lang.IllegalStateException\n'
             '\tat android.os.Handler.handleCallback(Handler.java:938)',
       ]);
 
@@ -401,6 +418,72 @@ void main() {
 
       final crumb = seen.crumbs.singleWhere((c) => c.category == 'connection');
       expect(crumb.message, 'connect failed: unknown on usb (auto)');
+    });
+  });
+
+  // qUnleashed#436. The classifier learned `java.lang.NullPointerException`
+  // out of `universal_ble`'s Android plugin and files it as `platformFault`,
+  // and the thing that would have made that a regression is the gate above:
+  // every other kind it knows is a counter, so classifying a string normally
+  // *stops* it being an issue. That fault is upstream and unfixed, so the
+  // issue is the only way anyone knows it is still happening.
+  group('a platform that fell over', () {
+    test('is still an issue, not just a number', () async {
+      final seen = await wiredHub();
+      const message =
+          'UniversalBleException: Code: UniversalBleErrorCode.unknownError, '
+          'Message: java.lang.NullPointerException, Details: Cause: null';
+      // The premise: this is a kind the classifier knows. Without it the case
+      // passes for the reason every `unknown` case does and says nothing
+      // about the gate.
+      expect(
+        classifyConnectError(_ConnectError(message)),
+        FlipperConnectErrorKind.platformFault,
+      );
+
+      reportConnectFailure(
+        _ConnectError(message),
+        StackTrace.empty,
+        attempt: ConnectAttempt.auto,
+        isBle: true,
+      );
+      await settleAndClose(seen, until: () => seen.events.isNotEmpty);
+
+      expect(seen.events, hasLength(1));
+      expect(
+        seen.events.single.contexts['connect']?['kind'],
+        'platformFault',
+        reason:
+            'the context has to name the kind, not the gate it came through',
+      );
+    });
+
+    test('is filed under the same fingerprint it always was', () async {
+      // The fingerprint is `['device.connect', runtimeType, signature]` and
+      // the kind is deliberately *not* in it. These events were arriving as
+      // `unknown` before the classifier learned them, so leaving the
+      // fingerprint alone is what keeps them landing in the issue they were
+      // already grouped into. Putting the kind in would have re-fingerprinted
+      // every open `unknown` issue at once, orphaning each and opening a
+      // replacement.
+      final seen = await wiredHub();
+      reportConnectFailure(
+        _ConnectError('UniversalBleException: java.lang.NullPointerException'),
+        StackTrace.empty,
+        attempt: ConnectAttempt.auto,
+        isBle: true,
+      );
+      await settleAndClose(seen, until: () => seen.events.isNotEmpty);
+
+      final print = seen.events.single.fingerprint!;
+      expect(print.first, 'device.connect');
+      expect(
+        print.join(' '),
+        isNot(contains('platformFault')),
+        reason:
+            'the kind reached the fingerprint, which re-groups every open '
+            'unknown issue as a side effect',
+      );
     });
   });
 

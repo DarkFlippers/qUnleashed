@@ -94,6 +94,51 @@ void main() {
     }
   });
 
+  // qUnleashed#436, and the reason this kind exists at all. `unknown` is not
+  // silence: its sentence sends the user to the Flipper's own Bluetooth menu,
+  // which is an invention when the fault is in the handset's software.
+  group('a platform that fell over', () {
+    test('does not send the user to the Flipper', () async {
+      final (title, body) = describeConnectError(
+        FlipperConnectErrorKind.platformFault,
+        isBle: true,
+      );
+
+      expect(title, l10n.connectPlatformFaultTitle);
+      expect(body, l10n.connectPlatformFaultBody);
+      // The three things every other message in this dialog offers, and the
+      // three this one must not: there is nothing in the settings, nothing
+      // about range, and nothing the Flipper did.
+      expect(body.toLowerCase(), isNot(contains('system menu')));
+      expect(body.toLowerCase(), isNot(contains('closer')));
+      expect(
+        body,
+        isNot(l10n.connectFailedBleBody),
+        reason: 'the kind exists to stop saying exactly this',
+      );
+    });
+
+    test('says the same thing over a cable', () async {
+      // One body where `deviceUnreachable` and `unknown` each have two. The
+      // fault is in the handset rather than in the link, so there is nothing
+      // transport-specific to say - and the needle behind this kind reads a
+      // Java throwable, which the Android *USB* path can surface too. A
+      // sentence named for Bluetooth, reached from a cable, is the collision
+      // `connect_error.dart`'s `permission denied` comment is about.
+      final ble = describeConnectError(
+        FlipperConnectErrorKind.platformFault,
+        isBle: true,
+      );
+      final usb = describeConnectError(
+        FlipperConnectErrorKind.platformFault,
+        isBle: false,
+      );
+
+      expect(usb, ble);
+      expect(ble.$2.toLowerCase(), isNot(contains('bluetooth')));
+    });
+  });
+
   group('every kind', () {
     for (final kind in FlipperConnectErrorKind.values) {
       test('has something to say: $kind', () {
