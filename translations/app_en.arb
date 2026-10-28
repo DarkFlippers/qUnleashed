@@ -1645,6 +1645,16 @@
     }
   },
 
+  "connectPlatformFaultTitle": "Your phone reported an error",
+  "@connectPlatformFaultTitle": {
+    "description": "Title of the connection-failed dialog when the phone's own Bluetooth software failed rather than the Flipper or the link - an internal fault with nothing for the user to change. Keep it short; it is a dialog title."
+  },
+
+  "connectPlatformFaultBody": "This is a fault in your phone''s software, not in your Flipper or the connection. Try connecting again, and restart the app if it keeps happening.",
+  "@connectPlatformFaultBody": {
+    "description": "Body of the connection-failed dialog for a fault inside the phone's Bluetooth software. Deliberately says nothing about Bluetooth settings, range or the Flipper, because none of those is the cause and every other message in this dialog already covers them. 'Flipper' is the product name and stays in Latin script."
+  },
+
   "connectFailedTitle": "Connection failed",
   "@connectFailedTitle": {
     "description": "Title of the connection error when the cause is unknown."

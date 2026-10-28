@@ -848,8 +848,17 @@ class Telemetry {
     required bool isBle,
   }) {
     final transport = transportLabel(isBle);
-    if (kind == FlipperConnectErrorKind.unknown && isBle) {
-      _reportUnknownConnect(error, stack, attempt: attempt);
+    // `platformFault` joins `unknown` here rather than falling to the counter
+    // below, and that is the whole point of classifying it. A classification
+    // whose only effect was to stop a live plugin bug being reported would be
+    // worse than the wrong sentence it replaced: qUnleashed#436's fault is
+    // upstream in `universal_ble` and unfixed, so the issue is how anyone
+    // knows it is still happening. It takes `unknown`'s path exactly - an
+    // issue, no counter - because the issue is what is wanted.
+    if (isBle &&
+        (kind == FlipperConnectErrorKind.unknown ||
+            kind == FlipperConnectErrorKind.platformFault)) {
+      _reportConnectAsIssue(error, stack, kind: kind, attempt: attempt);
       return;
     }
 
@@ -889,7 +898,20 @@ class Telemetry {
     );
   }
 
-  /// The one connect failure that becomes an issue: a string nothing knows.
+  /// The connect failures that become an issue rather than a number.
+  ///
+  /// Two kinds reach here. `unknown` is the list §2 asks for by name: a string
+  /// the classifier has not learned, each one a sentence shown to a user that
+  /// was wrong. `platformFault` is a string it *has* learned and still wants
+  /// an issue for, because the fault behind it is upstream and unfixed -
+  /// qUnleashed#436, and [_reportConnectFailure]'s gate says why.
+  ///
+  /// **The fingerprint is deliberately unchanged by that second kind.** It is
+  /// `['device.connect', runtimeType, signature]` and the kind is not in it,
+  /// so the events that were arriving as `unknown` keep landing in the issue
+  /// they were already grouped into. Adding the kind would have re-fingerprinted
+  /// every open `unknown` issue, orphaning each one and opening a replacement
+  /// - churn in exchange for a field the context already carries.
   ///
   /// §2 asks for this list by name, and the grouping is the whole of the
   /// request. Sentry's default groups on the stack, which here says which of
@@ -910,9 +932,10 @@ class Telemetry {
   /// context, because `scrubEvent` walks neither. Built inside the guard, so
   /// an object whose `toString()` throws - which `guarded` documents as real -
   /// is one unreported error rather than a throw inside a `catch` block.
-  void _reportUnknownConnect(
+  void _reportConnectAsIssue(
     Object error,
     StackTrace stack, {
+    required FlipperConnectErrorKind kind,
     required ConnectAttempt attempt,
   }) {
     _guard('an unclassified connect error was not captured', () {
@@ -927,7 +950,7 @@ class Telemetry {
             _connectSignature(message),
           ];
           scope.setContexts('connect', {
-            'kind': FlipperConnectErrorKind.unknown.name,
+            'kind': kind.name,
             // Constant, because the one caller is the BLE arm.
             'transport': transportLabel(true),
             'attempt': attempt.name,
