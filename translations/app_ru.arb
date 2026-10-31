@@ -1799,6 +1799,10 @@
   "@connectSearch": {
     "description": "Button that starts scanning for Flippers."
   },
+  "connectSearchSubtitle": "Поиск устройств Bluetooth",
+  "@connectSearchSubtitle": {
+    "description": "Subtitle of the Search row. The rows under it are plugged-in Flippers plus Bluetooth ones already connected once, so until then nothing on the page says Bluetooth is available at all."
+  },
   "connectActive": "Активно",
   "@connectActive": {
     "description": "Badge on the device that is currently connected."
