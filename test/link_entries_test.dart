@@ -122,7 +122,7 @@ void main() {
   late FakeLinkClient client;
   late LinkService links;
 
-  setUp(() async {
+  setUp(() {
     // Auto-connect off. These cases are about what the list shows; with it on
     // the reconcile also tries to dial the remembered BLE device, which the
     // fake refuses and which has nothing to do with any assertion here.
@@ -136,13 +136,6 @@ void main() {
       links.dispose();
       await client.close();
     });
-    // The store is a singleton and outlives the case, so each one starts by
-    // dropping what the last one remembered.
-    final known = KnownDevicesStore.instance;
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
   });
 
   /// Lets the debounced re-enumeration run.

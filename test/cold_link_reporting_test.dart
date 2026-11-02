@@ -95,18 +95,14 @@ void main() {
   setUp(recordKeptLines);
 
   /// Remembers one BLE device, which is what a cold start dials.
-  Future<void> remember(String id) async {
-    SharedPreferences.setMockInitialValues(const {});
-    final known = KnownDevicesStore.instance;
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
-    await known.remember(_ble(id));
-  }
+  Future<void> remember(String id) =>
+      KnownDevicesStore.instance.remember(_ble(id));
 
   setUp(() {
-    clearKeptLines();
+    // An empty disk. `flutter_test_config.dart` rewinds the store itself, but
+    // a case that remembered writes `known_devices_v1` through `_persist`, and
+    // the mock store outlives the case.
+    SharedPreferences.setMockInitialValues(const {});
   });
 
   Iterable<String> lines(String fragment) =>
@@ -149,14 +145,6 @@ void main() {
     // The other half of the "no device" face, and not a failure: there is
     // nothing to dial, so nothing was tried.
     test('when no device is remembered', () async {
-      SharedPreferences.setMockInitialValues(const {});
-      final known = KnownDevicesStore.instance;
-      await known.load();
-      for (final device in [...known.devices]) {
-        await known.forget(device);
-      }
-      clearKeptLines();
-
       final up = await ColdLink.instance.ensureConnected(
         _ColdFlipper(dialThrows: StateError('bond gone')),
       );

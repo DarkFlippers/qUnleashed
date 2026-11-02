@@ -41,13 +41,8 @@ void main() {
 
   final known = KnownDevicesStore.instance;
 
-  setUp(() async {
+  setUp(() {
     SharedPreferences.setMockInitialValues(const {});
-    // The store is a singleton and outlives any one case.
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
     clearKeptLines();
   });
 
@@ -95,6 +90,27 @@ void main() {
   // entry an older build stored names the same Flipper in a spelling nothing
   // coming off the radio will equal. The canonicalisation is on
   // `KnownDevice`'s constructor, so reading is the whole migration.
+  test('a forgotten device is gone from the list and from the disk', () async {
+    // Nothing executed `forget` after the teardown sweep in #452: six files
+    // ran it incidentally while emptying the store between cases, and none of
+    // them asserted anything about it. Those loops were arrangement, not
+    // coverage, so removing them left the only path a user has to drop a
+    // remembered Flipper - `connect_card.dart`'s row action - with none.
+    await known.remember(_ble('b1'));
+    await known.remember(_ble('b2'));
+    expect(known.devices.map((d) => d.id), ['b2', 'b1'], reason: 'premise');
+
+    await known.forget(known.devices.last);
+
+    expect(known.devices.map((d) => d.id), ['b2']);
+    // And durably: `forget` persists, so the next launch does not bring it
+    // back. Read through a fresh load rather than through `devices`, which
+    // would answer from memory either way.
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('known_devices_v1'), isNot(contains('b1')));
+    expect(prefs.getString('known_devices_v1'), contains('b2'));
+  });
+
   test('the list the store hands out cannot be written to', () async {
     // A [ChangeNotifier] that hands out its own mutable state has no way to
     // notify about a write it did not make. Only a view stops this: the
@@ -113,11 +129,7 @@ void main() {
 
   group('the id a build on universal_ble 2.x stored', () {
     KnownDevice entry(String id, String name, String when) =>
-        KnownDevice.fromJson({
-          'id': id,
-          'name': name,
-          'lastConnectedAt': when,
-        })!;
+        KnownDevice.fromJson(storedEntry(id, name, when))!;
 
     test('is canonical by the time it is an entry', () {
       // The claim the whole fix rests on. Without it the stored id compares
@@ -130,7 +142,7 @@ void main() {
       // device. It could never be the only case to fail, so it could not
       // point at a regression; the two folds it composed are each pinned on
       // their own, and the end-to-end version is in
-      // `known_devices_migration_test.dart` and `link_autoconnect_test.dart`.
+      // `known_devices_load_test.dart` and `link_autoconnect_test.dart`.
       expect(
         entry(storedById, 'Flipper Zoe', '2026-10-01T10:00:00.000').id,
         reportedById,
@@ -157,33 +169,6 @@ void main() {
       final known = entry(storedById, 'Flipper Zoe', '2026-10-01T10:00:00.000');
 
       expect(known.matches(_ble(otherById)), isFalse);
-    });
-
-    test('collapses into one entry when both spellings are stored', () {
-      // An install that went forward and then back can hold the same device
-      // under both spellings: on a build running universal_ble 2.x `remember`
-      // deduplicates on `matches`, which compared the raw strings and did not
-      // match across the case change, so it adds the platform's spelling
-      // beside the canonical one. No released build wrote that pair - the
-      // plugin bump and the fold ship together. Newest wins.
-      final merged = KnownDevicesStore.newestPerDevice([
-        entry(storedById, 'the old name', '2026-10-01T10:00:00.000'),
-        entry(reportedById, 'the new name', '2026-10-02T10:00:00.000'),
-      ]);
-
-      expect(merged.map((d) => d.id), [reportedById]);
-      expect(merged.single.name, 'the new name');
-    });
-
-    test('without collapsing two devices into one', () {
-      // The other half: the collapse is per id, not a take(1). Newest first,
-      // which is what `lastDevice` reads as the auto-connect target.
-      final kept = KnownDevicesStore.newestPerDevice([
-        entry(reportedById, 'older', '2026-10-01T10:00:00.000'),
-        entry(otherById, 'newer', '2026-10-02T10:00:00.000'),
-      ]);
-
-      expect(kept.map((d) => d.name), ['newer', 'older']);
     });
   });
 }

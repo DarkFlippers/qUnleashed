@@ -1,6 +1,7 @@
 // Suite-wide setup, which `flutter_test` wraps every `main()` in.
 //
-// There is one thing in here and it is not a style preference. `LogService`
+// There is one kind of thing in here and it is not a style preference.
+// `LogService`
 // folds a line that repeats *consecutively* into the one before, and that
 // memory is a static with no owner: the first test to log `[CLI] write failed`
 // leaves the second one silently folded away, so a sink that is installed and
@@ -16,6 +17,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/components/notification.dart';
+import 'package:qunleashed/services/connection/known_devices.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/permissions.dart';
 
@@ -43,5 +45,25 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // that asset - and the silence looks exactly like a `_record` that is not
   // wired up. #441.
   setUp(debugForgetRecordedIconFailures);
+  // `KnownDevicesStore` is the fifth: `load()` memoises on `_loading` and
+  // nothing cleared it, so a process got exactly one real load. Whichever case
+  // ran first spent it - in practice on an empty store in a `setUp` - and
+  // every later case saw a store that would not read its fixture.
+  //
+  // It is also the one of the five that is not permanent. The four above
+  // rewind library statics with no owner, where a reset wired here is the
+  // only shape available; this one rewinds a singleton's own fields, so it is
+  // the right answer only until ADR 0002 reaches `KnownDevicesStore` and
+  // `LinkService` takes the store as a parameter. Read as a precedent for
+  // "a singleton leaked into a case, add a sixth `setUp`", it argues for
+  // entrenching the thing 0002 wants gone.
+  //
+  // What is particular about it otherwise is where the bill arrived. The four
+  // above are paid for in red, or in silence that reads as broken wiring.
+  // This one was paid in test *shape*: a claim
+  // about the load path needed a file to itself to get a fresh memo, so two
+  // files held one case each, and six more cleared the store by hand across
+  // seven sites. #452
+  setUp(KnownDevicesStore.instance.debugReset);
   await testMain();
 }

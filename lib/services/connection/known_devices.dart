@@ -68,7 +68,7 @@ class KnownDevice {
   /// canonicalising constructor but drops the old one by *this* test, so a
   /// miss leaves both, and the store holds the same Flipper twice. That is
   /// #444's symptom reintroduced by this file instead of by the plugin, and
-  /// [newestPerDevice] would not catch it - it runs on load, not on write.
+  /// [_newestPerDevice] would not catch it - it runs on load, not on write.
   ///
   /// The fold is idempotent, so agreeing costs nothing.
   bool matches(FlipperDevice device) =>
@@ -115,8 +115,8 @@ class KnownDevicesStore extends ChangeNotifier {
 
   /// Not the list itself: a [ChangeNotifier] that hands out its own mutable
   /// state has no way to notify about a write it did not make. Every caller
-  /// only reads, and the four assignment sites disagreed about growability,
-  /// so what a caller *could* do depended on which path last ran.
+  /// only reads, and the assignment sites disagreed about growability, so
+  /// what a caller *could* do depended on which path last ran.
   ///
   /// A view rather than the `List.unmodifiable` copy this codebase uses
   /// elsewhere, because this getter is read on every `LinkService.entries`
@@ -128,6 +128,39 @@ class KnownDevicesStore extends ChangeNotifier {
   KnownDevice? get lastDevice => _devices.isEmpty ? null : _devices.first;
 
   Future<void> load() => _loading ??= _load();
+
+  /// Rewinds `_loading` and `_devices`, so that a case gets a real [_load]
+  /// against its own `SharedPreferences` fixture.
+  ///
+  /// Those two fields and nothing else - in particular the [ChangeNotifier]'s
+  /// listeners are the caller's to remove, and `addTearDown(service.dispose)`
+  /// is how `link_autoconnect_test.dart` does it. An in-flight [_load] is not
+  /// cancelled either: nulling `_loading` does not stop one already past its
+  /// first `await` from assigning `_devices` in the next case. Reachable in
+  /// principle, since `LinkService.start` does not await its load; closing it
+  /// would need a generation counter, which is more machinery than the
+  /// exposure justifies.
+  ///
+  /// Wired once in `test/flutter_test_config.dart` rather than called by the
+  /// files that need it, which is the rule that file's own header states: a
+  /// reset kept by hand in N files is the one that goes stale when somebody
+  /// adds the N+1th. Before this, [load] memoising on `_loading` with nothing
+  /// clearing it meant a process got exactly one real load - so a claim about
+  /// the load path needed a file of its own to get a fresh memo, and two
+  /// files held one case each for that reason alone, while six more cleared
+  /// the store by hand across seven sites. #452
+  ///
+  /// Deliberately silent: it does not [notifyListeners]. Firing one would fan
+  /// out into whatever `LinkService` is still attached from a case that has
+  /// finished, which is the leak this is cleaning up after rather than an
+  /// audience. Nothing caches the list - every consumer reads `devices` or
+  /// `lastDevice` live - so a listener that is not told cannot render a stale
+  /// one; it reads `[]` the next time it reads at all.
+  @visibleForTesting
+  void debugReset() {
+    _loading = null;
+    _devices = const [];
+  }
 
   Future<void> _load() async {
     try {
@@ -162,15 +195,19 @@ class KnownDevicesStore extends ChangeNotifier {
         // Flipper they paired simply absent from the list, with the
         // auto-connect target possibly naming a different one.
         //
-        // `caught` rather than `warn`: degraded, not broken, and it cannot
-        // repeat - [load] memoises, so there is one load per session. The
-        // count only, never the id, which is a Bluetooth address.
+        // `caught` rather than `warn`: degraded, not broken. Once per
+        // launch, not once per session only - [load] memoises, so it cannot
+        // repeat while the app runs, but nothing writes the surviving list
+        // back here, so an unreadable entry is read and reported again at
+        // every launch until the user connects, renames or forgets
+        // something. The count only, never the id, which is a Bluetooth
+        // address.
         LogService.caught(
           '[KnownDevices] dropped $unreadable of ${decoded.length} stored '
           'entries: id, name or lastConnectedAt unreadable',
         );
       }
-      _devices = newestPerDevice(parsed);
+      _devices = _cappedToMaxEntries(_newestPerDevice(parsed));
       notifyListeners();
     } catch (e) {
       LogService.warn('[KnownDevices] load failed: $e');
@@ -178,13 +215,6 @@ class KnownDevicesStore extends ChangeNotifier {
   }
 
   /// [parsed] sorted newest first, with one entry per device.
-  ///
-  /// Split out of [_load] to be reachable without spending the one load a
-  /// process gets: [load] memoises on `_loading`, and
-  /// `known_devices_persist_test.dart` spends its load on an empty store in
-  /// `setUp`. The load path itself is covered once, from its own file -
-  /// `known_devices_migration_test.dart` - because a fresh file gets a fresh
-  /// memo. Reaching it twice is what is impossible, not reaching it.
   ///
   /// The collapse is not tidiness. Canonicalising on construction can make
   /// two entries that were distinct as stored equal in memory. No released
@@ -195,8 +225,7 @@ class KnownDevicesStore extends ChangeNotifier {
   /// platform's own case beside the canonical entry, and both fold to the same
   /// id when it comes forward again. A restored or hand-edited store does too.
   /// One Flipper listed twice is what this prevents.
-  @visibleForTesting
-  static List<KnownDevice> newestPerDevice(List<KnownDevice> parsed) {
+  static List<KnownDevice> _newestPerDevice(List<KnownDevice> parsed) {
     final byNewest = [...parsed]
       ..sort((a, b) => b.lastConnectedAt.compareTo(a.lastConnectedAt));
     final byId = <String, KnownDevice>{};
@@ -205,10 +234,10 @@ class KnownDevicesStore extends ChangeNotifier {
     }
     final merged = byNewest.length - byId.length;
     if (merged > 0) {
-      // Kept because of what it is, not what it proves: the only place this
-      // app drops a remembered device without the user asking, durable at the
-      // next mutation. That is the same test `_persist` applies to pick its
-      // own level.
+      // Kept because of what it is, not what it proves: a remembered device
+      // dropped without the user asking, durable at the next mutation. That
+      // is the same test `_persist` applies to pick its own level, and since
+      // #453 the cap in [_load] is a third line that meets it.
       //
       // It says nothing about the ordinary upgrade, and an earlier version of
       // this comment claimed otherwise. A store written by one build on
@@ -223,6 +252,50 @@ class KnownDevicesStore extends ChangeNotifier {
       );
     }
     return byId.values.toList(growable: false);
+  }
+
+  /// [collapsed] cut to [_maxEntries], newest kept.
+  ///
+  /// Applied on every load and not only in [remember], which was the one of
+  /// the four assignments to `_devices` that held the cap. A
+  /// `known_devices_v1` holding more than [_maxEntries] - a restored or
+  /// hand-edited file, a store a future build with a larger cap wrote, a
+  /// backup that merged two devices' files - loaded whole and stayed that
+  /// way: [updateName] rebuilds one-for-one and [forget] only shrinks, so
+  /// nothing trimmed it until the next [remember]. #453
+  ///
+  /// Cuts after [_newestPerDevice] has sorted, so what goes is the oldest -
+  /// the same entries [remember] drops - and [lastDevice], which is the
+  /// auto-connect target, cannot change.
+  static List<KnownDevice> _cappedToMaxEntries(List<KnownDevice> collapsed) {
+    final overCap = collapsed.length - _maxEntries;
+    if (overCap > 0) {
+      // Kept for the same reason as the other two drops in [_load], by the
+      // test `_persist` states: durable, and the user asked for nothing. The
+      // next mutation writes `_devices` back over the whole stored array, so
+      // what is cut here is gone from disk at the first [remember].
+      //
+      // [remember]'s own trim is silent and is not the precedent, because
+      // there the user tapped connect on a ninth Flipper and displaced one
+      // entry they chose. Nobody tapped anything here and the count is
+      // unbounded - a restored twenty-entry store loses twelve. [_maxEntries]
+      // is private, so no user has been told there is a cap: from their side
+      // this is indistinguishable from the unreadable drop, and without this
+      // line it is also indistinguishable from a store that never loaded.
+      //
+      // Once per launch rather than once ever, unlike the two above: nothing
+      // here writes the trim back, so an over-cap store stays over-cap on
+      // disk until the user connects, renames or forgets something. That is
+      // deliberate - "a store a future build with a larger cap wrote" is one
+      // of the inputs above, and persisting the trim would destroy entries
+      // that build can still read. Lossless until a mutation is the
+      // forward-compatible answer, and the repeat is its price.
+      LogService.caught(
+        '[KnownDevices] dropped $overCap of ${collapsed.length} remembered '
+        'devices over the cap of $_maxEntries, oldest first',
+      );
+    }
+    return collapsed.take(_maxEntries).toList(growable: false);
   }
 
   Future<void> remember(FlipperDevice device) async {

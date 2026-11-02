@@ -194,12 +194,6 @@ void main() {
     await settings.setAutoConnectUsb(false);
     await settings.setAutoConnectBle(false);
 
-    final known = KnownDevicesStore.instance;
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
-
     client = FakeReturnClient();
     links = LinkService.forTest(client);
     addTearDown(() async {
