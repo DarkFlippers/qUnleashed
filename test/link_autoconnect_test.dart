@@ -74,7 +74,11 @@ class FakeDialClient implements FlipperClient {
   /// Every dial attempt, in order, as `usb:id` or `ble:id`.
   final dialled = <String>[];
 
-  /// Raised by the next `connect`, so a failed attempt can be watched.
+  /// Raised by the next `connect`, so a failed attempt can be watched. On
+  /// the USB side it also emits the sessions it would in production, which
+  /// schedules a reconcile - so a case that sets this gets one more pass than
+  /// the plug count suggests. Read by `auto_connect_hint_test.dart` and
+  /// `connect_transport_labels_test.dart` too, which import this fake.
   Object? connectThrows;
 
   /// When set, `connect` hands this back instead of answering - so a case can
@@ -140,7 +144,17 @@ class FakeDialClient implements FlipperClient {
     dialled.add('usb:${device.id}');
     final park = parkConnect;
     if (park != null) return park.future;
-    if (connectThrows != null) throw connectThrows!;
+    if (connectThrows != null) {
+      // Faithful to flipperlib: a refused connect drops the session and
+      // emits, and that emission is what schedules the next reconcile
+      // (`establishLocked` -> `_dropSessionLocked`, then
+      // `LinkService._onSessions`). Without it a test can reach a second
+      // reconcile only by replugging, which is not the trigger production
+      // uses. Not done on the BLE side, whose refusal stays emissionless -
+      // the asymmetry is deliberate rather than considered.
+      reportSessions(sessions);
+      throw connectThrows!;
+    }
     return device;
   }
 
@@ -582,6 +596,58 @@ void main() {
       expect(client.dialled, isEmpty);
     });
 
+    // The ordering is not new - the USB branch has always returned before
+    // the remembered device. What changed is the default: with
+    // `autoConnectUsb` off the candidate list was empty, so control fell
+    // through to the radio with the Flipper sitting on a cable.
+    test('is not dialled past a Flipper on the cable', () async {
+      links = await serviceWith(usbAuto: true, bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('b1'));
+      client.present = [usb('A')];
+
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, ['usb:A']);
+    });
+
+    // The other side of that ordering, and what keeps a cable the app cannot
+    // open - a declined USB prompt, a port another process holds - from
+    // costing the user every link: the id stays in `_autoTriedUsb`, so the
+    // reconcile the refusal itself schedules skips the cable and the radio
+    // gets its turn. Driven by the session emission rather than a replug,
+    // because that is the trigger production has; the hint is asserted so the
+    // refusal is load-bearing rather than decoration - without it a dial that
+    // *worked* would leave `dialled` looking exactly the same, this fake
+    // reporting no session either way.
+    test('gets its turn once the cable has refused', () async {
+      links = await serviceWith(usbAuto: true, bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('b1'));
+      client.present = [usb('A')];
+      client.connectThrows = StateError('USB permission denied');
+
+      client.plugged();
+      await settle();
+
+      expect(
+        client.dialled,
+        ['usb:A'],
+        reason:
+            'settle is 400ms and the debounce 250ms, so the rescheduled '
+            'pass has not landed yet',
+      );
+      expect(
+        links.autoConnectFailure?.name,
+        'A',
+        reason: 'and it refused - a dial that worked looks the same in dialled',
+      );
+
+      // No second plug: the refusal's own emission scheduled this pass.
+      await settle();
+
+      expect(client.dialled, ['usb:A', 'ble:b1']);
+    });
+
     // Once per run, not once per reconcile. A radio that is off, or a Flipper
     // that is out of range, answers every attempt the same way, and the app
     // must not spend the session asking.
@@ -620,6 +686,26 @@ void main() {
   /// outlives it - the id stays in `_autoTriedUsb` while the cable is in, so
   /// nothing dials again until something changes. Until #120 the only record
   /// was a log line, and the cable simply did nothing.
+  // The safety property the default rests on, and the Bluetooth half of the
+  // case above: `held` is computed from every session rather than the USB
+  // ones, so a cable appearing cannot pull the user off a Bluetooth link that
+  // is already up. Scoping `held` to USB would otherwise keep the suite green.
+  // `bleAuto` is left off deliberately - nothing is remembered here, so the
+  // radio is not a candidate either way and `held` is the only thing that can
+  // make the cable stand down.
+  group('a Bluetooth link the app is holding', () {
+    test('stops a cable being dialled', () async {
+      links = await serviceWith(usbAuto: true);
+      client.reportSessions([connected(ble('b1'))]);
+      client.present = [usb('A')];
+
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, isEmpty);
+    });
+  });
+
   group('an auto-connect that failed', () {
     Future<LinkService> failedUsbAttempt() async {
       final service = await serviceWith(usbAuto: true);

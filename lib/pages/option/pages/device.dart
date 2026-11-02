@@ -138,12 +138,18 @@ class _DeviceSettingsPageState extends State<DeviceSettingsPage> {
               GroupedCardList<_Toggle>(
                 title: context.l10n.deviceGroupAutoConnect,
                 items: [
-                  _Toggle(
-                    title: context.l10n.deviceAutoConnectUsb,
-                    subtitle: context.l10n.deviceAutoConnectUsbSubtitle,
-                    value: _settings.autoConnectUsb,
-                    onChanged: _settings.setAutoConnectUsb,
-                  ),
+                  // Left out where there is no USB transport to auto-connect
+                  // over, rather than shown reading on for something that
+                  // cannot happen - the setting is on by default and iOS has
+                  // no USB platform. Same reasoning as the Diagnostics
+                  // screen's replay row.
+                  if (DeviceSettings.usbSupported)
+                    _Toggle(
+                      title: context.l10n.deviceAutoConnectUsb,
+                      subtitle: context.l10n.deviceAutoConnectUsbSubtitle,
+                      value: _settings.autoConnectUsb,
+                      onChanged: _settings.setAutoConnectUsb,
+                    ),
                   _Toggle(
                     title: context.l10n.deviceAutoConnectBle,
                     subtitle: context.l10n.deviceAutoConnectBleSubtitle,

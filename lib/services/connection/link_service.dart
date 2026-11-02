@@ -190,7 +190,7 @@ class LinkService extends ChangeNotifier {
   ///
   /// [_userDisconnectedKey] and not [_cancelled], because
   /// `disconnectDevice` sets it unconditionally and it is the same signal
-  /// [_maybeAutoConnect] refuses to re-dial on - so one condition covers all
+  /// [_reconcileOnce] refuses to re-dial on - so one condition covers all
   /// three paths.
   ///
   /// The hint still goes up for a cancel, and says "auto-connect failed" when
@@ -515,6 +515,14 @@ class LinkService extends ChangeNotifier {
   // ── Events ───────────────────────────────────────────────────────────────
 
   void _onSessions(List<FlipperSessionInfo> sessions) {
+    // Every connected cable, whoever asked. With `autoConnectUsb` on by
+    // default the app's own dial is now the main producer of this set, so the
+    // hold tier in `_reconcileOnce` - which ignores the setting - can outrank
+    // a setting the user turns off mid-session. In memory only, so a restart
+    // honours the toggle. Telling an app-formed link from a user's needs an
+    // endorsement notion this does not have: a hold deliberately survives a
+    // reboot into the updater, so "the app formed it" is not a stable
+    // property. #460.
     for (final session in sessions) {
       if (session.device.isUsb && session.connected) {
         _holdUsbIds.add(session.device.id);
@@ -652,6 +660,16 @@ class LinkService extends ChangeNotifier {
     // setting says: the user asked for that link and never let it go. The
     // setting adds the ones nobody has asked for yet, which is all it decides
     // — whether the app forms that intent by itself when a cable appears.
+    // It is **on** by default, so in a default build a cable that is in at
+    // launch is dialled here and this method returns before the remembered
+    // Bluetooth device below is ever considered. That ordering is the whole
+    // of "a cable wins"; there is no separate check for one, and a guard like
+    // `if (_usbPresent.isNotEmpty) return;` before the BLE branch is not it.
+    // `_usbPresent` is presence, not candidacy: a cable is skipped below for
+    // being one the user disconnected, or one already tried, and such a guard
+    // would turn each of those into no link at all for as long as it stays in
+    // - including making this setting *off* disable Bluetooth auto-connect
+    // whenever a cable is plugged in.
     if (!held) {
       final candidates = <FlipperDevice>[
         for (final device in _usbPresent)
@@ -675,9 +693,8 @@ class LinkService extends ChangeNotifier {
     final last = _known.lastDevice;
     if (last == null || _userDisconnectedKey == 'ble:${last.id}') return;
     _bleAutoTried = true;
-    // The branch `autoConnectBle` governs, which is **on** by default - so in a
-    // default build this is the auto path with the traffic. `last` is a
-    // [KnownDevice] and carries no link of its own, hence the enum.
+    // `last` is a [KnownDevice] and carries no link of its own, hence the
+    // enum.
     await _autoDial(
       key: 'ble:${last.id}',
       name: last.name,
@@ -691,6 +708,15 @@ class LinkService extends ChangeNotifier {
   }
 
   Future<bool> _restoreCli(_CliHold hold) async {
+    // The `_autoTriedUsb` clause is wrong and known to be - #461. With
+    // `autoConnectUsb` on by default the launch dial puts the cable's id in
+    // that set and nothing takes it out while the cable stays in, so a CLI
+    // channel that dies *without* the device detaching finds no candidate
+    // here, the USB branch skips the same id, and the remembered Bluetooth
+    // device gets dialled instead. Dropping the clause outright risks the
+    // retry loop it is there to prevent, since this returns true whenever it
+    // has a candidate - so the fix wants attempt-tracking of its own, with
+    // the `holdCli` tests that do not exist yet.
     final candidates = [
       for (final device in _usbPresent)
         if (_userDisconnectedKey != 'usb:${device.id}' &&
@@ -778,11 +804,11 @@ class LinkService extends ChangeNotifier {
 
   /// The USB half: a cable that appeared, or one the app is holding.
   ///
-  /// `autoConnectUsb` is **off** by default, so this fires either for a link
-  /// the app is holding ([_holdUsbIds], a cable the user connected over and
-  /// never released) or for a user who turned the setting on. Not flipperlib's
-  /// `autoReconnect`, which recovers a dropped session in place and never
-  /// reaches here.
+  /// Fires for a link the app is holding ([_holdUsbIds], a cable the user
+  /// connected over and never released), and - since `autoConnectUsb` is
+  /// **on** by default - for any Flipper on a cable while no session is held.
+  /// Not flipperlib's `autoReconnect`, which recovers a dropped session in
+  /// place and never reaches here.
   Future<void> _autoConnect(FlipperDevice device, String why) async {
     final key = 'usb:${device.id}';
     await _autoDial(
