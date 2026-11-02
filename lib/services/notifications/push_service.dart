@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../guarded.dart';
 import '../settings/persist.dart';
 
 import '../localization/l10n.dart';
@@ -41,6 +43,14 @@ class PushService {
   static const _androidChannelId = 'firmware_updates';
 
   bool _started = false;
+
+  /// Kept so the poster can read the permission, not just the ask record it.
+  ///
+  /// [start] already writes the answer here; `_showForeground` is 400 lines
+  /// away and had no way to read it back, which is how the same class came to
+  /// ask the OS one question and answer it from two places.
+  late PermissionCenter _permissions;
+
   static bool _unavailable = false;
 
   /// Whether a full [awaitApnsToken] wait has already run out this process.
@@ -124,6 +134,7 @@ class PushService {
   Future<void> start({required PermissionCenter permissions}) async {
     if (_started || !isSupported) return;
     _started = true;
+    _permissions = permissions;
 
     try {
       await Firebase.initializeApp(
@@ -176,7 +187,22 @@ class PushService {
     //
     // `_started` is already true and is never cleared, so there is no second
     // attempt at any of this within the process.
-    FirebaseMessaging.onMessage.listen(_showForeground);
+    // `guarded`, because a stream's `onData` drops the future it is handed:
+    // `_showForeground` is `Future<void>` and posts through the same plugin
+    // that refuses every post when the user has declined notifications, so
+    // this is the second arrival of QUNLEASHED-1Y and the one #442's fix to
+    // `ConnectionNotificationService` does not reach. It is invisible to
+    // `unawaited_budget_test.dart` by that file's own account - a future
+    // dropped from a synchronous callback with no `unawaited()` is seen by
+    // neither the ratchet nor `unawaited_futures`.
+    FirebaseMessaging.onMessage.listen(
+      (message) => unawaited(
+        guarded(
+          '[Push] show a foreground notification',
+          () => _showForeground(message),
+        ),
+      ),
+    );
     FirebaseMessaging.onMessageOpenedApp.listen(_open);
     // Its own catch, so the two directions stay independent: the cold-start
     // read goes through `convertPlatformException` like every other channel
@@ -547,6 +573,9 @@ class PushService {
   }
 
   Future<void> _showForeground(RemoteMessage message) async {
+    // The same gate as `ConnectionNotificationService._show`, which carries
+    // the reasoning. `start` recorded this answer; here it is read back.
+    if (_permissions.isDenied(AppPermission.pushNotifications)) return;
     final notification = message.notification;
     final title = notification?.title ?? l10n.notificationUpdateFallbackTitle;
     final body = notification?.body ?? '';

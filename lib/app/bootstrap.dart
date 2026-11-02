@@ -53,7 +53,10 @@ void bootstrapAmbientServices(PermissionCenter permissions) {
 
   _start(
     'connection notifier',
-    () => ConnectionNotificationService.instance.start(client),
+    () => ConnectionNotificationService.instance.start(
+      client,
+      permissions: permissions,
+    ),
   );
 
   _start(
