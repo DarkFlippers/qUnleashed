@@ -9,6 +9,7 @@ import 'package:qunleashed/services/connection/link_service.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'known_device_ids.dart';
 import 'sentry_capture.dart';
 import 'telemetry_sinks.dart';
 
@@ -519,6 +520,29 @@ void main() {
   });
 
   group('the remembered Flipper', () {
+    test('is dialled by the canonical id, under the remembered name', () async {
+      // The fold carried through to the dial, which is the far end of the
+      // chain #444 is about. What this does *not* drive is the near end: the
+      // id is remembered through `fromDevice` rather than read off disk,
+      // because `serviceWith` clears the store - so a *stored* id reaching
+      // `connectBleAddress` is covered from the load side in
+      // `known_devices_migration_test.dart`, and the two meet in the middle.
+      // One case over the whole chain wants the store's memo to be
+      // resettable, which is a change of its own.
+      links = await serviceWith(bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble(storedById));
+
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, ['ble:$reportedById']);
+      // The *name* keeps its spelling, and this is the only assertion in the
+      // suite that can tell the two apart - `ble()` sets `name == id`, so
+      // every other case here would pass on a fold applied to the wrong
+      // field.
+      expect(links.entries.single.name, storedById);
+    });
+
     test('is dialled when nothing is plugged in', () async {
       links = await serviceWith(bleAuto: true);
       await KnownDevicesStore.instance.remember(ble('b1'));
