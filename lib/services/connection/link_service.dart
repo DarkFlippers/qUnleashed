@@ -190,7 +190,7 @@ class LinkService extends ChangeNotifier {
   ///
   /// [_userDisconnectedKey] and not [_cancelled], because
   /// `disconnectDevice` sets it unconditionally and it is the same signal
-  /// [_maybeAutoConnect] refuses to re-dial on - so one condition covers all
+  /// [_reconcileOnce] refuses to re-dial on - so one condition covers all
   /// three paths.
   ///
   /// The hint still goes up for a cancel, and says "auto-connect failed" when
@@ -515,6 +515,14 @@ class LinkService extends ChangeNotifier {
   // ── Events ───────────────────────────────────────────────────────────────
 
   void _onSessions(List<FlipperSessionInfo> sessions) {
+    // Every connected cable, whoever asked. With `autoConnectUsb` on by
+    // default the app's own dial is now the main producer of this set, so the
+    // hold tier in `_reconcileOnce` - which ignores the setting - can outrank
+    // a setting the user turns off mid-session. In memory only, so a restart
+    // honours the toggle. Telling an app-formed link from a user's needs an
+    // endorsement notion this does not have: a hold deliberately survives a
+    // reboot into the updater, so "the app formed it" is not a stable
+    // property. Its own task.
     for (final session in sessions) {
       if (session.device.isUsb && session.connected) {
         _holdUsbIds.add(session.device.id);
@@ -655,7 +663,13 @@ class LinkService extends ChangeNotifier {
     // It is **on** by default, so in a default build a cable that is in at
     // launch is dialled here and this method returns before the remembered
     // Bluetooth device below is ever considered. That ordering is the whole
-    // of "a cable wins"; there is no separate check for one.
+    // of "a cable wins"; there is no separate check for one, and a guard like
+    // `if (_usbPresent.isNotEmpty) return;` before the BLE branch is not it.
+    // `_usbPresent` is presence, not candidacy: a cable is skipped below for
+    // being one the user disconnected, or one already tried, and such a guard
+    // would turn each of those into no link at all for as long as it stays in
+    // - including making this setting *off* disable Bluetooth auto-connect
+    // whenever a cable is plugged in.
     if (!held) {
       final candidates = <FlipperDevice>[
         for (final device in _usbPresent)
@@ -679,10 +693,8 @@ class LinkService extends ChangeNotifier {
     final last = _known.lastDevice;
     if (last == null || _userDisconnectedKey == 'ble:${last.id}') return;
     _bleAutoTried = true;
-    // The branch `autoConnectBle` governs, which is **on** by default - as is
-    // `autoConnectUsb`, so in a default build this is reached only with no
-    // cable in: the USB branch above returns when it dials one. `last` is a
-    // [KnownDevice] and carries no link of its own, hence the enum.
+    // `last` is a [KnownDevice] and carries no link of its own, hence the
+    // enum.
     await _autoDial(
       key: 'ble:${last.id}',
       name: last.name,

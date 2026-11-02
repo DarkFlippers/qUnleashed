@@ -56,14 +56,13 @@ void main() {
     expect(keptLines, isEmpty);
   });
 
-  // Spelled out, because `defaults` is `reset()`'s own snapshot and every
-  // other case here compares one initialiser to another - a flipped default
-  // would keep the whole file green. Both transports reconnect on their own
-  // and a cable wins over the remembered radio; `link_autoconnect_test.dart`
-  // covers that ordering. Changing one of these should mean changing this.
-  test('the defaults are the ones the class doc states', () async {
-    await settings.load();
-
+  // The only case that states the values. Everything else here compares
+  // `snapshot()` to `reset()`'s own snapshot, which is a tautology, and the
+  // wrong-typed cases below catch a flipped default only as a side effect of
+  // `stored` being the exact negation - edit `stored` and that guard goes
+  // without a word. No `load()`: `setUp` has already called `reset()`, and
+  // loading an empty store is what the case above covers.
+  test('the defaults are USB on, BLE on, clock pushed', () {
     expect(snapshot(), {'usb': true, 'ble': true, 'sync': true});
   });
 
@@ -144,7 +143,7 @@ void main() {
   // defaults and auto-connect being dead for the process: DeviceController
   // awaits load() *outside* the try that guards its discovery, and load()
   // memoises - so before this store caught its own failure, one bad read was
-  // handed to every later caller and _tryAutoConnect threw on every firing.
+  // handed to every later caller and _reconcileOnce threw on every firing.
   //
   // Both halves are needed. completes pins the reject-to-resolve flip; the
   // history read pins that the catch is not a bare swallow, which would pass
@@ -175,7 +174,7 @@ void main() {
   // #124 guarded the three reads main() makes before runApp, so a store that
   // will not open no longer stops the app - which means this catch is
   // reachable in a running session, and a transient fault should heal on the
-  // next read. Bounded: _tryAutoConnect awaits load() on a debounce fired by
+  // next read. Bounded: _reconcileOnce awaits load() on a debounce fired by
   // cable events, so it is one round-trip per plug, not a loop.
   test('a failed read is retried by the next caller', () async {
     useUnopenablePrefs();
