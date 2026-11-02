@@ -37,7 +37,6 @@ class IrFileViewer extends StatefulWidget {
     required this.error,
     required this.text,
     required this.bytes,
-    required this.isConnected,
     required this.onSend,
     this.onAfterSend,
     this.sendFailureReason,
@@ -48,6 +47,15 @@ class IrFileViewer extends StatefulWidget {
   /// Required rather than defaulted: both builders already hold one - the
   /// library page through its controller, the content page directly - so a
   /// default would only make this untestable. ADR 0002.
+  ///
+  /// The only source of the link state. There was an `isConnected` beside it,
+  /// passed by both builders, and both read it off *this* client - the
+  /// library page as `controller.isConnected`, which is
+  /// `_client.isConnected`, and the content page as `_client.isConnected`
+  /// directly. So the viewer was computing `x && x`, and the parameter's only
+  /// effect was to make a reader think the two could disagree. #409 was filed
+  /// as a live bug on the strength of that, and the behaviour it describes
+  /// has been correct since #153.
   final FlipperClient client;
 
   final String fileName;
@@ -56,7 +64,6 @@ class IrFileViewer extends StatefulWidget {
   final String? error;
   final String text;
   final List<int>? bytes;
-  final bool isConnected;
   final IrFileSendHandler onSend;
   final IrFileAfterSend? onAfterSend;
 
@@ -82,7 +89,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
   @override
   void initState() {
     super.initState();
-    _connected = widget.isConnected && widget.client.isConnected;
+    _connected = widget.client.isConnected;
     _connectionSub = widget.client.connectionStream.listen(_onConnectionState);
   }
 
@@ -98,9 +105,8 @@ class _IrFileViewerState extends State<IrFileViewer> {
         _onConnectionState,
       );
     }
-    if (oldWidget.isConnected != widget.isConnected ||
-        oldWidget.client != widget.client) {
-      _connected = widget.isConnected && widget.client.isConnected;
+    if (oldWidget.client != widget.client) {
+      _connected = widget.client.isConnected;
     }
   }
 

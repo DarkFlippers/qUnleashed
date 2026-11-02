@@ -77,7 +77,6 @@ class _IrLibFilePageState extends State<IrLibFilePage> {
       error: _error,
       text: _text,
       bytes: _bytes,
-      isConnected: widget.controller.isConnected,
       onSend: ({required bytes, required onProgress}) {
         return widget.controller.sendToFlipper(
           widget.entry,
