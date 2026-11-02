@@ -325,9 +325,9 @@ import 'ratchet.dart';
 /// when the guess fails too, the `PathNotFoundException` that reaches a
 /// report is the *second* failure, and this line is the first. QUNLEASHED-5.
 ///
-/// **`services` is 21.** The two new ones are both in `known_devices.dart`,
-/// and both are a remembered device being thrown away where the user asked
-/// for nothing:
+/// **`services` is 22.** All three of the new ones are in
+/// `known_devices.dart`, and each is a remembered device being thrown away
+/// where the user asked for nothing:
 ///
 ///  * *an entry the store could not read*. `_load` reads entry by entry, and
 ///    the next mutation writes the whole array back from what it kept - so an
@@ -336,17 +336,24 @@ import 'ratchet.dart';
 ///    gate the #444 id migration passes through, so a silent drop is that
 ///    migration not applying.
 ///  * *duplicate entries merged*. Canonicalising a stored id can make two
-///    entries equal, and `newestPerDevice` keeps the newer. It earns a kept
-///    level for one reason only: it is the only place this app deletes a
-///    remembered device without being asked. It is *not* evidence that the
-///    migration ran - a store written by one build on universal_ble 2.x holds
-///    one spelling per device, so nothing collides on the ordinary upgrade.
+///    entries equal, and `_newestPerDevice` keeps the newer. It is *not*
+///    evidence that the migration ran - a store written by one build on
+///    universal_ble 2.x holds one spelling per device, so nothing collides on
+///    the ordinary upgrade.
+///  * *entries over the cap*. `_maxEntries` was applied in `remember` and in
+///    none of the other three assignments to `_devices`, so an oversized
+///    store loaded whole and stayed that way. `remember`'s own trim is silent
+///    and is not the precedent: there the user tapped connect and displaced
+///    one entry they chose, where this is unbounded and unasked. `take` runs
+///    after the sort, so `lastDevice` cannot change - which makes it the
+///    least of the three, not a non-loss. #453
 ///
-/// Both are counts rather than ids, because an id here is a Bluetooth
-/// address. Neither can repeat: `load()` memoises, so there is one load per
-/// session. #444
+/// All three are counts rather than ids, because an id here is a Bluetooth
+/// address. None can repeat in a shipped build: `load()` memoises, and the
+/// only thing that clears the memo is the test-only
+/// `KnownDevicesStore.debugReset`. #444
 const Map<String, int> kBudget = {
-  'services': 21,
+  'services': 22,
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,

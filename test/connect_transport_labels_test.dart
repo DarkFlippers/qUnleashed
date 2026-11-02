@@ -24,7 +24,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/dialogs/connection.dart';
 import 'package:qunleashed/pages/devices/widgets/cards/connect_card.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
-import 'package:qunleashed/services/connection/known_devices.dart';
 import 'package:qunleashed/services/connection/link_service.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
@@ -109,11 +108,6 @@ void main() {
         await settings.load();
         await settings.setAutoConnectUsb(false);
         await settings.setAutoConnectBle(false);
-        final known = KnownDevicesStore.instance;
-        await known.load();
-        for (final device in [...known.devices]) {
-          await known.forget(device);
-        }
         links = LinkService.forTest(client);
         client.plugged();
         await Future<void>.delayed(const Duration(milliseconds: 400));

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
@@ -185,21 +186,32 @@ void main() {
   /// hence [DeviceSettings.reset] and then its own setters. `resetFirmwareState`
   /// has the same shape for the same reason, and ADR 0002 is about the day
   /// this stops being necessary.
+  /// [stored] goes on disk as `known_devices_v1` before the service exists,
+  /// for the cases that need a remembered device the service *read* rather
+  /// than one handed to [KnownDevicesStore.remember] afterwards. The service
+  /// loads the store itself from [LinkService.start], so seeding here is what
+  /// drives the whole chain: disk, `_load`, `lastDevice`, `_autoDial`.
+  ///
+  /// That load is not awaited - it is `load().whenComplete(...)` - so what
+  /// makes a seeded store observable is the [settle] the case does next, not
+  /// this helper returning.
   Future<LinkService> serviceWith({
     bool usbAuto = false,
     bool bleAuto = false,
+    List<Map<String, Object>> stored = const [],
   }) async {
-    SharedPreferences.setMockInitialValues(const {});
+    SharedPreferences.setMockInitialValues({
+      if (stored.isNotEmpty) 'known_devices_v1': jsonEncode(stored),
+    });
     final settings = DeviceSettings.instance..reset();
     await settings.load();
     await settings.setAutoConnectUsb(usbAuto);
     await settings.setAutoConnectBle(bleAuto);
 
-    final known = KnownDevicesStore.instance;
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
+    // No emptying of the store by hand: `test/flutter_test_config.dart` rewinds
+    // it before every case, which is also what lets [stored] be read at all -
+    // `load()` memoises, so a load spent here would have been the only one.
+    // #452
     final service = LinkService.forTest(client);
     addTearDown(service.dispose);
     return service;
@@ -521,26 +533,33 @@ void main() {
 
   group('the remembered Flipper', () {
     test('is dialled by the canonical id, under the remembered name', () async {
-      // The fold carried through to the dial, which is the far end of the
-      // chain #444 is about. What this does *not* drive is the near end: the
-      // id is remembered through `fromDevice` rather than read off disk,
-      // because `serviceWith` clears the store - so a *stored* id reaching
-      // `connectBleAddress` is covered from the load side in
-      // `known_devices_migration_test.dart`, and the two meet in the middle.
-      // One case over the whole chain wants the store's memo to be
-      // resettable, which is a change of its own.
-      links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble(storedById));
+      // The whole chain #444 is about, in one case: an upper-case id as a
+      // build on universal_ble 2.x wrote it, sitting on disk, through `_load`
+      // and `lastDevice` and `_autoDial` to the address handed to
+      // `connectBleAddress`.
+      //
+      // It used to start at `remember` - the id came from `fromDevice`, not
+      // off disk - because `serviceWith` cleared the store, and the load side
+      // was covered separately. The two met in the middle and nothing drove
+      // the join. #452 made the store's memo resettable, which is what seeding
+      // disk here needs.
+      links = await serviceWith(
+        bleAuto: true,
+        stored: [
+          storedEntry(storedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
+        ],
+      );
 
       client.plugged();
       await settle();
 
       expect(client.dialled, ['ble:$reportedById']);
-      // The *name* keeps its spelling, and this is the only assertion in the
-      // suite that can tell the two apart - `ble()` sets `name == id`, so
-      // every other case here would pass on a fold applied to the wrong
-      // field.
-      expect(links.entries.single.name, storedById);
+      // A name that is not the id, which is two claims in one assertion: the
+      // row's name comes from the stored `name` field, and the fold was
+      // applied to the id and not to it - `canonicalBleDeviceId` lower-cases,
+      // so a fold on this field would read `flipper zoe`. Every other case in
+      // this file sets `name == id` through `ble()` and so can tell neither.
+      expect(links.entries.single.name, 'Flipper Zoe');
     });
 
     test('is dialled when nothing is plugged in', () async {
