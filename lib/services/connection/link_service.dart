@@ -652,6 +652,10 @@ class LinkService extends ChangeNotifier {
     // setting says: the user asked for that link and never let it go. The
     // setting adds the ones nobody has asked for yet, which is all it decides
     // — whether the app forms that intent by itself when a cable appears.
+    // It is **on** by default, so in a default build a cable that is in at
+    // launch is dialled here and this method returns before the remembered
+    // Bluetooth device below is ever considered. That ordering is the whole
+    // of "a cable wins"; there is no separate check for one.
     if (!held) {
       final candidates = <FlipperDevice>[
         for (final device in _usbPresent)
@@ -675,8 +679,9 @@ class LinkService extends ChangeNotifier {
     final last = _known.lastDevice;
     if (last == null || _userDisconnectedKey == 'ble:${last.id}') return;
     _bleAutoTried = true;
-    // The branch `autoConnectBle` governs, which is **on** by default - so in a
-    // default build this is the auto path with the traffic. `last` is a
+    // The branch `autoConnectBle` governs, which is **on** by default - as is
+    // `autoConnectUsb`, so in a default build this is reached only with no
+    // cable in: the USB branch above returns when it dials one. `last` is a
     // [KnownDevice] and carries no link of its own, hence the enum.
     await _autoDial(
       key: 'ble:${last.id}',
@@ -778,11 +783,11 @@ class LinkService extends ChangeNotifier {
 
   /// The USB half: a cable that appeared, or one the app is holding.
   ///
-  /// `autoConnectUsb` is **off** by default, so this fires either for a link
-  /// the app is holding ([_holdUsbIds], a cable the user connected over and
-  /// never released) or for a user who turned the setting on. Not flipperlib's
-  /// `autoReconnect`, which recovers a dropped session in place and never
-  /// reaches here.
+  /// Fires for a link the app is holding ([_holdUsbIds], a cable the user
+  /// connected over and never released), and - since `autoConnectUsb` is
+  /// **on** by default - for any Flipper on a cable while no session is held.
+  /// Not flipperlib's `autoReconnect`, which recovers a dropped session in
+  /// place and never reaches here.
   Future<void> _autoConnect(FlipperDevice device, String why) async {
     final key = 'usb:${device.id}';
     await _autoDial(

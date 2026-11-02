@@ -18,7 +18,7 @@ void main() {
   // A non-default value for every key, so a test can tell "this came from
   // disk" from "this is the initialiser".
   const stored = <String, Object>{
-    'device.autoconnect.usb': true,
+    'device.autoconnect.usb': false,
     'device.autoconnect.ble': false,
     'device.sync_time_on_start': false,
   };
@@ -43,7 +43,7 @@ void main() {
 
     await settings.load();
 
-    expect(settings.autoConnectUsb, isTrue);
+    expect(settings.autoConnectUsb, isFalse);
     expect(settings.autoConnectBle, isFalse);
     expect(settings.syncTimeOnStart, isFalse);
     expect(keptLines, isEmpty, reason: 'a clean read says nothing');
@@ -56,6 +56,17 @@ void main() {
     expect(keptLines, isEmpty);
   });
 
+  // Spelled out, because `defaults` is `reset()`'s own snapshot and every
+  // other case here compares one initialiser to another - a flipped default
+  // would keep the whole file green. Both transports reconnect on their own
+  // and a cable wins over the remembered radio; `link_autoconnect_test.dart`
+  // covers that ordering. Changing one of these should mean changing this.
+  test('the defaults are the ones the class doc states', () async {
+    await settings.load();
+
+    expect(snapshot(), {'usb': true, 'ble': true, 'sync': true});
+  });
+
   test('a load notifies', () async {
     SharedPreferences.setMockInitialValues(stored);
     var notifications = 0;
@@ -66,7 +77,7 @@ void main() {
     await settings.load();
 
     expect(notifications, 1);
-    expect(settings.autoConnectUsb, isTrue);
+    expect(settings.autoConnectUsb, isFalse);
   });
 
   // One case per key, so the assertion does not depend on which order _load
@@ -176,7 +187,7 @@ void main() {
     SharedPreferences.setMockInitialValues(stored);
     await settings.load();
 
-    expect(settings.autoConnectUsb, isTrue, reason: 'read again');
+    expect(settings.autoConnectUsb, isFalse, reason: 'read again');
     expect(settings.loaded, isTrue);
   });
 

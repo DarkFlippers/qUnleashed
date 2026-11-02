@@ -8,9 +8,18 @@ import '../prefs_reader.dart';
 /// their own and whether the phone's clock is pushed to the Flipper once the
 /// startup commands are done.
 ///
-/// USB stays off by default — plugging a cable should not take over a session
-/// the user did not ask for; BLE keeps the previous behaviour of reconnecting
-/// to the last remembered device.
+/// Both transports are on by default, and a cable wins: a Flipper on the end
+/// of one is the link the user plainly has, so the app forms that intent
+/// itself rather than dialling the radio past it. Taking over a session
+/// nobody asked for is not what this decides — the auto-connect in
+/// `LinkService` only looks at a cable when no session is held at all, so the
+/// cable cannot interrupt a link that is already up.
+///
+/// It was USB-off until a launch with the cable already in dialled Bluetooth
+/// instead, which is what the setting decided and nothing else did: the
+/// Android manifest already registers `USB_DEVICE_ATTACHED`, so the OS
+/// launches the app when a Flipper is plugged in - and the app then declined
+/// to connect to the Flipper that had launched it.
 class DeviceSettings extends PrefsBackedSettings {
   DeviceSettings._();
 
@@ -20,9 +29,9 @@ class DeviceSettings extends PrefsBackedSettings {
   static const String _prefAutoConnectBle = 'device.autoconnect.ble';
   static const String _prefSyncTime = 'device.sync_time_on_start';
 
-  /// USB off, BLE on: see the class doc. Named so [reset] and the fallbacks
-  /// in [_load] cannot drift from the initialisers below.
-  static const bool _defaultAutoConnectUsb = false;
+  /// Both on: see the class doc. Named so [reset] and the fallbacks in
+  /// [readFrom] cannot drift from the initialisers below.
+  static const bool _defaultAutoConnectUsb = true;
   static const bool _defaultAutoConnectBle = true;
   static const bool _defaultSyncTimeOnStart = true;
 

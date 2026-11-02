@@ -563,6 +563,42 @@ void main() {
       expect(client.dialled, isEmpty);
     });
 
+    // Both settings are on in a default build, and this is what makes the
+    // cable win: the USB branch returns before the remembered device is
+    // reached, so the ordering is the only thing deciding it. Without it the
+    // app dialled the radio with the Flipper sitting on a cable, which is
+    // what `DeviceSettings`' default was changed for.
+    test('is not dialled past a Flipper on the cable', () async {
+      links = await serviceWith(usbAuto: true, bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('b1'));
+      client.present = [usb('A')];
+
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, ['usb:A']);
+    });
+
+    // The other side of that ordering, and what keeps a cable the app cannot
+    // open from costing the user every link: the id stays in `_autoTriedUsb`,
+    // so the next reconcile skips the cable and the radio gets its turn. On
+    // Android a launch with the cable already in has to ask for USB
+    // permission, and this is the path a refusal takes.
+    test('gets its turn once the cable has refused', () async {
+      links = await serviceWith(usbAuto: true, bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('b1'));
+      client.present = [usb('A')];
+      client.connectThrows = StateError('USB permission denied');
+
+      client.plugged();
+      await settle();
+      client.connectThrows = null;
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, ['usb:A', 'ble:b1']);
+    });
+
     // Once per run, not once per reconcile. A radio that is off, or a Flipper
     // that is out of range, answers every attempt the same way, and the app
     // must not spend the session asking.
