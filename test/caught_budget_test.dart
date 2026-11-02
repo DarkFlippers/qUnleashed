@@ -324,8 +324,29 @@ import 'ratchet.dart';
 /// sees nothing. That is exactly why the refusal has to be on the record:
 /// when the guess fails too, the `PathNotFoundException` that reaches a
 /// report is the *second* failure, and this line is the first. QUNLEASHED-5.
+///
+/// **`services` is 21.** The two new ones are both in `known_devices.dart`,
+/// and both are a remembered device being thrown away where the user asked
+/// for nothing:
+///
+///  * *an entry the store could not read*. `_load` reads entry by entry, and
+///    the next mutation writes the whole array back from what it kept - so an
+///    entry `KnownDevice.fromJson` refuses is gone from disk, and what the
+///    user sees is a Flipper they paired absent from the list. It is also the
+///    gate the #444 id migration passes through, so a silent drop is that
+///    migration not applying.
+///  * *duplicate entries merged*. Canonicalising a stored id can make two
+///    entries equal, and `newestPerDevice` keeps the newer. It earns a kept
+///    level for one reason only: it is the only place this app deletes a
+///    remembered device without being asked. It is *not* evidence that the
+///    migration ran - a store written by one build on universal_ble 2.x holds
+///    one spelling per device, so nothing collides on the ordinary upgrade.
+///
+/// Both are counts rather than ids, because an id here is a Bluetooth
+/// address. Neither can repeat: `load()` memoises, so there is one load per
+/// session. #444
 const Map<String, int> kBudget = {
-  'services': 19,
+  'services': 21,
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,

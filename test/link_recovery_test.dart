@@ -304,7 +304,7 @@ void main() {
   });
 
   group('whether a remembered Flipper is within reach', () {
-    setUp(() => KnownDevicesStore.instance.remember(ble('B1')));
+    setUp(() => KnownDevicesStore.instance.remember(ble('b1')));
 
     bool heardOf(String id) =>
         links.entries.firstWhere((e) => e.id == id).heard;
@@ -313,14 +313,14 @@ void main() {
       client.plugged();
       await tick();
 
-      expect(heardOf('B1'), isFalse);
+      expect(heardOf('b1'), isFalse);
     });
 
     test('becomes yes when the radio hears it', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     // Heard before it was remembered is not evidence it is here now. The
@@ -345,50 +345,50 @@ void main() {
           mode: FlipperMode.rpc,
           device: null,
           connected: true,
-        ).let(ble('B1')),
+        ).let(ble('b1')),
       );
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     test('goes back to no when the link fails', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
-      client.reportLink(dropped(ble('B1')));
+      client.reportLink(dropped(ble('b1')));
       await tick();
 
-      expect(heardOf('B1'), isFalse);
+      expect(heardOf('b1'), isFalse);
     });
 
     // An automatic reconnect is the client saying it has this: the device has
     // not gone anywhere, and dimming the row would be a lie that corrects
     // itself a second later.
     test('stays yes while the client is reconnecting', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
       // With a reason, because a drop that carries none is already ignored by
       // the next condition along - this case passed without reading
       // `reconnecting` at all until a mutation said so.
-      client.reportLink(dropped(ble('B1'), reconnecting: true));
+      client.reportLink(dropped(ble('b1'), reconnecting: true));
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     // The user closing a link says nothing about whether the Flipper is
     // there, and the row should not go dim because they pressed disconnect.
     test('stays yes when the user closed the link', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
-      await links.disconnectDevice(ble('B1'), id: 'B1', link: FlipperLink.ble);
+      await links.disconnectDevice(ble('b1'), id: 'b1', link: FlipperLink.ble);
 
-      client.reportLink(dropped(ble('B1')));
+      client.reportLink(dropped(ble('b1')));
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     // The drop that happens *during* the dial, which reaches none of the
@@ -399,16 +399,16 @@ void main() {
     // `No active transport`, a Flipper that had just gone out of range kept
     // its "in reach" dot. qUnleashed#363.
     test('goes back to no when the link drops under the dial', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
       client.rpcSwitchThrows = StateError(noActiveTransportMessage);
       await expectLater(
-        links.connect(links.entries.firstWhere((e) => e.id == 'B1')),
+        links.connect(links.entries.firstWhere((e) => e.id == 'b1')),
         throwsStateError,
       );
 
-      expect(heardOf('B1'), isFalse);
+      expect(heardOf('b1'), isFalse);
     });
   });
 }
