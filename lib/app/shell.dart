@@ -278,6 +278,7 @@ class _AppShellState extends State<AppShell> {
           currentTab: currentTab,
           onTabSelected: (tab) => _select(_slotOfTab(tab)),
           deviceLabel: _deviceLabel(device),
+          deviceStatus: _deviceStatus(device),
           railGroups: railGroups,
           child: child!,
         );
@@ -439,6 +440,32 @@ class _AppShellState extends State<AppShell> {
       selected: selected,
       onTap: () => _select(target),
     );
+  }
+
+  /// The same state as [_deviceLabel], in the four classes the tab's icon can
+  /// draw. See [DeviceTabStatus] for why it is coarser.
+  ///
+  /// Reads the same three sources in the same order, so the dot and the
+  /// sentence cannot disagree: a `connected` Flipper whose data is still
+  /// coming in, or whose archive is still syncing, is `working` here and
+  /// "Syncing" there.
+  DeviceTabStatus _deviceStatus(DeviceController device) {
+    switch (device.connectionState) {
+      case DeviceConnectionState.disconnected:
+        return DeviceTabStatus.absent;
+      case DeviceConnectionState.connecting:
+      case DeviceConnectionState.recovering:
+        return DeviceTabStatus.working;
+      case DeviceConnectionState.dfu:
+        return DeviceTabStatus.attention;
+      case DeviceConnectionState.connected:
+        if (device.deviceLoading) return DeviceTabStatus.working;
+        return switch (_syncStatus) {
+          ArchiveSyncStatus.syncing => DeviceTabStatus.working,
+          ArchiveSyncStatus.synced => DeviceTabStatus.ready,
+          ArchiveSyncStatus.idle => DeviceTabStatus.ready,
+        };
+    }
   }
 
   String _deviceLabel(DeviceController device) {

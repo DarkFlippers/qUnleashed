@@ -9,6 +9,35 @@ import '../theme/theme.dart';
 
 enum FlipperRootTab { device, archive, apps, tools }
 
+/// What the device tab's icon says about the link, in constant space.
+///
+/// Four classes over the eight states `_AppShellState._deviceLabel` spells,
+/// and deliberately coarser than those: a dot cannot carry eight meanings,
+/// and the eight are still announced in full through the tab's semantics
+/// label and shown as words on the device screen itself.
+///
+/// The tab used to carry the state *as its label*, which is why this exists.
+/// A status is a sentence in several locales - German's `deviceStateConnecting`
+/// is "Verbindung wird hergestellt", 131 dp of it - so the label was drawn
+/// shrunk to whatever a quarter of the bar allowed, and a raised text-size
+/// setting then bought that one label almost nothing: it raised the size the
+/// label was *measured* at, not the size it was *drawn* at. The three ways
+/// out were weighed in #429; this is the one that makes the slot's width stop
+/// mattering, because a noun fits at any scaler.
+enum DeviceTabStatus {
+  /// No Flipper, or one that is not connected.
+  absent,
+
+  /// Connecting, recovering, or collecting what it needs after arriving.
+  working,
+
+  /// Connected, with nothing outstanding.
+  ready,
+
+  /// In DFU. Not an error, but not a Flipper the app can talk to either.
+  attention,
+}
+
 /// One icon-only destination of the desktop side rail. [color] tints both the
 /// icon and the selected pill behind it.
 class FlipperRailItem {
@@ -35,13 +64,21 @@ class FlipperRootScaffold extends StatelessWidget {
     required this.currentTab,
     required this.onTabSelected,
     required this.deviceLabel,
+    required this.deviceStatus,
     required this.railGroups,
   });
 
   final Widget child;
   final FlipperRootTab currentTab;
   final ValueChanged<FlipperRootTab> onTabSelected;
+
+  /// The link state as a sentence. No longer the device tab's label - it is
+  /// what the tab *announces*, which is where the eight states survive now
+  /// that the visible label is a noun. See [DeviceTabStatus].
   final String deviceLabel;
+
+  /// The same state as the dot on the tab's icon.
+  final DeviceTabStatus deviceStatus;
 
   /// Rail destinations, split into groups drawn with a divider between them.
   final List<List<FlipperRailItem>> railGroups;
@@ -78,8 +115,9 @@ class FlipperRootScaffold extends StatelessWidget {
             child: Row(
               children: [
                 _BottomTabSlot(
-                  icon: const _NavIcon(asset: 'assets/ic/device/flipper.svg'),
-                  label: deviceLabel,
+                  icon: _DeviceNavIcon(status: deviceStatus),
+                  label: context.l10n.navDevice,
+                  announce: deviceLabel,
                   selected: currentTab == FlipperRootTab.device,
                   onTap: () => onTabSelected(FlipperRootTab.device),
                 ),
@@ -220,6 +258,7 @@ class _BottomTabSlot extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.announce,
   });
 
   final Widget icon;
@@ -227,17 +266,37 @@ class _BottomTabSlot extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// Said after [label] instead of [label] alone, for a tab whose icon
+  /// carries something the label does not. Only the device tab does.
+  final String? announce;
+
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: _BottomTab(
         icon: icon,
         label: label,
+        announce: announce,
         selected: selected,
         onTap: onTap,
       ),
     );
   }
+}
+
+/// [child] announced as "[label], [announcement]" rather than as [label].
+///
+/// The dot on the device tab's icon is the only thing in the bar that carries
+/// meaning no label spells, so it is the only tab that passes an
+/// announcement. [ExcludeSemantics] because the label is inside [child] and
+/// would otherwise be read twice.
+Widget _announced(String? announcement, String label, Widget child) {
+  if (announcement == null) return child;
+  return Semantics(
+    container: true,
+    label: '$label, $announcement',
+    child: ExcludeSemantics(child: child),
+  );
 }
 
 class _BottomTab extends StatelessWidget with VisibleSurface {
@@ -246,10 +305,12 @@ class _BottomTab extends StatelessWidget with VisibleSurface {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.announce,
   });
 
   final Widget icon;
   final String label;
+  final String? announce;
   final bool selected;
   final VoidCallback onTap;
 
@@ -257,6 +318,7 @@ class _BottomTab extends StatelessWidget with VisibleSurface {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final color = selected ? colors.textPrimary : colors.textMuted;
+    final announcement = announce;
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(10),
@@ -266,13 +328,17 @@ class _BottomTab extends StatelessWidget with VisibleSurface {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(width: 42, height: 24, child: icon),
-              const SizedBox(height: 4),
-              _TabLabel(label: label, color: color),
-            ],
+          child: _announced(
+            announcement,
+            label,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 42, height: 24, child: icon),
+                const SizedBox(height: 4),
+                TabLabel(label: label, color: color),
+              ],
+            ),
           ),
         ),
       ),
@@ -282,6 +348,15 @@ class _BottomTab extends StatelessWidget with VisibleSurface {
 
 /// A bottom-bar label, drawn at the size the bar is designed at where it
 /// fits, and as near to it as the slot allows where it does not.
+///
+/// Public for `test/nav_bar_label_fit_test.dart` alone, which is where the
+/// contract below is pinned. It was private while the device tab's label was
+/// a *status*, because that made every tab's label an arbitrary string the
+/// bar's own API accepted and so gave the fit cases a vehicle. #429 made that
+/// label a noun from the ARB like the other three, and with it the bar has no
+/// way left to be handed a long label - which is the point of #429 and would
+/// have left the fit untestable. Exposing the label is the smaller price, and
+/// the better test: the contract is this widget's, not the shell's.
 ///
 /// A slot is a quarter of the bar less the 16 of padding around the label: 74
 /// on a 360 dp phone with no cutout, 64 on a 320. Cut at a fixed size in that
@@ -355,8 +430,9 @@ class _BottomTab extends StatelessWidget with VisibleSurface {
 /// probe could not see it at all; and a platform that rounds advances to whole
 /// pixels breaks the linearity the two probes assume. A `FittedBox` measures
 /// the paragraph the tree actually laid out, so none of those is reachable.
-class _TabLabel extends StatelessWidget {
-  const _TabLabel({required this.label, required this.color});
+@visibleForTesting
+class TabLabel extends StatelessWidget {
+  const TabLabel({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -420,6 +496,73 @@ class _TabLabel extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The dot [_DeviceNavIcon] draws, so a test can read its colour.
+///
+/// A key rather than a semantics value: what the dot says is already
+/// announced as the tab's label (see `_announced`), and a second
+/// announcement for the same fact would be read out twice.
+@visibleForTesting
+const Key deviceStatusDotKey = ValueKey('deviceStatusDot');
+
+/// The device tab's icon with the link state as a dot on its corner.
+///
+/// Drawn in the icon's own 42x24 box rather than beside it, so the state
+/// costs no width at any text size - which is the whole point of #429.
+class _DeviceNavIcon extends StatelessWidget {
+  const _DeviceNavIcon({required this.status});
+
+  final DeviceTabStatus status;
+
+  /// The dot's diameter, and the ring around it. The ring is the card colour
+  /// so the dot reads as separate from the icon's own strokes rather than as
+  /// part of the drawing.
+  static const double _dot = 8;
+  static const double _ring = 2;
+
+  Color _color(QAppColors colors) => switch (status) {
+    DeviceTabStatus.absent => colors.textMuted,
+    DeviceTabStatus.working => colors.info,
+    DeviceTabStatus.ready => colors.success,
+    DeviceTabStatus.attention => colors.danger,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Positioned.fill(
+          child: _NavIcon(asset: 'assets/ic/device/flipper.svg'),
+        ),
+        Positioned(
+          right: 0,
+          top: 0,
+          child: Container(
+            width: _dot + _ring * 2,
+            height: _dot + _ring * 2,
+            decoration: BoxDecoration(
+              color: colors.card,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Container(
+                key: deviceStatusDotKey,
+                width: _dot,
+                height: _dot,
+                decoration: BoxDecoration(
+                  color: _color(colors),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
