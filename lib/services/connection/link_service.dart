@@ -522,7 +522,7 @@ class LinkService extends ChangeNotifier {
     // honours the toggle. Telling an app-formed link from a user's needs an
     // endorsement notion this does not have: a hold deliberately survives a
     // reboot into the updater, so "the app formed it" is not a stable
-    // property. Its own task.
+    // property. #460.
     for (final session in sessions) {
       if (session.device.isUsb && session.connected) {
         _holdUsbIds.add(session.device.id);
@@ -708,6 +708,15 @@ class LinkService extends ChangeNotifier {
   }
 
   Future<bool> _restoreCli(_CliHold hold) async {
+    // The `_autoTriedUsb` clause is wrong and known to be - #461. With
+    // `autoConnectUsb` on by default the launch dial puts the cable's id in
+    // that set and nothing takes it out while the cable stays in, so a CLI
+    // channel that dies *without* the device detaching finds no candidate
+    // here, the USB branch skips the same id, and the remembered Bluetooth
+    // device gets dialled instead. Dropping the clause outright risks the
+    // retry loop it is there to prevent, since this returns true whenever it
+    // has a candidate - so the fix wants attempt-tracking of its own, with
+    // the `holdCli` tests that do not exist yet.
     final candidates = [
       for (final device in _usbPresent)
         if (_userDisconnectedKey != 'usb:${device.id}' &&
