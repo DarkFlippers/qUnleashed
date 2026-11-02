@@ -248,7 +248,7 @@ void main() {
       // from the USB branch's without anything noticing.
       final sent = await captureTransactions();
       links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
 
       client.plugged();
       await settle();
@@ -259,7 +259,7 @@ void main() {
       expect(connects.single.status, 'ok');
       expect(connects.single.data['link'], 'ble');
       expect(connects.single.data['trigger'], 'remembered');
-      expect(client.dialled, ['ble:B1']);
+      expect(client.dialled, ['ble:b1']);
     });
 
     // A cancel is swallowed on purpose - it is not a fault - and that is
@@ -347,7 +347,7 @@ void main() {
       'a remembered dial that failed is one auto attempt over ble',
       () async {
         links = await serviceWith(bleAuto: true);
-        await KnownDevicesStore.instance.remember(ble('B1'));
+        await KnownDevicesStore.instance.remember(ble('b1'));
         client.connectThrows = StateError('connection timed out');
 
         client.plugged();
@@ -379,14 +379,14 @@ void main() {
       // filed an issue per cancel. `LinkService._recordAutoFailure` has the
       // mechanism and ADR 0013 the decision.
       links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
       final park = client.parkConnect = Completer<FlipperDevice>();
 
       client.plugged();
       await settle();
       final pressed = links.disconnectDevice(
-        ble('B1'),
-        id: 'B1',
+        ble('b1'),
+        id: 'b1',
         link: FlipperLink.ble,
       );
       park.completeError(StateError('BLE connect aborted'));
@@ -507,7 +507,7 @@ void main() {
 
     test('stops anything else being dialled while it is up', () async {
       links = await serviceWith(usbAuto: true, bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
       client.present = [usb('A'), usb('C')];
       client.reportSessions([connected(usb('A'))]);
 
@@ -521,17 +521,17 @@ void main() {
   group('the remembered Flipper', () {
     test('is dialled when nothing is plugged in', () async {
       links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
 
       client.plugged();
       await settle();
 
-      expect(client.dialled, ['ble:B1']);
+      expect(client.dialled, ['ble:b1']);
     });
 
     test('is not dialled while the setting is off', () async {
       links = await serviceWith(bleAuto: false);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
 
       client.plugged();
       await settle();
@@ -544,7 +544,7 @@ void main() {
     // must not spend the session asking.
     test('is dialled once, however many times the cable moves', () async {
       links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
       client.connectThrows = StateError('out of range');
 
       client.plugged();
@@ -554,14 +554,14 @@ void main() {
       client.plugged();
       await settle();
 
-      expect(client.dialled, ['ble:B1']);
+      expect(client.dialled, ['ble:b1']);
     });
 
     test('is not dialled after the user let it go', () async {
       links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
 
-      await links.disconnectDevice(ble('B1'), id: 'B1', link: FlipperLink.ble);
+      await links.disconnectDevice(ble('b1'), id: 'b1', link: FlipperLink.ble);
       client.plugged();
       await settle();
 
@@ -689,14 +689,14 @@ void main() {
 
     test('is recorded for BLE too, and says so', () async {
       links = await serviceWith(bleAuto: true);
-      await KnownDevicesStore.instance.remember(ble('B1'));
+      await KnownDevicesStore.instance.remember(ble('b1'));
       client.connectThrows = StateError('out of range');
 
       client.plugged();
       await settle();
 
       expect(links.autoConnectFailure?.isBle, isTrue);
-      expect(links.autoConnectFailure?.name, 'B1');
+      expect(links.autoConnectFailure?.name, 'b1');
     });
   });
 }

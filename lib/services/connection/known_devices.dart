@@ -7,11 +7,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging.dart';
 
 class KnownDevice {
-  const KnownDevice({
-    required this.id,
+  /// Canonicalises [id] rather than storing what it was handed, which is the
+  /// migration for every entry a 2.x build wrote.
+  ///
+  /// `known_devices_v1` on an Android install from before universal_ble 3.0.0
+  /// holds upper-case MACs, because that is what the plugin reported then.
+  /// From 3.0.0 it reports lower-case everywhere, so a stored id compares
+  /// unequal to the live one for the same Flipper: [matches] fails, the
+  /// devices page lists the remembered entry and the Flipper in front of the
+  /// user as two devices, [forget] takes the one that is not there, and the
+  /// auto-connect target is an id no callback will ever equal.
+  ///
+  /// On construction, so that there is one point to enforce it and no second
+  /// spelling in the store to reason about. That is also why there is no
+  /// `known_devices_v2`: an entry read through [fromJson] is canonical in
+  /// memory immediately and written back canonical by the next mutation, and
+  /// a build that rolls back reads a lower-case id it can still connect with
+  /// - universal_ble 2.x accepted either case as input too. #444
+  KnownDevice({
+    required String id,
     required this.name,
     required this.lastConnectedAt,
-  });
+  }) : id = canonicalBleDeviceId(id);
 
   final String id;
   final String name;
@@ -82,12 +99,31 @@ class KnownDevicesStore extends ChangeNotifier {
         final device = KnownDevice.fromJson(item);
         if (device != null) parsed.add(device);
       }
-      parsed.sort((a, b) => b.lastConnectedAt.compareTo(a.lastConnectedAt));
-      _devices = parsed;
+      _devices = newestPerDevice(parsed);
       notifyListeners();
     } catch (e) {
       LogService.warn('[KnownDevices] load failed: $e');
     }
+  }
+
+  /// [parsed] newest first, with one entry per device.
+  ///
+  /// Split out of [_load] to be reachable: the store is a singleton whose
+  /// [load] memoises, so a test cannot put a file in front of it twice.
+  ///
+  /// The collapse is not tidiness. Canonicalising on construction can make
+  /// two entries that were distinct as stored equal in memory, which is a
+  /// shape an install that ran a 2.x build and a 3.x build of the same device
+  /// can be in. One Flipper listed twice is what this prevents.
+  @visibleForTesting
+  static List<KnownDevice> newestPerDevice(List<KnownDevice> parsed) {
+    final byNewest = [...parsed]
+      ..sort((a, b) => b.lastConnectedAt.compareTo(a.lastConnectedAt));
+    final byId = <String, KnownDevice>{};
+    for (final device in byNewest) {
+      byId.putIfAbsent(device.id, () => device);
+    }
+    return byId.values.toList(growable: false);
   }
 
   Future<void> remember(FlipperDevice device) async {
