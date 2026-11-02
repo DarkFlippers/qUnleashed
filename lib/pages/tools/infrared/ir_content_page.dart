@@ -68,7 +68,6 @@ class _IrContentPageState extends State<IrContentPage> {
       error: null,
       text: widget.content,
       bytes: bytes,
-      isConnected: _client.isConnected,
       onSend: ({required bytes, required onProgress}) async {
         final fileName = _safeName(widget.fileName);
         try {

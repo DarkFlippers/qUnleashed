@@ -65,29 +65,25 @@ void main() {
   });
   tearDown(() => client.close());
 
-  Future<void> show(
-    WidgetTester tester, {
-    bool isConnected = true,
-    FlipperClient? use,
-  }) => tester.pumpWidget(
-    MaterialApp(
-      theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
-      home: IrFileViewer(
-        client: use ?? client,
-        fileName: 'tv.ir',
-        subtitle: '/ext/infrared/tv.ir',
-        loading: false,
-        error: null,
-        text: 'Filetype: IR signals file',
-        bytes: const [1, 2, 3],
-        isConnected: isConnected,
-        onSend: ({required bytes, required onProgress}) async {
-          sends++;
-          return true;
-        },
-      ),
-    ),
-  );
+  Future<void> show(WidgetTester tester, {FlipperClient? use}) =>
+      tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+          home: IrFileViewer(
+            client: use ?? client,
+            fileName: 'tv.ir',
+            subtitle: '/ext/infrared/tv.ir',
+            loading: false,
+            error: null,
+            text: 'Filetype: IR signals file',
+            bytes: const [1, 2, 3],
+            onSend: ({required bytes, required onProgress}) async {
+              sends++;
+              return true;
+            },
+          ),
+        ),
+      );
 
   Future<void> tapSend(WidgetTester tester) async {
     await tester.tap(find.byType(ProgressButton));
@@ -102,21 +98,9 @@ void main() {
     expect(sends, 1);
   });
 
-  testWidgets('does not send when the client says there is no link', (
-    tester,
-  ) async {
+  testWidgets('does not send when there is no link', (tester) async {
     client = FakeLinkClient(connected: false);
     await show(tester);
-
-    await tapSend(tester);
-
-    expect(sends, 0, reason: 'the page thought it was connected; the link did');
-  });
-
-  testWidgets('does not send when the page says there is no link', (
-    tester,
-  ) async {
-    await show(tester, isConnected: false);
 
     await tapSend(tester);
 
