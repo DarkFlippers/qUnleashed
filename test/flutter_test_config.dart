@@ -14,6 +14,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/components/notification.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/permissions.dart';
@@ -36,5 +37,11 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // only do so through production code, which is why the reset is here and
   // not a list of file names kept by hand. QUNLEASHED-S.
   setUp(QNotification.debugReset);
+  // `_RasterIconCache._recorded` is the fourth: it bounds a failed rasterize to
+  // one record per asset and size, and nothing in the app ever clears it, by
+  // design. So the first test to fail an icon silences every later test for
+  // that asset - and the silence looks exactly like a `_record` that is not
+  // wired up. #441.
+  setUp(debugForgetRecordedIconFailures);
   await testMain();
 }

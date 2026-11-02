@@ -19,8 +19,12 @@
 // did not do what was asked.
 //
 // Blind spots, shared with every per-file syntactic ratchet here: a `caught`
-// behind a one-line wrapper, or inside an `onError:` closure rather than a
-// catch clause. #103 holds those.
+// behind a one-line wrapper. #103 holds those.
+//
+// An `onError:` closure used to be listed here too, and it was never true -
+// `_CaughtVisitor` counts a `caught` wherever it sits, as its own doc below
+// says. #441's icon handler was the first site of that shape to arrive and the
+// budget had to move for this test to pass, which is what settled it.
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -273,7 +277,7 @@ import 'ratchet.dart';
 /// archive category's folder pick and gains a second line in the file
 /// browser's *file* pick, which is #354.
 ///
-/// `components` is 3, and all three are the shim's:
+/// `components` is 4. Three are the shim's:
 ///
 ///  * **the folder pick failed** - the four lines above arriving in one place.
 ///    The body is the caller's `what` plus `describe`, so the five surfaces
@@ -303,6 +307,16 @@ import 'ratchet.dart';
 /// came back with none of the chosen files, which used to return silently
 /// beside the cancellation. Why those two are separable, and what is left of
 /// the issue, is in `_uploadFromPath` beside the code.
+///
+/// **The fourth is `icon.dart`'s** - *a raster the engine refused*, in
+/// `_RasterIconCache._record`. Rasterizing an icon is an operation and a
+/// surface `dart:ui` will not allocate is it failing, so the rule is met; what
+/// makes it worth a number is that the same handler also sees a missing asset,
+/// and that one goes to `warn` instead, because a packaging defect has an
+/// owner. §5's volume question is answered in the cache rather than in the
+/// comment: the record is once per key, not once per widget, because every
+/// later `QIcon` with that key re-asks and sixteen icons on a cold start are
+/// sixteen bodies that cannot fold. #441.
 /// **`services` is 19.** The nineteenth is `storage/paths.dart`'s, *Windows
 /// would not name Documents*. Asking the OS for `FOLDERID_Documents` is an
 /// operation, and a machine that refuses it gets the old
@@ -316,7 +330,7 @@ const Map<String, int> kBudget = {
   'pages/tools': 11,
   'pages/flibler': 0,
   'pages/apps': 1,
-  'components': 3,
+  'components': 4,
 };
 
 const String kAdr = 'docs/adr/0013-observability-with-sentry.md';
