@@ -488,7 +488,7 @@ class _FirmwareControls extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
       child: Column(
         children: [
-          _SettingsDropdown<FirmwareDirectoryChannel>(
+          SettingsDropdown<FirmwareDirectoryChannel>(
             title: context.l10n.firmwareUpdateChannel,
             value: selectedChannel,
             items: channels,
@@ -502,7 +502,7 @@ class _FirmwareControls extends StatelessWidget {
           ),
           if (showVariant) ...[
             const SizedBox(height: 8),
-            _SettingsDropdown<UnleashedVariant>(
+            SettingsDropdown<UnleashedVariant>(
               title: context.l10n.firmwareBuildVariant,
               value: variant,
               items: UnleashedVariant.values,
@@ -526,8 +526,36 @@ class _FirmwareControls extends StatelessWidget {
   }
 }
 
-class _SettingsDropdown<T> extends StatelessWidget {
-  const _SettingsDropdown({
+/// A setting's title beside a tap target showing its current value.
+///
+/// ## The two arrangements, and why there are two
+///
+/// A title and a value on one line stop fitting on one line at some text
+/// size, and this one did it badly: the title was an `Expanded` beside an
+/// inflexible dropdown, so the dropdown took its whole intrinsic width and
+/// the title got the remainder. At a scaler of 2 that remainder fell to about
+/// one glyph and `Text` wrapped per character - a vertical column of letters
+/// tall enough to push the build-variant row and the update button off the
+/// screen. #463.
+///
+/// So the row is kept only while both strings fit it whole, and below that
+/// the title moves above the dropdown instead. Of the three fixes the issue
+/// weighed, this is the one that keeps both strings intact at every scaler:
+/// ellipsising the value would bring back #425, where two channels sharing a
+/// title prefix read as the same channel, and clamping the title to two lines
+/// leaves the user reading "Кан..." for the setting they are changing.
+///
+/// The decision is a measurement rather than a width threshold, because the
+/// value is **server data**: a channel's title comes from the firmware
+/// directory, so no number picked here and no ARB kept short survives a
+/// longer channel title shipping upstream.
+///
+/// `@visibleForTesting` so `test/firmware_dropdown_fit_test.dart` can drive
+/// that contract at a scaler; nothing outside this file builds one.
+@visibleForTesting
+class SettingsDropdown<T> extends StatelessWidget {
+  const SettingsDropdown({
+    super.key,
     required this.title,
     required this.value,
     required this.items,
@@ -547,62 +575,155 @@ class _SettingsDropdown<T> extends StatelessWidget {
   final String placeholder;
   final ValueChanged<T> onChanged;
 
+  /// The gap the title keeps from the dropdown beside it.
+  ///
+  /// Counted in the fit as well as drawn, so "fits" means "fits with room to
+  /// read", not "the two strings touch".
+  static const double _gap = 8;
+
+  /// What the dropdown spends besides its value: 10 of padding on each side,
+  /// the 6 before the chevron, and the chevron's 18.
+  ///
+  /// None of it follows the text scaler - `Icon` takes a size, not a scaler -
+  /// which is why the row runs out of room for the title before the dropdown
+  /// runs out of room for anything.
+  static const double _chrome = 10 + 10 + 6 + 18;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    // Merged here because `Text` merges it too, and the letter spacing
+    // Material's body style charges per glyph is several percent of a long
+    // channel title - enough to decide a fit either way.
+    final base = DefaultTextStyle.of(context).style;
+    final titleStyle = base.merge(
+      TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: colors.textPrimary,
+      ),
+    );
+    final valueStyle = base.merge(
+      TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: value == null ? colors.textMuted : accent,
+      ),
+    );
+    final valueLabel = value == null ? placeholder : labelOf(value as T);
+    final direction = Directionality.of(context);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: colors.textPrimary,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scaler = MediaQuery.textScalerOf(context);
+          final needed =
+              _measure(title, titleStyle, scaler, direction) +
+              _gap +
+              _measure(valueLabel, valueStyle, scaler, direction) +
+              _chrome;
+          // An unbounded width is not a width that ran out; the row is what
+          // this looks like, so it is what an unbounded one gets.
+          final stacked =
+              constraints.hasBoundedWidth && needed > constraints.maxWidth;
+          final label = Text(title, style: titleStyle);
+
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                label,
+                const SizedBox(height: 6),
+                _dropdown(
+                  context,
+                  colors,
+                  valueLabel,
+                  valueStyle,
+                  bounded: true,
+                ),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: label),
+              const SizedBox(width: _gap),
+              _dropdown(
+                context,
+                colors,
+                valueLabel,
+                valueStyle,
+                bounded: false,
               ),
-            ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// The width [text] will lay out in, measured the way the `Text` that draws
+  /// it is about to.
+  ///
+  /// [style] arrives with `DefaultTextStyle` already merged in, and [scaler]
+  /// rather than a `MediaQuery` because a `TextPainter` outside the tree has
+  /// no context to read one from.
+  static double _measure(
+    String text,
+    TextStyle style,
+    TextScaler scaler,
+    TextDirection direction,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: direction,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+
+  Widget _dropdown(
+    BuildContext context,
+    QAppColors colors,
+    String valueLabel,
+    TextStyle valueStyle, {
+    required bool bounded,
+  }) {
+    final text = Text(valueLabel, style: valueStyle);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: items.isEmpty ? null : () => _showPicker(context, colors),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.divider),
+            borderRadius: BorderRadius.circular(12),
           ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: items.isEmpty ? null : () => _showPicker(context, colors),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: colors.divider),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      value == null ? placeholder : labelOf(value as T),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: value == null ? colors.textMuted : accent,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.expand_more,
-                      size: 18,
-                      color: value == null
-                          ? colors.textMuted
-                          : colors.textSecondary,
-                    ),
-                  ],
-                ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Flexible only where the width is bounded. Stacked, this sits
+              // in a `Column` and a value too long for the card wraps; in the
+              // row it sits in an inflexible slot, whose constraint is
+              // unbounded - and a flex child under an unbounded constraint is
+              // a `RenderFlex` assertion rather than a wrap.
+              if (bounded) Flexible(child: text) else text,
+              const SizedBox(width: 6),
+              Icon(
+                Icons.expand_more,
+                size: 18,
+                color: value == null ? colors.textMuted : colors.textSecondary,
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
