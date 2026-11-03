@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/connection/known_devices.dart';
@@ -151,10 +153,11 @@ void main() {
 
     test('and a live id in the old spelling matches a stored one', () {
       // The other direction, which only holds because `matches` folds what it
-      // is handed too. It is what `remember` dedupes on, so without the fold
-      // an uncanonical live id leaves the stored entry in place and the store
-      // holds the same Flipper twice - this bug, by way of this file rather
-      // than the plugin.
+      // is handed too. `remember` stopped dedupeing on it in #456 - it
+      // prepends and lets `_replace` fold on the id - so what rests on this
+      // now is `updateName`, where a miss declines a rename in silence, and
+      // `LinkService._onHeard`, where it leaves a remembered row unmarked
+      // while the scan can hear the Flipper.
       final known = entry(
         reportedById,
         'Flipper Zoe',
@@ -169,6 +172,42 @@ void main() {
       final known = entry(storedById, 'Flipper Zoe', '2026-10-01T10:00:00.000');
 
       expect(known.matches(_ble(otherById)), isFalse);
+    });
+
+    // The write path over a migrated entry, which is the one thing #456
+    // changed rather than moved. `remember` used to drop the old entry with
+    // `known.matches(device)` and now prepends and lets `_replace` fold on
+    // the id. The two agree because `remember` has returned already unless
+    // `device.isBle`, and `entry.id` is `canonicalBleDeviceId(device.id)` by
+    // the constructor - an argument, where this is the observation.
+    //
+    // Nothing covered it. The group above pins each fold on its own and the
+    // end-to-end load is in `known_devices_load_test.dart`, but a stored
+    // entry being written *over* rather than *beside* when that Flipper next
+    // connects was left to the two cases composing. What a miss costs is
+    // #444's symptom from the write side: one Flipper listed twice under one
+    // name, and `forget` removing the row the user did not tap.
+    test('is written over, not beside, when that Flipper connects', () async {
+      SharedPreferences.setMockInitialValues({
+        'known_devices_v1': jsonEncode([
+          storedEntry(storedById, 'the stored name', '2026-10-01T10:00:00.000'),
+        ]),
+      });
+      await known.load();
+      expect(known.devices.map((d) => d.id), [
+        reportedById,
+      ], reason: 'premise: the entry loaded, and loaded folded');
+
+      await known.remember(_ble(reportedById));
+
+      // One row. The live id is canonical here because that is what a 3.x
+      // plugin reports; the uncanonical direction is pinned by the `matches`
+      // case above rather than repeated.
+      expect(known.devices, hasLength(1));
+      // And it is the fresh entry that survived, not the stored one - which
+      // is what makes this a replacement rather than the new entry being
+      // dropped as the duplicate.
+      expect(known.devices.single.name, reportedById);
     });
   });
 }

@@ -336,15 +336,18 @@ import 'ratchet.dart';
 ///    gate the #444 id migration passes through, so a silent drop is that
 ///    migration not applying.
 ///  * *duplicate entries merged*. Canonicalising a stored id can make two
-///    entries equal, and `_newestPerDevice` keeps the newer. It is *not*
+///    entries equal, and `_load` sorts newest-first before `_replace` folds
+///    on the id keeping the first, so the newer survives. It is *not*
 ///    evidence that the migration ran - a store written by one build on
 ///    universal_ble 2.x holds one spelling per device, so nothing collides on
 ///    the ordinary upgrade.
 ///  * *entries over the cap*. `_maxEntries` was applied in `remember` and in
 ///    none of the other three assignments to `_devices`, so an oversized
-///    store loaded whole and stayed that way. `remember`'s own trim is silent
-///    and is not the precedent: there the user tapped connect and displaced
-///    one entry they chose, where this is unbounded and unasked. `take` runs
+///    store loaded whole and stayed that way. Since #456 there is one
+///    assignment and it caps, so what is left here is reporting the drop
+///    rather than remembering to make it. `remember`'s own trim is silent and
+///    is not the precedent: there the user tapped connect and displaced one
+///    entry they chose, where this is unbounded and unasked. The cut runs
 ///    after the sort, so `lastDevice` cannot change - which makes it the
 ///    least of the three, not a non-loss. #453
 ///

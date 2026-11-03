@@ -57,11 +57,12 @@ void main() {
   // bump and the fold ship together - and a restored or hand-edited store
   // gets there too.
   //
-  // Measured: with `_newestPerDevice(parsed)` replaced by a plain newest-first
-  // sort and the cap left in place, this is the only case in the repository
-  // that fails. (#444's note gave the whole pre-fix body, `parsed.sort();
-  // _devices = parsed;`, which also drops the cap and so fails the cap case
-  // below as well - the mutation to run is the collapse alone.) #444.
+  // Measured: with `_replace`'s `putIfAbsent` fold dropped - assigning
+  // `next.take(_maxEntries)` straight through, so the sort and the cap both
+  // stay - this is the only case in the repository that fails. (#444's note
+  // gave the whole pre-fix body, `parsed.sort(); _devices = parsed;`, which
+  // also drops the cap and so fails the cap case below as well - the mutation
+  // to run is the collapse alone.) #444.
   test(
     'a store written by a 2.x build loads as one canonical device',
     () async {

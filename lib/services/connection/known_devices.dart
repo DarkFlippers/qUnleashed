@@ -63,14 +63,17 @@ class KnownDevice {
   /// Defence across a submodule boundary rather than a live fix: flipperlib
   /// folds every BLE id it produces - `BleDiscoveredDevice` on construction,
   /// and `connectBleAddress` for an id a caller supplies - so no uncanonical
-  /// `device.id` reaches here today. What a raw comparison would cost if one
-  /// did is worth the line: [remember] builds its new entry through the
-  /// canonicalising constructor but drops the old one by *this* test, so a
-  /// miss leaves both, and the store holds the same Flipper twice. That is
-  /// #444's symptom reintroduced by this file instead of by the plugin, and
-  /// [_newestPerDevice] would not catch it - it runs on load, not on write.
+  /// `device.id` reaches here today. The fold is idempotent, so agreeing
+  /// costs nothing.
   ///
-  /// The fold is idempotent, so agreeing costs nothing.
+  /// What a miss would cost is no longer a duplicate entry. [remember] used
+  /// to drop the old entry by *this* test, so a miss left both and the store
+  /// held one Flipper twice - #444's symptom reintroduced by this file rather
+  /// than by the plugin. Since #456 every write goes through [_replace],
+  /// which folds on `id`, so that outcome is unreachable from here. The two
+  /// callers left are [updateName], where a miss silently declines a rename,
+  /// and `LinkService._onHeard`, where it leaves a remembered row unmarked
+  /// while the scan can hear it.
   bool matches(FlipperDevice device) =>
       device.isBle && canonicalBleDeviceId(device.id) == id;
 
@@ -115,8 +118,9 @@ class KnownDevicesStore extends ChangeNotifier {
 
   /// Not the list itself: a [ChangeNotifier] that hands out its own mutable
   /// state has no way to notify about a write it did not make. Every caller
-  /// only reads, and the assignment sites disagreed about growability, so
-  /// what a caller *could* do depended on which path last ran.
+  /// only reads, and before [_replace] the assignment sites disagreed about
+  /// growability, so what a caller *could* do depended on which path last
+  /// ran. One site writes it now, and it writes `growable: false`.
   ///
   /// A view rather than the `List.unmodifiable` copy this codebase uses
   /// elsewhere, because this getter is read on every `LinkService.entries`
@@ -166,9 +170,20 @@ class KnownDevicesStore extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
-      if (raw == null) return;
+      // Through [_replace] like every other exit from this method, so that
+      // "a load that completed has written `_devices`" holds without a
+      // reader checking which branch ran. Silent, and in the first case not
+      // even a degradation: a store nobody has written yet is the ordinary
+      // first launch.
+      if (raw == null) {
+        _replace(const []);
+        return;
+      }
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
+      if (decoded is! List) {
+        _replace(const []);
+        return;
+      }
       final parsed = <KnownDevice>[];
       var unreadable = 0;
       for (final item in decoded) {
@@ -207,105 +222,123 @@ class KnownDevicesStore extends ChangeNotifier {
           'entries: id, name or lastConnectedAt unreadable',
         );
       }
-      _devices = _cappedToMaxEntries(_newestPerDevice(parsed));
+      final (:merged, :capped) = _replace(_newestFirst(parsed));
+      if (merged > 0) {
+        // Kept because of what it is, not what it proves: a remembered device
+        // dropped without the user asking, durable at the next mutation. That
+        // is the same test `_persist` applies to pick its own level.
+        //
+        // It says nothing about the ordinary upgrade, and an earlier version
+        // of this comment claimed otherwise. A store written by one build on
+        // universal_ble 2.x holds one spelling per device, so the fold
+        // rewrites it and nothing collides. What reaches here is a store
+        // holding *two* spellings of one device - a rollback round trip, or a
+        // restored or hand-edited file - which is to say an install that did
+        // not need the migration in the first place.
+        LogService.caught(
+          '[KnownDevices] merged $merged duplicate entries after the id '
+          'migration',
+        );
+      }
+      if (capped > 0) {
+        // Kept for the same reason, by the same test: durable, and the user
+        // asked for nothing. The next mutation writes `_devices` back over
+        // the whole stored array, so what is cut here is gone from disk at
+        // the first [remember].
+        //
+        // [remember]'s own trim is silent and is not the precedent, because
+        // there the user tapped connect on a ninth Flipper and displaced one
+        // entry they chose. Nobody tapped anything here and the count is
+        // unbounded - a restored twenty-entry store loses twelve.
+        // [_maxEntries] is private, so no user has been told there is a cap:
+        // from their side this is indistinguishable from the unreadable drop,
+        // and without this line it is also indistinguishable from a store
+        // that never loaded.
+        //
+        // Once per launch rather than once ever, unlike the unreadable drop:
+        // nothing here writes the trim back, so an over-cap store stays
+        // over-cap on disk until the user connects, renames or forgets
+        // something. That is deliberate - "a store a future build with a
+        // larger cap wrote" is one of the inputs - and persisting the trim
+        // would destroy entries that build can still read. Lossless until a
+        // mutation is the forward-compatible answer, and the repeat is its
+        // price.
+        //
+        // `parsed.length - merged` is the count [_replace] was handed after
+        // the fold, which is the total this drop is out of.
+        LogService.caught(
+          '[KnownDevices] dropped $capped of ${parsed.length - merged} '
+          'remembered devices over the cap of $_maxEntries, oldest first',
+        );
+      }
       notifyListeners();
     } catch (e) {
       LogService.warn('[KnownDevices] load failed: $e');
     }
   }
 
-  /// [parsed] sorted newest first, with one entry per device.
+  /// [parsed] sorted newest first, which is the order [_replace] then keeps.
   ///
-  /// The collapse is not tidiness. Canonicalising on construction can make
-  /// two entries that were distinct as stored equal in memory. No released
-  /// build can have written that pair - the plugin bump and this constructor
-  /// ship together, and within one 2.x build a device has exactly one
-  /// spelling per platform - but a round trip gets there: an install that
-  /// rolls back to a build on universal_ble 2.x re-remembers the device in the
-  /// platform's own case beside the canonical entry, and both fold to the same
-  /// id when it comes forward again. A restored or hand-edited store does too.
-  /// One Flipper listed twice is what this prevents.
-  static List<KnownDevice> _newestPerDevice(List<KnownDevice> parsed) {
-    final byNewest = [...parsed]
-      ..sort((a, b) => b.lastConnectedAt.compareTo(a.lastConnectedAt));
-    final byId = <String, KnownDevice>{};
-    for (final device in byNewest) {
-      byId[device.id] ??= device;
-    }
-    final merged = byNewest.length - byId.length;
-    if (merged > 0) {
-      // Kept because of what it is, not what it proves: a remembered device
-      // dropped without the user asking, durable at the next mutation. That
-      // is the same test `_persist` applies to pick its own level, and since
-      // #453 the cap in [_load] is a third line that meets it.
-      //
-      // It says nothing about the ordinary upgrade, and an earlier version of
-      // this comment claimed otherwise. A store written by one build on
-      // universal_ble 2.x holds one spelling per device, so the fold rewrites
-      // it and nothing collides. What reaches here is a store holding *two*
-      // spellings of one device - a rollback round trip, or a restored or
-      // hand-edited file - which is to say an install that did not need the
-      // migration in the first place.
-      LogService.caught(
-        '[KnownDevices] merged $merged duplicate entries after the id '
-        'migration',
-      );
-    }
-    return byId.values.toList(growable: false);
-  }
+  /// Sorting lives here rather than in [_replace] because [_load] is the only
+  /// path handed entries in arbitrary order: [remember] prepends to an
+  /// already-ordered list, and [updateName] and [forget] rebuild one from
+  /// one. That split is what lets [_replace] be order-preserving, which #453
+  /// established it has to be.
+  static List<KnownDevice> _newestFirst(List<KnownDevice> parsed) =>
+      [...parsed]
+        ..sort((a, b) => b.lastConnectedAt.compareTo(a.lastConnectedAt));
 
-  /// [collapsed] cut to [_maxEntries], newest kept.
+  /// Writes [next] into `_devices` - one entry per device, no more than
+  /// [_maxEntries] of them - and reports what it dropped getting there.
   ///
-  /// Applied on every load and not only in [remember], which was the one of
-  /// the four assignments to `_devices` that held the cap. A
-  /// `known_devices_v1` holding more than [_maxEntries] - a restored or
-  /// hand-edited file, a store a future build with a larger cap wrote, a
-  /// backup that merged two devices' files - loaded whole and stayed that
-  /// way: [updateName] rebuilds one-for-one and [forget] only shrinks, so
-  /// nothing trimmed it until the next [remember]. #453
+  /// The one assignment every production path goes through. There were four,
+  /// and two of them capped: [updateName] and [forget] were correct because
+  /// their input had been capped by whichever path ran before them, an
+  /// induction that nothing enforced and nothing wrote down. #453 was the
+  /// second time the cap was found missing from an assignment site, and the
+  /// fifth writer would have looked exactly like [updateName] does. #456
   ///
-  /// Cuts after [_newestPerDevice] has sorted, so what goes is the oldest -
-  /// the same entries [remember] drops - and [lastDevice], which is the
-  /// auto-connect target, cannot change.
-  static List<KnownDevice> _cappedToMaxEntries(List<KnownDevice> collapsed) {
-    final overCap = collapsed.length - _maxEntries;
-    if (overCap > 0) {
-      // Kept for the same reason as the other two drops in [_load], by the
-      // test `_persist` states: durable, and the user asked for nothing. The
-      // next mutation writes `_devices` back over the whole stored array, so
-      // what is cut here is gone from disk at the first [remember].
-      //
-      // [remember]'s own trim is silent and is not the precedent, because
-      // there the user tapped connect on a ninth Flipper and displaced one
-      // entry they chose. Nobody tapped anything here and the count is
-      // unbounded - a restored twenty-entry store loses twelve. [_maxEntries]
-      // is private, so no user has been told there is a cap: from their side
-      // this is indistinguishable from the unreadable drop, and without this
-      // line it is also indistinguishable from a store that never loaded.
-      //
-      // Once per launch rather than once ever, unlike the two above: nothing
-      // here writes the trim back, so an over-cap store stays over-cap on
-      // disk until the user connects, renames or forgets something. That is
-      // deliberate - "a store a future build with a larger cap wrote" is one
-      // of the inputs above, and persisting the trim would destroy entries
-      // that build can still read. Lossless until a mutation is the
-      // forward-compatible answer, and the repeat is its price.
-      LogService.caught(
-        '[KnownDevices] dropped $overCap of ${collapsed.length} remembered '
-        'devices over the cap of $_maxEntries, oldest first',
-      );
+  /// **Order-preserving, and that is load-bearing.** The caller fixes the
+  /// order; on a collision the earlier entry wins. That is why [remember]
+  /// puts its new entry first and why [_load] sorts before calling. Sorting
+  /// here instead would be the bug #453 named when it deferred this: against
+  /// a skewed clock, or a stored entry carrying a future timestamp, a sort
+  /// would let a stale entry win [lastDevice] and so become the auto-connect
+  /// target.
+  ///
+  /// Returns the counts instead of logging them, because whether a drop is
+  /// worth a line is the caller's to know. The same drop is a
+  /// [LogService.caught] in [_load], where the user asked for nothing, and
+  /// silent in [remember], where they tapped connect on a ninth Flipper.
+  ({int merged, int capped}) _replace(Iterable<KnownDevice> next) {
+    final byId = <String, KnownDevice>{};
+    var seen = 0;
+    for (final device in next) {
+      seen++;
+      byId.putIfAbsent(device.id, () => device);
     }
-    return collapsed.take(_maxEntries).toList(growable: false);
+    _devices = byId.values.take(_maxEntries).toList(growable: false);
+    return (merged: seen - byId.length, capped: byId.length - _devices.length);
   }
 
   Future<void> remember(FlipperDevice device) async {
     if (!device.isBle) return;
     await load();
     final entry = KnownDevice.fromDevice(device, DateTime.now());
-    _devices = [
-      entry,
-      ..._devices.where((known) => !known.matches(device)),
-    ].take(_maxEntries).toList();
+    // `entry` first plus first-wins folding is exactly what
+    // `where((known) => !known.matches(device))` was. This method has already
+    // returned unless `device.isBle`, and `entry.id` is
+    // `canonicalBleDeviceId(device.id)` because the constructor folds, so
+    // `known.matches(device)` reduces to `known.id == entry.id`. What goes
+    // with it is the second spelling of one invariant - [KnownDevice.matches]
+    // on write, id-keyed folding on load - which is the divergence that
+    // method's own doc flags as the hazard. #456
+    //
+    // Both counts discarded on purpose. A merge cannot happen here: the list
+    // this is handed already holds one entry per device. A cap can, and is
+    // silent, because the user tapped connect on a ninth Flipper and
+    // displaced one they chose.
+    _replace([entry, ..._devices]);
     notifyListeners();
     await _persist();
   }
@@ -330,7 +363,9 @@ class KnownDevicesStore extends ChangeNotifier {
       }
     }
     if (!changed) return;
-    _devices = next;
+    // One for one, so neither count can be non-zero; through [_replace] so
+    // that it stays true by construction rather than by that argument.
+    _replace(next);
     notifyListeners();
     await _persist();
   }
@@ -339,7 +374,9 @@ class KnownDevicesStore extends ChangeNotifier {
     await load();
     final next = _devices.where((known) => known.id != device.id).toList();
     if (next.length == _devices.length) return;
-    _devices = next;
+    // Only ever shorter, so as with [updateName] both counts are zero - and
+    // as there, through [_replace] so that nothing has to argue it.
+    _replace(next);
     notifyListeners();
     await _persist();
   }
