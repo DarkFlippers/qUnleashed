@@ -31,11 +31,27 @@ class _AppLicensePageState extends State<AppLicensePage> {
     super.dispose();
   }
 
+  /// Reads the licence and reflows it once, here rather than in `build`.
+  ///
+  /// [_normalize] splits the whole file into its 674 lines and reassembles
+  /// them through two `StringBuffer`s, and it used to run from `build` - for a
+  /// string that arrives once and never changes afterwards. #344 cut the rate
+  /// of those rebuilds by taking the device-info poll off this page (it was
+  /// that issue's sharpest example, and
+  /// `test/device_scope_client_of_test.dart` has the case pinning the poll no
+  /// longer reaching it); what was left was the work itself, on every other
+  /// rebuild - a theme change, a locale change, a `MaterialApp` rebuild from
+  /// either. #408.
+  ///
+  /// Which branch `_buildBody` draws is unchanged: [_text] is still null until
+  /// this completes, so the spinner is still what a loading page shows, and the
+  /// failure path still sets [_error] rather than a normalised empty string -
+  /// writing `''` here would swap the spinner for the error view.
   Future<void> _load() async {
     try {
       final value = await rootBundle.loadString('LICENSE');
       if (!mounted) return;
-      setState(() => _text = value);
+      setState(() => _text = _normalize(value));
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -82,7 +98,7 @@ class _AppLicensePageState extends State<AppLicensePage> {
           controller: _controller,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           child: SelectableText(
-            _normalize(text),
+            text,
             style: TextStyle(
               color: colors.textPrimary,
               fontSize: 13,
