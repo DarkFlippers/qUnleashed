@@ -5,6 +5,8 @@ import 'package:qunleashed/pages/devices/widgets/firmware_card.dart';
 import 'package:qunleashed/services/localization/gen/l10n_generated.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 /// Built once. `ThemeData()` is not free and nothing here varies it, so every
 /// case would otherwise pay for the same answer.
 final ThemeData _theme = buildAppTheme(
@@ -38,14 +40,15 @@ const String _longChannel = 'Stable Release Channel';
 /// twice what Roboto gives at the same size - `nav_bar_label_fit_test.dart`
 /// has the measurement that ratio comes from. So the widths here are chosen
 /// through it rather than as phone widths, and there are six of them, none a
-/// device size:
+/// device size. Each is the **window**, set with `sizeView`, and the widget
+/// gets all of it:
 ///
 ///  * **600** is roughly what this font spends where Roboto spends the ~292 dp
-///    of card interior on a 320 dp phone, and **900** is deliberately wider
-///    than any phone's card. Neither mapping is derived anywhere; they are two
-///    widths far enough apart that the arrangement differs between them.
-///  * **360** and **320** are two narrow cases, chosen to make a long value
-///    and a long value at a scaler the thing that runs out of room. In this
+///    of card interior on a 320 dp phone, and **900** is wider than any
+///    phone's card. Neither mapping is derived anywhere; they are two widths
+///    far enough apart that the arrangement differs between them.
+///  * **360** and **320** are two narrow cases, chosen to make a long value,
+///    or a long value at a scaler, the thing that runs out of room. In this
 ///    font they are *narrower* than the phones whose numbers they look like.
 ///  * **100** and **2000** are the bisection's brackets, one arrangement each,
 ///    and it asserts that before it searches.
@@ -63,7 +66,16 @@ const String _longChannel = 'Stable Release Channel';
 ///  * below that the title moves **above** the dropdown rather than being
 ///    squeezed, and is still a word rather than a column of letters.
 void main() {
-  /// Pumps one dropdown with [title] and [value] in a [box]-wide slot.
+  /// Pumps one dropdown with [title] and [value] in a [box]-wide window.
+  ///
+  /// **[box] is the window, through `sizeView`, not a `SizedBox` inside one.**
+  /// An earlier draft of this file put the widget in `Center(child: SizedBox(
+  /// width: box))` and the binding's default surface is 800 wide, so every
+  /// width above that was silently clamped: the cases named 900 rendered at
+  /// 800, and the bisection's 2000 bracket probed 800. That is #410/#414 and
+  /// the reason `test/view_size.dart` exists - a case named for a size it did
+  /// not render at - which this file managed to walk into while citing the
+  /// sibling that documents it.
   ///
   /// A null [value] is the placeholder path, which is what the card shows on
   /// every cold open - `firmwareLoading` while the directory is in flight,
@@ -87,6 +99,7 @@ void main() {
     // same case would throw nothing and read as a pass.
     // `device_header_fit_test.dart` is where that is written down.
     await tester.pumpWidget(const SizedBox.shrink());
+    sizeView(tester, Size(box, 1200));
     await tester.pumpWidget(
       MaterialApp(
         theme: _theme,
@@ -96,19 +109,19 @@ void main() {
           child: child!,
         ),
         home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: box,
-              child: SettingsDropdown<String>(
-                title: title,
-                value: value,
-                items: const ['one', 'two'],
-                labelOf: (item) => item,
-                descriptionOf: (item) => 'about $item',
-                accent: const Color(0xFFCC241D),
-                placeholder: placeholder,
-                onChanged: (_) {},
-              ),
+          // Top-aligned and full width: the window is the box, so nothing
+          // between the two can clamp it.
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SettingsDropdown<String>(
+              title: title,
+              value: value,
+              items: const ['one', 'two'],
+              labelOf: (item) => item,
+              descriptionOf: (item) => 'about $item',
+              accent: const Color(0xFFCC241D),
+              placeholder: placeholder,
+              onChanged: (_) {},
             ),
           ),
         ),
@@ -152,8 +165,7 @@ void main() {
   /// boxes here - which every layout breaks mid-word and this fix does not
   /// change. Giving the title its own line is what makes that rare rather
   /// than the normal case.
-  // n separators yield n + 1 parts, which is the plus one. The trailing
-  // hyphen in the class is literal and needs no escape.
+  // The trailing hyphen in the character class is literal, not a range.
   int wrapSlots(String text) => text.split(RegExp(r'[ -]')).length;
 
   /// The dropdown's border box, which is what the title keeps its gap from.
@@ -368,13 +380,10 @@ void main() {
 
   // **The row fills the width it is offered rather than hugging its content.**
   //
-  // A `Row` with no `mainAxisSize` takes the width it is given; a `Wrap` takes
-  // the width of its children. The card puts these in a `Column`, which
-  // centres anything narrower than itself - so the rewrite would have left the
-  // two settings rows hugging their text and sitting in the middle of the
-  // card, which the fit cases cannot see because they pump in a tight box.
-  // `width: double.infinity` is what keeps it, and this is the case that says
-  // so.
+  // The class doc has the mechanism; what matters here is that no other case
+  // can see it. Every case above pumps a window the widget fills by
+  // construction, so only a loose, centring parent - which is what the card
+  // gives it - tells the two apart.
   testWidgets('the row fills a loose width instead of hugging its text', (
     tester,
   ) async {
@@ -447,10 +456,11 @@ void main() {
         // own placeholder, which is the value on a cold open. Picked by
         // length rather than by hand: in this font every glyph is a square of
         // the font size, so the longer string is the wider one.
-        final placeholder = [
-          strings.firmwareUnavailable,
-          strings.firmwareLoading,
-        ].reduce((a, b) => a.length >= b.length ? a : b);
+        final unavailable = strings.firmwareUnavailable;
+        final loading = strings.firmwareLoading;
+        final placeholder = loading.length > unavailable.length
+            ? loading
+            : unavailable;
         final values = <String?>[_longChannel, null];
         for (final title in titles) {
           for (final value in values) {
@@ -500,12 +510,12 @@ void main() {
 //
 // | mutation | killed by |
 // |---|---|
-// | **the pre-fix row**, faithfully - `Expanded` title, drawn gap, inflexible dropdown | 16 of the 18, all eight locales and the unbounded-width case among them |
+// | **the pre-fix row**, faithfully - `Expanded` title, drawn gap, inflexible dropdown | 15 of the 18, all eight locales among them |
 // | the value is inflexible again | 14 of the 18, all eight locales |
 // | the title and the dropdown swap places | 10 of the 18 |
 // | the gap is dropped (`spacing: 0`) | both bisections, and nothing else |
 // | the gap is doubled | both bisections, and nothing else |
-// | `WrapAlignment.start` for `spaceBetween` | "stays against the trailing edge" **alone** |
+// | `WrapAlignment.start` for `spaceBetween` | "stays against the trailing edge" and "fills a loose width" |
 // | the run gap is dropped | "the title goes above the dropdown" **alone** |
 // | the title clamped to one line with an ellipsis | "neither of the fixes the issue rejected" **alone** |
 // | an absent value draws `''` rather than the placeholder | "the placeholder is measured too" **alone** |
@@ -524,8 +534,15 @@ void main() {
 //
 // **The pre-fix row is run as it really was** - `Expanded`, a drawn gap and
 // an inflexible dropdown - rather than as a `Row` of two plain children,
-// which is a different bug with a different shape. An earlier draft of this
-// note claimed four locales could not catch it; a probe that reproduced the
-// arrangement properly showed all eight do, because at a scaler of 2 the
-// dropdown alone wants more than the box and the title's slot goes to zero in
-// every language.
+// which is a different bug with a different shape. All eight locales catch
+// it, because at a scaler of 2 the dropdown alone wants more than the window
+// and the title's slot goes to zero in every language.
+//
+// **Every row above was re-measured after the widths were fixed**, and two of
+// them moved. The pre-fix row was recorded as killing 16 cases including an
+// unbounded-width case that no longer exists - it is 15, and the case that
+// replaced it does not catch that mutation, because an `Expanded` in a
+// `MainAxisSize.max` `Row` fills a loose width and sits flush right exactly
+// as the fix does. `WrapAlignment.start` was recorded as killed by one case
+// and is killed by two. Both numbers were wrong in the direction that
+// flatters the file, which is the direction a record drifts on its own.

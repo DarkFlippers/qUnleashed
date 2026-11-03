@@ -359,18 +359,22 @@ class _FirmwareCardState extends State<FirmwareCard> {
       // **A known overflow, not an open question.** A fixed height holding
       // text that scales is the same class of bug as #463, which filed it as
       // "same card, not confirmed" on the strength of a screenshot. A
-      // screenshot is the one instrument that cannot see it: the slide's
-      // `Column` overflows this box, and the `Material` above wraps the card
-      // in `Clip.antiAlias`, so a release build clips the excess and reports
-      // nothing - the same trap `device_header_fit_test.dart` records.
+      // screenshot is the one instrument that cannot see it, for two reasons
+      // that are not the same reason: the overflow report lives inside an
+      // `assert` in `RenderFlex.paint`, so a release build says nothing
+      // whether or not anything clips; and the excess is clipped anyway -
+      // by the slide's own `Column`, whose `Flex.clipBehavior` is
+      // `Clip.hardEdge`, by the `PageView`'s viewport, and by the card's
+      // `Clip.antiAlias`. `device_header_fit_test.dart` records the same trap.
       //
       // Pumped through `test/firmware_fixture.dart` at a 360 dp window, this
       // overflows by 10 pixels at a scaler of 1.3, 163 at 2.0 and 555 at 3.1,
       // and by 73 at 1.3 on a 320. Fixing it means deciding what the carousel
       // does instead - a `PageView` needs a bounded height, and the slide's
       // 22pt name wraps before the box runs out - which is a design question
-      // rather than the one-line change #463's two rows were. It is #471, and this comment is here so the next reader does not take the
-      // 110 for a number that was measured.
+      // rather than the one-line change #463's two rows were. It is #471;
+      // this note is here so the 110 is not read as a number that was
+      // measured.
       height: 110,
       child: Row(
         children: [
@@ -599,10 +603,16 @@ class _FirmwareControls extends StatelessWidget {
 /// `width: double.infinity` the two rows would hug their content and drift to
 /// the middle of the card. An infinite width then makes that `SizedBox`
 /// infinite, which is an assertion of its own - the old row's was the
-/// `RenderFlex` one, since `Expanded` is `FlexFit.tight`. Everything that
-/// builds one of these is inside the device page's `ListView`, and a case pins
-/// the full width rather than the bound, because filling the card is the part
-/// a caller depends on.
+/// `RenderFlex` one, since `Expanded` is `FlexFit.tight`.
+///
+/// What bounds it is the call site and nothing here: both of these are built
+/// by `_FirmwareControls`, inside `FlipperPageCard`, inside the device page's
+/// `ListView`. The card's own `Container(width: double.infinity)` is **not**
+/// what does it - that propagates an incoming bound and forces infinity where
+/// there is none.
+///
+/// A case pins the full width rather than the bound, because filling the card
+/// is the part a caller depends on.
 ///
 /// `@visibleForTesting` so `test/firmware_dropdown_fit_test.dart` can drive
 /// the contract at a scaler; nothing outside this file builds one.
@@ -642,11 +652,8 @@ class SettingsDropdown<T> extends StatelessWidget {
     final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-      // The `SizedBox` is not decoration. A `Row` with no `mainAxisSize`
-      // takes the width it is offered; a `Wrap` takes the width of its
-      // children, and the `Column` these sit in centres what is narrower than
-      // itself - so without this the two rows would hug their content and
-      // drift to the middle of the card instead of filling it.
+      // Fills the card rather than hugging its text; the class doc has why a
+      // `Wrap` needs saying so where the `Row` did not.
       child: SizedBox(
         width: double.infinity,
         child: Wrap(
