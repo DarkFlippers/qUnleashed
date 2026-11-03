@@ -5,6 +5,7 @@ import 'package:qunleashed/app/nav_bar.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/pages/archive/overview/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
+import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/permissions/center.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
@@ -13,12 +14,30 @@ import 'view_size.dart';
 
 /// What a notification is allowed to rebuild in the shell, and what it is not.
 ///
-/// Two sources reach it and both used to rebuild everything: the five-second
-/// device-info poll (#407) and archive activity (#410). The poll cases fire
-/// `setRecovering`; the archive case fires `notifyListeners` on the
-/// controller. 'the visible slot survives a layout flip' fires neither — it
-/// covers the locals the #407 hoist created, which a layout flip is what
-/// moves.
+/// Three sources reach it and all three used to rebuild everything: the
+/// five-second device-info poll (#407), archive activity (#410) and the
+/// reporting switch (#415). The poll cases fire `setRecovering`; the archive
+/// case fires `notifyListeners` on the controller; the switch case calls
+/// `setShareLogs`. 'the visible slot survives a layout flip' fires none of
+/// them — it covers the locals the #407 hoist created, which a layout flip is
+/// what moves.
+///
+/// The third reached the shell by a different route, which is why it is here
+/// rather than in a file of its own: not a listener the shell added, but an
+/// inherited dependency, registered by a single `DiagnosticsScope.of` in
+/// `initState`'s post-frame callback. One read, for one decision - whether
+/// ADR 0013 §1's notice is due - subscribing the element for the widget's
+/// life, because nothing clears `Element._dependencies` on a rebuild. Since
+/// #415 that read is `notifierOf` and the switch reaches the shell by no route
+/// at all, which is what the case below asserts.
+///
+/// **§1's notice sheet is on screen in every case in this file**, which no
+/// case here arranged - `setUp(resetFirmwareState)` is what raises it, and
+/// that fixture's own doc now says so for all fourteen of its callers.
+/// Measured here: `loaded=true` and one `BottomSheet`. It costs these cases
+/// nothing, because every witness is read off a widget rather than tapped, and
+/// the last case below taps it on purpose. A case added at a shorter height
+/// should expect to meet it.
 ///
 /// `AppShell` holds the whole app: a `FlipperRootScaffold` whose `child` is an
 /// `IndexedStack` carrying every tab the user has visited, all of them still
@@ -31,11 +50,11 @@ import 'view_size.dart';
 /// inside the notification-dependent region displays a value either
 /// controller can change.
 ///
-/// The two sources are not symmetric any more, and the archive case turns on
-/// it. The shell listens to the **whole** device controller, so a poll tick
-/// rebuilds the nav bar; it listens only to `ArchiveController.syncStatus`, a
-/// `ValueNotifier`, so an archive notification rebuilds nothing of the
-/// shell's at all.
+/// The two listener sources are not symmetric any more, and the archive case
+/// turns on it. The shell listens to the **whole** device controller, so a
+/// poll tick rebuilds the nav bar; it listens only to
+/// `ArchiveController.syncStatus`, a `ValueNotifier`, so an archive
+/// notification rebuilds nothing of the shell's at all.
 ///
 /// Two things used to make a tick rebuild all of it, and both are needed:
 ///
@@ -125,17 +144,21 @@ void main() {
   /// is **new coverage** rather than coverage this change preserved. They
   /// pass, including through the device page's own narrow branch, which #411
   /// lives in.
+  ///
+  /// [diagnostics] is the switch the #415 case needs a handle on; every other
+  /// case gets a fresh one it never touches.
   Future<(DeviceController, FakeFlipperClient)> pumpApp(
     WidgetTester tester,
-    Size size,
-  ) async {
+    Size size, {
+    DiagnosticsSettings? diagnostics,
+  }) async {
     sizeView(tester, size);
 
     final (device, client) = mountedDevice();
     await tester.pumpWidget(
       QUnleashedApp(
         client: client,
-        diagnostics: DiagnosticsSettings(),
+        diagnostics: diagnostics ?? DiagnosticsSettings(),
         permissions: PermissionCenter(),
         device: device,
       ),
@@ -339,6 +362,132 @@ void main() {
       reason:
           'the stack still shows the old slot, so the hoisted index is not '
           'following the selection',
+    );
+
+    await closeDevice(tester, device);
+  });
+
+  testWidgets('and the reporting switch moving does not rebuild it either', (
+    tester,
+  ) async {
+    // The third source. `showDiagnosticsNoticeIfDue` is handed the switch from
+    // the shell's post-frame callback, and `DiagnosticsScope.of` registered
+    // `_AppShellState`'s own element as a dependent to deliver it - for a value
+    // read once, at the first frame, to decide whether ADR 0013 §1's notice is
+    // due. So every flip of the reporting switch rebuilt the page stack and the
+    // rail groups. `notifierOf` reads the same object without subscribing.
+    // #415.
+    //
+    // The witness is `railGroups`, as in the case above, and the liveness
+    // check at the foot is the same one: a memoised `_railGroups` would
+    // satisfy the assertion forever, whatever the shell did.
+    //
+    // Two mutations, both caught here: the call site back on
+    // `DiagnosticsScope.of`, which is #415's own defect, and `notifierOf`
+    // reimplemented with `dependOnInheritedWidgetOfExactType`, which is the
+    // same defect one file inwards and would take every future caller with
+    // it.
+    final settings = DiagnosticsSettings();
+    final (device, _) = await pumpApp(
+      tester,
+      const Size(360, 900),
+      diagnostics: settings,
+    );
+
+    final groupsBefore = scaffoldIn(tester).railGroups;
+
+    // **The stimulus is witnessed, not its end state**, and the first draft
+    // got that wrong: it asserted `shareLogs` was false afterwards, which
+    // `setShareLogs` also satisfies by returning at its own guard when the
+    // value has not changed - notifying nothing. Under that guard the identity
+    // assertion below holds for free, whatever `notifierOf` does. Measured:
+    // with a `setShareLogs(false)` ahead of this one and #415's own defect put
+    // back, the case passed; with the counter, it fails on this line.
+    //
+    // The identity witness is live only because of the tab tap in the case
+    // above - a memoised `_railGroups` would satisfy it forever and nothing
+    // here would notice. That is this file's existing arrangement, which the
+    // archive case shares and says so; do not split those cases away from
+    // this one.
+    var notified = 0;
+    settings.addListener(() => notified++);
+
+    // Awaited, not `unawaited`: this file's `setUp(resetFirmwareState)`
+    // installs an empty `SharedPreferences` mock, so the write completes
+    // rather than hanging - which the first draft had backwards. It notifies
+    // before it writes either way, deliberately and for the reason its own doc
+    // gives; awaiting is just the spelling that does not ask the reader to
+    // take that on trust.
+    await settings.setShareLogs(false);
+    await tester.pumpAndSettle();
+
+    expect(
+      notified,
+      1,
+      reason: 'the switch never notified, so nothing below proves anything',
+    );
+    expect(
+      scaffoldIn(tester).railGroups,
+      same(groupsBefore),
+      reason:
+          '_AppShellState.build re-ran, which is what a listening '
+          'DiagnosticsScope.of in its post-frame callback costs - and it '
+          'costs it for the life of the widget, not until its next build',
+    );
+
+    await closeDevice(tester, device);
+  });
+
+  testWidgets('and the notice it raises moves the switch the app is holding', (
+    tester,
+  ) async {
+    // What nothing pinned, and what #415 rewrote. `notifierOf` is a
+    // non-listening read, so the loudest signal the old spelling gave - a
+    // rebuild - is gone by design, and with it the only thing that said the
+    // shell had reached the **scope's** object rather than any
+    // `DiagnosticsSettings`. Hand the notice a throwaway one instead and every
+    // case in this file, in `diagnostics_notice_test.dart` and in
+    // `diagnostics_screen_test.dart` stays green.
+    //
+    // What that costs is §1's one promise: **Turn it off** would call
+    // `setShareLogs(false)` on an object `Telemetry` does not listen to, so
+    // reporting carries on - and `markNoticeShown` still writes the
+    // preference, so the offer never comes back. Found by review rather than
+    // by a failure, which is the point of the case.
+    //
+    // `diagnostics_notice_test.dart` cannot cover this: it raises the notice
+    // from a host of its own, deliberately, so the shell-to-notice wiring has
+    // no coverage there by construction.
+    final settings = DiagnosticsSettings();
+    final (device, _) = await pumpApp(
+      tester,
+      const Size(360, 900),
+      diagnostics: settings,
+    );
+
+    expect(
+      find.text(l10nGlobal.diagnosticsNoticeTitle),
+      findsOneWidget,
+      reason: "the shell did not raise ADR 0013 §1's notice at all",
+    );
+    expect(
+      settings.shareLogs,
+      isTrue,
+      reason:
+          'sharing was already off, so the tap below cannot move anything - '
+          'and if §1 was reversed deliberately, diagnostics_notice_test.dart '
+          'owns that decision and is where to change it first',
+    );
+
+    await tester.tap(find.text(l10nGlobal.diagnosticsNoticeTurnOff));
+    await tester.pumpAndSettle();
+
+    expect(
+      settings.shareLogs,
+      isFalse,
+      reason:
+          'the notice moved a different DiagnosticsSettings - the one the '
+          'shell read is not the one the app and Telemetry hold',
     );
 
     await closeDevice(tester, device);

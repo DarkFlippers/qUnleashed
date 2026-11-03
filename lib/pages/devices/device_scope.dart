@@ -56,11 +56,17 @@ class DeviceScope extends InheritedNotifier<DeviceController> {
   ///
   /// `getInheritedWidgetOfExactType` reads the current widget without
   /// registering a dependency, so a swapped scope is still read correctly on
-  /// the reader's next build - it just does not cause one. Flutter's doc on it
-  /// also blesses a value read in a gesture callback or a timer, used once and
-  /// not cached; several of these call sites hand the client into a pushed
-  /// route that keeps it, which that wording does not cover. The argument that
-  /// covers them is the first one above: there is only ever one client.
+  /// the reader's next build - it just does not cause one. **And that is the
+  /// only sentence of Flutter's worth citing for it.** This doc used to add
+  /// that Flutter "also blesses a value read in a gesture callback or a timer,
+  /// used once and not cached"; it does not, in the sense meant - that
+  /// sentence sits in `dependOnInheritedWidgetOfExactType`'s doc template
+  /// too, so it tells the two accessors apart in neither direction
+  /// (`widgets/framework.dart`, both templates). Found while writing
+  /// `DiagnosticsScope.notifierOf`, which needed the same argument. Either
+  /// way it never covered these call sites, several of which hand the client
+  /// into a pushed route that keeps it. The argument that covers them is the
+  /// first one above: there is only ever one client.
   static FlipperClient clientOf(BuildContext context) {
     return context
         .getInheritedWidgetOfExactType<DeviceScope>()!

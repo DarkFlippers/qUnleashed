@@ -310,10 +310,12 @@ notification rebuilds only the builder closure, on the same widget instance,
 so there is no `didUpdateWidget` and no resubscribe — and a table's own
 search, filter, sort and selection `setState`s run its `build` often. The
 shell's runs on a tab tap, any `MediaQuery` size change, a theme or locale
-change, a permission re-read or a diagnostics change, the last two because it
-depends on `PermissionScope` through `_bluetoothBlocks` and on
-`DiagnosticsScope` through the post-frame read in `initState`. None of those
-is a transport notification, which is the property the choice rests on.
+change and a permission re-read, the last because it depends on
+`PermissionScope` through `_bluetoothBlocks`. It depended on
+`DiagnosticsScope` the same way, through the post-frame read in `initState`,
+until #415 moved that read to `DiagnosticsScope.notifierOf` - one value, read
+once, at the first frame, subscribing the shell for the widget's life. None of
+these is a transport notification, which is the property the choice rests on.
 
 A field would also have to capture whatever `notifierOf` returned. That
 invariant does hold and is recorded on `DeviceScope.clientOf` — one controller

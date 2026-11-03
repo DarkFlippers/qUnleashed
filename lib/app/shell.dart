@@ -105,9 +105,18 @@ class _AppShellState extends State<AppShell> {
       // `guarded` because a post-frame callback is a void slot: the future
       // would otherwise be dropped and a rejection would land as `[uncaught]`
       // naming nothing. #23.
+      //
+      // `notifierOf` and not `of`: this reads the switch once, and `of` left
+      // the shell a dependent of `DiagnosticsScope` for its whole life - so
+      // flipping the reporting switch rebuilt the page stack and the rail
+      // groups. The dependency does not lapse on the next build; see that
+      // accessor's doc. #415.
       guarded(
         '[Diagnostics] raising the sharing notice',
-        () => showDiagnosticsNoticeIfDue(context, DiagnosticsScope.of(context)),
+        () => showDiagnosticsNoticeIfDue(
+          context,
+          DiagnosticsScope.notifierOf(context),
+        ),
       );
     });
   }
