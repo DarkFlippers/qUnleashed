@@ -356,6 +356,11 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   Widget _carousel(FirmwareConfig config) {
     return SizedBox(
+      // A fixed height holding text that scales is the same class of bug as
+      // #463, and this was looked at while fixing that one: the slide did not
+      // visibly clip in the 2x screenshot #463 came from, so it is left alone
+      // rather than changed on an assumption. #463's "Same card, not
+      // confirmed" section is where that is written down.
       height: 110,
       child: Row(
         children: [
@@ -532,26 +537,63 @@ class _FirmwareControls extends StatelessWidget {
 ///
 /// A title and a value on one line stop fitting on one line at some text
 /// size, and this one did it badly: the title was an `Expanded` beside an
-/// inflexible dropdown, so the dropdown took its whole intrinsic width and
-/// the title got the remainder. At a scaler of 2 that remainder fell to about
-/// one glyph and `Text` wrapped per character - a vertical column of letters
-/// tall enough to push the build-variant row and the update button off the
-/// screen. #463.
+/// inflexible dropdown, so the dropdown took its whole intrinsic width - its
+/// value plus 22 of padding and border, the 6 before the chevron and the
+/// chevron's 18, none of which follows the text scaler because nothing here
+/// sets `Icon.applyTextScaling` - and the title got the remainder. At a
+/// scaler of 2 that remainder fell to about one glyph and `Text` wrapped
+/// per character: a
+/// vertical column of letters, tall enough to push the build-variant row and
+/// the update button off the screen. #463.
 ///
 /// So the row is kept only while both strings fit it whole, and below that
 /// the title moves above the dropdown instead. Of the three fixes the issue
 /// weighed, this is the one that keeps both strings intact at every scaler:
-/// ellipsising the value would bring back #425, where two channels sharing a
-/// title prefix read as the same channel, and clamping the title to two lines
-/// leaves the user reading "Кан..." for the setting they are changing.
+/// ellipsising the value would bring the #425 trap here - a cut value that
+/// cannot be told from another cut value, which in #425 was the bottom bar
+/// drawing "Syncing" and "Synced" as the same word - and clamping the title
+/// to two lines leaves the user reading "Кан..." for the setting they are
+/// changing.
 ///
-/// The decision is a measurement rather than a width threshold, because the
-/// value is **server data**: a channel's title comes from the firmware
-/// directory, so no number picked here and no ARB kept short survives a
-/// longer channel title shipping upstream.
+/// ## A `Wrap`, and not a measurement
+///
+/// The arrangement is the layout's own decision. A `Wrap` puts a child on a
+/// new run when the run it is on cannot hold it with [_gap] to spare, which
+/// is this rule exactly, and `spaceBetween` keeps the dropdown against the
+/// trailing edge while the two share a run. Two children, no arithmetic.
+///
+/// The draft before this one computed it instead, with a `TextPainter` over
+/// each string and a constant for the dropdown's chrome. It worked, and every
+/// defect available to it was in the model rather than in the layout: the
+/// chrome constant left out the `Border.all` pixel `Container` adds outside
+/// its padding on each side, which is nothing anywhere except at the width
+/// where the decision is made; `Text` merges `FontWeight.bold` over its style
+/// under the system bold-text setting, so a probe reading `w500` measures a
+/// paragraph drawn at `w700`; and a `MediaQuery` letter- or word-spacing
+/// override is applied by `Text` to the *span* rather than to the style, so a
+/// probe could not see it at all. `TabLabel` in `lib/app/nav_bar.dart` records
+/// the same three for the same reason - it retired a two-probe fit in favour
+/// of a `FittedBox` - and this is that note taken rather than re-learned.
+///
+/// On the channel row the value is **server data**, which is why no width
+/// threshold would have done either: a channel's title comes from the
+/// firmware directory (`directory.dart`'s `_presentation(json, 'title')`), so
+/// nothing picked here and no ARB kept short survives a longer channel title
+/// shipping upstream. The variant row's three values and both placeholders
+/// are ARB strings, and a translator can lengthen those just as freely.
+///
+/// ## An unbounded width is no longer a crash
+///
+/// Worth knowing because it used to be: the `Expanded` this replaces is
+/// `FlexFit.tight`, and a tight flex child under an unbounded width
+/// constraint is the `RenderFlex` assertion - so the old row threw outright
+/// if anything ever put one of these in a `Row`. The `Flexible` inside the
+/// dropdown is `FlexFit.loose` under a `MainAxisSize.min` row, which is the
+/// combination that assertion's own hint recommends, so it lays out at its
+/// natural width instead. `Wrap` needs no bound either. A case pins it.
 ///
 /// `@visibleForTesting` so `test/firmware_dropdown_fit_test.dart` can drive
-/// that contract at a scaler; nothing outside this file builds one.
+/// the contract at a scaler; nothing outside this file builds one.
 @visibleForTesting
 class SettingsDropdown<T> extends StatelessWidget {
   const SettingsDropdown({
@@ -577,137 +619,45 @@ class SettingsDropdown<T> extends StatelessWidget {
 
   /// The gap the title keeps from the dropdown beside it.
   ///
-  /// Counted in the fit as well as drawn, so "fits" means "fits with room to
-  /// read" rather than "the two strings touch".
+  /// `Wrap.spacing` is both the gap it draws and the room it insists on
+  /// before it will keep two children on one run, so "fits" is "fits with
+  /// room to read" rather than "the two strings touch" - and the two cannot
+  /// disagree, because they are the same number read once.
   static const double _gap = 8;
 
-  /// What the dropdown spends besides its value: 10 of padding on each side,
-  /// the 1 of border `Container` adds outside that padding on each side, the 6
-  /// before the chevron, and the chevron's 18.
-  ///
-  /// None of it follows the text scaler - `Icon` takes a size, not a scaler -
-  /// which is why the row runs out of room for the title before the dropdown
-  /// runs out of room for anything.
-  ///
-  /// The two border pixels are the kind of thing that is easy to leave out and
-  /// cost nothing until the boundary: `test/firmware_dropdown_fit_test.dart`
-  /// searches for the narrowest row rather than asserting a comfortable one,
-  /// and without them the title wrapped there by two pixels.
-  static const double _chrome = 10 + 1 + 10 + 1 + 6 + 18;
+  /// The gap between the title and the dropdown once they are stacked.
+  static const double _runGap = 6;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    // Merged here because `Text` merges it too, and the letter spacing
-    // Material's body style charges per glyph is several percent of a long
-    // channel title - enough to decide a fit either way.
-    final base = DefaultTextStyle.of(context).style;
-    final titleStyle = base.merge(
-      TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        color: colors.textPrimary,
-      ),
-    );
-    final valueStyle = base.merge(
-      TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: value == null ? colors.textMuted : accent,
-      ),
-    );
-    final valueLabel = value == null ? placeholder : labelOf(value as T);
-    final direction = Directionality.of(context);
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final scaler = MediaQuery.textScalerOf(context);
-          final needed =
-              _measure(title, titleStyle, scaler, direction) +
-              _gap +
-              _measure(valueLabel, valueStyle, scaler, direction) +
-              _chrome;
-          // An unbounded width is a width nothing ran out of, and falls out
-          // as the row without a guard of its own: nothing is greater than
-          // infinity. A `hasBoundedWidth` check here only reads as though
-          // something depended on it.
-          final stacked = needed > constraints.maxWidth;
-          final label = Text(title, style: titleStyle);
-
-          if (stacked) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                label,
-                const SizedBox(height: 6),
-                _dropdown(
-                  context,
-                  colors,
-                  valueLabel,
-                  valueStyle,
-                  bounded: true,
-                ),
-              ],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: label),
-              // Drawn as well as counted. `Expanded` hands its child a tight
-              // width, so the title's paragraph is as wide as its slot
-              // whatever its glyphs do - and without this the slot runs right
-              // up to the dropdown's border. The glyphs sit in the same place
-              // either way, so the gap this keeps is the one the fit promised
-              // rather than one the arithmetic happens to leave over.
-              const SizedBox(width: _gap),
-              _dropdown(
-                context,
-                colors,
-                valueLabel,
-                valueStyle,
-                bounded: false,
-              ),
-            ],
-          );
-        },
+      child: Wrap(
+        // Holds the dropdown against the trailing edge while the two share a
+        // run, which is what the `Expanded` used to do. With one child on a
+        // run there is nothing to space, so a stacked title sits at the
+        // leading edge.
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: _gap,
+        runSpacing: _runGap,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: colors.textPrimary,
+            ),
+          ),
+          _dropdown(context, colors),
+        ],
       ),
     );
   }
 
-  /// The width [text] will lay out in, measured the way the `Text` that draws
-  /// it is about to.
-  ///
-  /// [style] arrives with `DefaultTextStyle` already merged in, and [scaler]
-  /// rather than a `MediaQuery` because a `TextPainter` outside the tree has
-  /// no context to read one from.
-  static double _measure(
-    String text,
-    TextStyle style,
-    TextScaler scaler,
-    TextDirection direction,
-  ) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: direction,
-      textScaler: scaler,
-      maxLines: 1,
-    )..layout();
-    final width = painter.width;
-    painter.dispose();
-    return width;
-  }
-
-  Widget _dropdown(
-    BuildContext context,
-    QAppColors colors,
-    String valueLabel,
-    TextStyle valueStyle, {
-    required bool bounded,
-  }) {
-    final text = Text(valueLabel, style: valueStyle);
+  Widget _dropdown(BuildContext context, QAppColors colors) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -722,12 +672,21 @@ class SettingsDropdown<T> extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Flexible only where the width is bounded. Stacked, this sits
-              // in a `Column` and a value too long for the card wraps; in the
-              // row it sits in an inflexible slot, whose constraint is
-              // unbounded - and a flex child under an unbounded constraint is
-              // a `RenderFlex` assertion rather than a wrap.
-              if (bounded) Flexible(child: text) else text,
+              // `Flexible`, so a value too long for the card wraps inside the
+              // dropdown rather than overflowing it: `Wrap` hands each child
+              // its own maxWidth, which here is the card's width. Loose, in a
+              // `MainAxisSize.min` row, so an unbounded width is a natural
+              // layout rather than an assertion - see the note above.
+              Flexible(
+                child: Text(
+                  value == null ? placeholder : labelOf(value as T),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: value == null ? colors.textMuted : accent,
+                  ),
+                ),
+              ),
               const SizedBox(width: 6),
               Icon(
                 Icons.expand_more,
