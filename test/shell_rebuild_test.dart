@@ -32,16 +32,12 @@ import 'view_size.dart';
 /// at all, which is what the case below asserts.
 ///
 /// **§1's notice sheet is on screen in every case in this file**, which no
-/// case here arranged: `setUp(resetFirmwareState)` installs an empty
-/// `SharedPreferences` mock (`firmware_fixture.dart`), so `settings.load()`
-/// completes, `noticeShown` reads false and the shell raises the sheet from
-/// its first frame - measured, `loaded=true` and one `BottomSheet`. It costs
-/// these cases nothing, because every witness here is read off a widget rather
-/// than tapped. It is worth knowing anyway: `diagnostics_notice.dart` records
-/// that this sheet once overflowed a short window by 15px and "took two
-/// unrelated tests down with it", precisely because it is raised over the app
-/// on first launch. A case added here at a shorter height should expect to
-/// meet it.
+/// case here arranged - `setUp(resetFirmwareState)` is what raises it, and
+/// that fixture's own doc now says so for all fourteen of its callers.
+/// Measured here: `loaded=true` and one `BottomSheet`. It costs these cases
+/// nothing, because every witness is read off a widget rather than tapped, and
+/// the last case below taps it on purpose. A case added at a shorter height
+/// should expect to meet it.
 ///
 /// `AppShell` holds the whole app: a `FlipperRootScaffold` whose `child` is an
 /// `IndexedStack` carrying every tab the user has visited, all of them still
@@ -407,6 +403,12 @@ void main() {
     // assertion below holds for free, whatever `notifierOf` does. Measured:
     // with a `setShareLogs(false)` ahead of this one and #415's own defect put
     // back, the case passed; with the counter, it fails on this line.
+    //
+    // The identity witness is live only because of the tab tap in the case
+    // above - a memoised `_railGroups` would satisfy it forever and nothing
+    // here would notice. That is this file's existing arrangement, which the
+    // archive case shares and says so; do not split those cases away from
+    // this one.
     var notified = 0;
     settings.addListener(() => notified++);
 
@@ -431,21 +433,6 @@ void main() {
           '_AppShellState.build re-ran, which is what a listening '
           'DiagnosticsScope.of in its post-frame callback costs - and it '
           'costs it for the life of the widget, not until its next build',
-    );
-
-    await showArchive(tester);
-
-    expect(
-      scaffoldIn(tester).currentTab,
-      FlipperRootTab.archive,
-      reason: 'the tab did not switch, so the rebuild below is not a tab tap',
-    );
-    expect(
-      scaffoldIn(tester).railGroups,
-      isNot(same(groupsBefore)),
-      reason:
-          'railGroups is the same list after a real shell rebuild, so it '
-          'cannot witness the absence of one - it has been memoised',
     );
 
     await closeDevice(tester, device);
@@ -486,7 +473,10 @@ void main() {
     expect(
       settings.shareLogs,
       isTrue,
-      reason: 'sharing was already off, so the tap below cannot move anything',
+      reason:
+          'sharing was already off, so the tap below cannot move anything - '
+          'and if §1 was reversed deliberately, diagnostics_notice_test.dart '
+          'owns that decision and is where to change it first',
     );
 
     await tester.tap(find.text(l10nGlobal.diagnosticsNoticeTurnOff));

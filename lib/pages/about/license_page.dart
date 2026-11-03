@@ -45,17 +45,17 @@ class _AppLicensePageState extends State<AppLicensePage> {
   ///
   /// Which branch `_buildBody` draws is unchanged: [_text] is still null until
   /// this completes, so the spinner is still what a loading page shows, and the
-  /// failure path still sets [_error] rather than a normalised empty string.
-  /// That substitution would cost the **error view**, not the spinner:
-  /// `_buildBody` tests [_error] first, so a null one with `_text` set to
-  /// `_normalize('')` falls past both branches and draws a blank
-  /// `SelectableText` - a reader told nothing at all. Measured by the mutation
-  /// in `test/license_page_test.dart`.
+  /// failure path still sets [_error]. **Not a normalised empty string**, which
+  /// is the one substitution moving the reflow invites and would cost the error
+  /// view - [_error] is tested first, so a null one with [_text] set draws a
+  /// blank page instead. `test/license_page_test.dart` owns that argument and
+  /// the mutation that measures it.
   Future<void> _load() async {
     try {
       final value = await rootBundle.loadString('LICENSE');
+      final text = _normalize(value);
       if (!mounted) return;
-      setState(() => _text = _normalize(value));
+      setState(() => _text = text);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());

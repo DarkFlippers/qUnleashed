@@ -117,6 +117,15 @@ void feedFails([Object error = const SocketException('down')]) =>
 ///
 /// `flutter_test` answers an unreplaced request with a 400, so without the
 /// last line an unseeded firmware records a failure and logs a line per run.
+///
+/// **One consequence reaches past the firmware tests**, and it is worth
+/// knowing in all fourteen callers: the empty `SharedPreferences` mock below
+/// lets `DiagnosticsSettings.load()` complete with `noticeShown` false, so any
+/// `QUnleashedApp` pumped under this raises ADR 0013 §1's notice sheet over
+/// itself from the first frame. Harmless for a case that reads its witness off
+/// a widget; not harmless at a short height, where
+/// `pages/option/diagnostics_notice.dart` records that this sheet overflowed
+/// and "took two unrelated tests down with it".
 void resetFirmwareState() {
   // Installs the recorder as well as emptying it. **Call this from `setUp`,
   // not `setUpAll`**: `recordKeptLines` registers an `addTearDown`, which
@@ -468,8 +477,18 @@ Future<void> closeDevice(WidgetTester tester, DeviceController device) async {
 }
 
 /// A tree a firmware widget can be built in.
-Widget wrapWithDevice(Widget child, DeviceController device) => MaterialApp(
-  theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+///
+/// [seed] is the theme's, and it is a parameter for one caller:
+/// `license_page_test.dart` changes the theme to make a page rebuild without
+/// remounting it, which is that file's whole stimulus. Twenty-two other call
+/// sites take the default and are untouched by it - which is the reason this
+/// grew a parameter rather than that file growing a copy of this function.
+Widget wrapWithDevice(
+  Widget child,
+  DeviceController device, {
+  Color seed = const Color(0xFFCC241D),
+}) => MaterialApp(
+  theme: buildAppTheme(Brightness.dark, seed),
   // Through `builder` rather than around `home`, because that is where the
   // app puts it - above the Navigator, so a pushed route is inside it too
   // (ADR 0011). Wrapping `home` instead would leave every case that opens a

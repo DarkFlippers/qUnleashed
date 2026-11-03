@@ -4,21 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/pages/about/license_page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
-import 'package:qunleashed/pages/devices/device_scope.dart';
-import 'package:qunleashed/theme/theme.dart';
 
 import 'firmware_fixture.dart';
 
 /// When the licence is reflowed, and what the page draws when it cannot be
 /// read.
 ///
-/// `_normalize` splits the whole LICENSE - 674 lines, so 675 split parts, the
-/// last of them the empty string after the final newline - and reassembles it
-/// through two `StringBuffer`s. It ran from `build`, for a string that arrives
-/// once and never changes - so every rebuild paid for it again. #344 cut the
-/// *rate* by taking the five-second device-info poll off this page, and
-/// `test/device_scope_client_of_test.dart` has the case pinning that; #408 is
-/// the work itself, on every rebuild that is left.
+/// `_normalize` splits the whole LICENSE and reassembles it through two
+/// `StringBuffer`s, and it ran from `build` - for a string that arrives once
+/// and never changes. `_load`'s own doc has why that survived #344 and what it
+/// cost; #408 is the fix, and this file is what holds it.
 ///
 /// **The witness is the identity of the string the page hands `SelectableText`,
 /// and that is the whole trick here.** `out` takes a part per line, so its
@@ -39,7 +34,9 @@ import 'firmware_fixture.dart';
 /// Two things keep that from passing for the wrong reason, and both are
 /// asserted rather than assumed. The page must really have rebuilt - a theme
 /// change is the stimulus, and `QPageAppBar` is the witness, since the page
-/// constructs one per `build`. And it must not have been **remounted**, which
+/// constructs one per `build`; `test/device_scope_client_of_test.dart` uses
+/// the same witness on the same page and records why the body cannot serve as
+/// one. And it must not have been **remounted**, which
 /// would reload the asset and produce a fresh string for a reason that has
 /// nothing to do with where the reflow runs: the `State` is read back and
 /// compared.
@@ -58,11 +55,8 @@ import 'firmware_fixture.dart';
 /// | `_normalize` returns its argument | reflows the licence |
 /// | a failed load sets `_text`, not `_error` | shows the failure |
 ///
-/// The second is why the first case exists, and that is measured rather than
-/// argued: under it the identity assertion **passes**, because a `_normalize`
-/// that hands back `raw` hands back the same instance on every build. An
-/// identity witness cannot tell "reflowed once" from "never reflowed", so
-/// something has to say the reflow happens at all.
+/// The second row is why the first case exists, measured rather than argued -
+/// the case itself says how.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -80,17 +74,14 @@ void main() {
 
   /// The page under a theme built from [seed].
   ///
-  /// `wrapWithDevice` is not used, although this is the tree it builds: the
-  /// theme is the stimulus here, so it has to be a parameter. Everything else
-  /// matches it, including `DeviceScope` through `builder` rather than around
-  /// `home` - `QPageAppBar` reads the client through the scope, so the page
-  /// does not build without one (ADR 0011).
-  Widget tree(DeviceController device, Color seed) => MaterialApp(
-    theme: buildAppTheme(Brightness.dark, seed),
-    builder: (context, navigator) =>
-        DeviceScope(notifier: device, child: navigator!),
-    home: const AppLicensePage(),
-  );
+  /// Composed from `wrapWithDevice` rather than written out, the way
+  /// `device_scope_client_of_test.dart`'s own `tree` is: the fixture carries
+  /// the argument for mounting `DeviceScope` through `builder` instead of
+  /// around `home` (ADR 0011), and a copy of that here would go on testing a
+  /// tree the app does not have the day the app moves the scope. The theme is
+  /// this file's stimulus, so the fixture takes the seed.
+  Widget tree(DeviceController device, Color seed) =>
+      wrapWithDevice(const AppLicensePage(), device, seed: seed);
 
   /// The text the page is drawing, or null while it has none.
   String? drawnText(WidgetTester tester) {
@@ -203,13 +194,14 @@ void main() {
     await tester.pumpAndSettle();
 
     final drawn = drawnText(tester);
-    final spinners = find.byType(CircularProgressIndicator).evaluate().length;
-    final message = find.textContaining('Unable to load asset');
-    final found = message.evaluate().length;
+    final found = find.textContaining('Unable to load asset').evaluate().length;
     await closeDevice(tester, device);
 
+    // Two assertions and not three: `_buildBody` is one if/return chain and
+    // nothing else in this tree draws either widget, so the error text being
+    // on screen already says the spinner is not. The second line is the other
+    // half of this case's name rather than a third fact.
     expect(found, 1, reason: 'the failure was not reported on the page');
-    expect(spinners, 0, reason: 'the page is still showing its spinner');
     expect(
       drawn,
       isNull,

@@ -31,10 +31,10 @@ class DiagnosticsScope extends InheritedNotifier<DiagnosticsSettings> {
   ///
   /// For a widget that draws the value - the settings screen's own `Switch`,
   /// which is the one call site. **Not for reading it once from a callback**,
-  /// which is what [notifierOf] is for: nothing clears
-  /// `Element._dependencies` on a rebuild, so a single read from a gesture
-  /// handler or a post-frame callback subscribes that element for its whole
-  /// life rather than until its next build.
+  /// which is what [notifierOf] is for: the subscription a single read
+  /// registers does not lapse on the next build. `DeviceScope.of` and
+  /// [ADR 0011](../../../docs/adr/0011-device-scope-above-the-navigator.md)
+  /// have the mechanism.
   static DiagnosticsSettings of(BuildContext context) {
     return context
         .dependOnInheritedWidgetOfExactType<DiagnosticsScope>()!
@@ -43,15 +43,17 @@ class DiagnosticsScope extends InheritedNotifier<DiagnosticsSettings> {
 
   /// The switch, without a dependency.
   ///
-  /// `getInheritedWidgetOfExactType` reads the current inherited widget
-  /// without registering one: "This method does not introduce a dependency
-  /// the way that the more typical `dependOnInheritedWidgetOfExactType` does,
-  /// so this context will not be rebuilt if the `InheritedWidget` changes."
-  /// That is the sentence worth citing, and not the one about "interaction
-  /// event handlers (e.g. gesture callbacks) or timers, to obtain a value
-  /// once" - which sits in **both** accessors' doc templates and so blesses
-  /// neither over the other. The one call site is `AppShell`'s post-frame
-  /// callback, which
+  /// `DeviceScope.clientOf`'s accessor, for this scope's one object - read
+  /// without registering a dependency, by `getInheritedWidgetOfExactType`.
+  ///
+  /// **The sentence of Flutter's worth citing for it is "this method does not
+  /// introduce a dependency"**, and not the one about "interaction event
+  /// handlers (e.g. gesture callbacks) or timers, to obtain a value once":
+  /// that one sits in **both** accessors' doc templates, so it tells them
+  /// apart in neither direction. `clientOf` cited it until this accessor was
+  /// written and has been corrected.
+  ///
+  /// The one call site is `AppShell`'s post-frame callback, which
   /// reads the switch to decide whether ADR 0013 §1's notice is due - once, at
   /// the first frame, for a shell whose `build` assembles the page stack and
   /// the rail groups. Taken the listening way, flipping the reporting switch
@@ -64,26 +66,22 @@ class DiagnosticsScope extends InheritedNotifier<DiagnosticsSettings> {
   /// have measured. The accessor is the point, so the next reader has the
   /// non-listening spelling to hand.
   ///
-  /// **What makes it safe is that there is one switch for the run**, and not
-  /// the "value read once and not kept" wording - because the one call site
-  /// does keep it. `showDiagnosticsNoticeIfDue` holds the object across
-  /// `settings.load()`, `markNoticeShown()` and a sheet that stays up until
-  /// the user answers, then calls `setShareLogs(false)` on it. What covers
-  /// that is `DeviceScope.clientOf`'s argument rather than Flutter's:
-  /// `lib/main.dart` constructs exactly one `DiagnosticsSettings`, hands it to
-  /// `Telemetry`, and passes that same object to `QUnleashedApp`, where a
-  /// `final` field feeds the only scope - so there is nothing for the read to
-  /// go stale against. `clientOf` had to add this paragraph after #406 for
-  /// over-claiming the same blessing; this is that correction taken rather
-  /// than re-learned.
+  /// **What makes it safe is `clientOf`'s argument and not Flutter's wording**,
+  /// because the one call site does keep the object:
+  /// `showDiagnosticsNoticeIfDue` holds it across `settings.load()`,
+  /// `markNoticeShown()` and a sheet that stays up until the user answers,
+  /// then calls `setShareLogs(false)` on it. The evidence that rescues that is
+  /// particular to this scope, so it belongs here: `lib/main.dart` constructs
+  /// exactly one `DiagnosticsSettings` and hands it to `Telemetry`, and
+  /// `main` passes that same object to `QUnleashedApp`, where a `final` field
+  /// feeds the only scope. There is nothing for the read to go stale against.
   ///
-  /// **Still never for reading state off in a `build`.** `DiagnosticsSettings`
-  /// carries `shareLogs`, `shareReplay` and `noticeShown`, and any of the
-  /// three drawn from this would show whatever it was when something else last
-  /// rebuilt the reader. Nothing enforces that: `DeviceScope` has a syntactic
-  /// ratchet for it in `test/device_scope_listen_test.dart`, hard-wired to
-  /// that scope, and #415's own argument is that two call sites do not warrant
-  /// a second census. So this paragraph is the whole of the guard.
+  /// **Still never for reading state off in a `build`** - `clientOf`'s doc has
+  /// why. What is particular here is that nothing enforces it:
+  /// `test/device_scope_listen_test.dart` is hard-wired to `DeviceScope`, and
+  /// #415's argument is that two call sites do not warrant a second census. So
+  /// this paragraph is the whole of the guard, over a `DiagnosticsSettings`
+  /// carrying three live values.
   static DiagnosticsSettings notifierOf(BuildContext context) {
     return context.getInheritedWidgetOfExactType<DiagnosticsScope>()!.notifier!;
   }
