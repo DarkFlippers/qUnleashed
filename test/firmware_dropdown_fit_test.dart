@@ -495,7 +495,7 @@ void main() {
 
 // ## Mutations
 //
-// Eleven against `SettingsDropdown`. Nine caught; the two that survive could
+// Twelve against `SettingsDropdown`. Ten caught; the two that survive could
 // not do otherwise, and that is the point of the rewrite.
 //
 // | mutation | killed by |
