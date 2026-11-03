@@ -103,6 +103,10 @@ class _FakeCliClient implements FlipperClient {
   /// Raised by the next `openCli`, for the failure half of the hold.
   Object? cliThrows;
 
+  /// When set, `openCli` waits on it before handing a channel back, so a case
+  /// can let the hold go while an open is still in flight.
+  Completer<void>? parkOpen;
+
   Future<void> close() async {
     await _usbEvents.close();
     await _sessions.close();
@@ -121,6 +125,8 @@ class _FakeCliClient implements FlipperClient {
   Future<FlipperCliChannel> openCli(FlipperDevice device) async {
     final failure = cliThrows;
     if (failure != null) throw failure;
+    final park = parkOpen;
+    if (park != null) await park.future;
     final channel = _FakeChannel(device);
     opened.add(channel);
     return channel;
@@ -301,6 +307,62 @@ void main() {
       );
     });
 
+    // `_restoreCli` prefers the device the hold was on and falls back to the
+    // first candidate, which is `holdCli`'s own promise: "when its Flipper
+    // returns after the link went away, **or another one is plugged in**, it
+    // is taken back in CLI rather than RPC". Nothing pinned the fallback - the
+    // neighbour case in the group below pins the *preference*, which is the
+    // opposite end of the same `firstWhere`.
+    test('is taken back on a neighbour when its own cable is gone', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      hold.channel.die();
+      client.present = [usb('B')];
+      client.plugged();
+      await settle();
+
+      expect(hold.handed, hasLength(1));
+      expect(
+        hold.handed.single.device.id,
+        'B',
+        reason: 'the terminal moves to the Flipper that is actually there',
+      );
+    });
+
+    // A channel that opens for a hold nobody is holding any more has to be
+    // closed, or the Flipper is left in CLI mode with nothing to talk to it -
+    // every RPC call then fails until something reopens the mode. The open is
+    // parked mid-flight because that is the only way to reach the window:
+    // `releaseCli` has to land between `openCli` being called and its channel
+    // arriving.
+    test('closes a channel that opened after the hold was let go', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+      final park = Completer<void>();
+      client.parkOpen = park;
+
+      hold.channel.die();
+      client.present = const [];
+      client.plugged();
+      await settle();
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+      expect(
+        client.opened,
+        isEmpty,
+        reason: 'premise: the open is in flight, not finished',
+      );
+
+      links.releaseCli();
+      park.complete();
+      await settle();
+
+      expect(hold.handed, isEmpty, reason: 'nobody is holding it now');
+      expect(client.opened.single.closeCalls, 1);
+    });
+
     test('is let go of by releaseCli', () async {
       final links = await serviceWith();
       final hold = await heldCliOnDialledCable(links);
@@ -394,6 +456,25 @@ void main() {
       expect(handed, hasLength(1));
     });
 
+    // Driven by a sessions emission rather than a replug, because that is
+    // the trigger production has. A channel stops being open when its session
+    // faults or leaves CLI mode, and flipperlib watches each session's
+    // connection stream to re-emit sessions - `_emitSessions` - which is what
+    // `_onSessions` schedules a reconcile from. No USB attach event happens:
+    // the cable never moved. Every other case here calls `plugged()` because
+    // it is shorter, and this one is why that shortcut is not load-bearing.
+    test('is taken back without a USB event to wake it', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      hold.channel.die();
+      client.reportSessions(const []);
+      await settle();
+
+      expect(hold.handed, hasLength(1));
+      expect(hold.handed.single.device.id, 'A');
+    });
+
     // The guard the filter is actually for, which is why the fix is a second
     // set rather than dropping the clause. `_restoreCli` ends the reconcile
     // whenever it has a candidate, and a failed open is itself one of the
@@ -423,6 +504,15 @@ void main() {
         hasLength(1),
         reason: 'two more reconciles, no second attempt',
       );
+
+      // Measured, and left unasserted on purpose: the reconcile after the
+      // failed restore falls through to the remembered Bluetooth Flipper and
+      // dials it, once, because `_bleAutoTried` latches. That is not #461's
+      // symptom - the restore was attempted and the cable refused - and it is
+      // the same thing any cable that cannot be opened does. Pinning it here
+      // would make this case fail for a reason it is not about; it is written
+      // down because the log of this case shows the dial and the next reader
+      // should not have to wonder whether it is the bug.
     });
 
     // And the other side of that: holding on to the failure would mean a hold

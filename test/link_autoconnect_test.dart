@@ -696,6 +696,43 @@ void main() {
       expect(client.dialled, ['usb:A', 'usb:A']);
     });
 
+    // Per cable, not a flag on the service. Measured: with the hold tier's
+    // check written as `_appFormedUsbIds.isEmpty` rather than
+    // `.contains(device.id)`, every other case in this group stays green -
+    // none of them has an endorsed cable and an app-formed one in the air at
+    // the same time, so none of them can tell a set from a flag.
+    test('does not stand down a neighbour the user asked for', () async {
+      await appDialled();
+
+      // B arrives beside it and the user presses Connect on that one.
+      client.present = [usb('A'), usb('B')];
+      client.plugged();
+      await settle();
+      final entry = links.entries.firstWhere((e) => e.isUsb && e.id == 'B');
+      await links.connect(entry);
+      client.reportSessions([connected(usb('A')), connected(usb('B'))]);
+      await settle();
+      expect(client.dialled, [
+        'usb:A',
+        'usb:B',
+      ], reason: 'premise: A was the app, B was the user');
+
+      await DeviceSettings.instance.setAutoConnectUsb(false);
+      client.reportSessions(const []);
+      client.present = const [];
+      client.plugged();
+      await settle();
+      client.present = [usb('A'), usb('B')];
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, [
+        'usb:A',
+        'usb:B',
+        'usb:B',
+      ], reason: 'B comes back because they asked for it; A stands down');
+    });
+
     // The constraint #460 had to keep: the installer sends the Flipper into
     // the updater and waits for the port to come back, and that wait is only
     // over when the link is up again. With the setting off and nothing

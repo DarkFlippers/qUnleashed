@@ -190,6 +190,38 @@ void main() {
     // connects was left to the two cases composing. What a miss costs is
     // #444's symptom from the write side: one Flipper listed twice under one
     // name, and `forget` removing the row the user did not tap.
+    // `_replace` keeps the order it is handed, and that is the property #453
+    // deferred the whole refactor on: "a dedupe-and-cap that does not
+    // re-sort". `remember` prepends, so the Flipper just connected is first
+    // and `lastDevice` - which is what Bluetooth auto-connect dials - is it.
+    // A sort inside `_replace` would hand that to whichever stored entry
+    // claims the newest timestamp, and a timestamp is not evidence: a store
+    // written against a skewed clock, restored, or edited by hand can carry
+    // one from the future.
+    //
+    // Measured: with a newest-first sort added inside `_replace`, this is the
+    // only case in the suite that fails - and without it, nothing did.
+    test(
+      'a stored entry dated in the future does not win lastDevice',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'known_devices_v1': jsonEncode([
+            storedEntry(
+              storedById,
+              'the skewed one',
+              '2099-01-01T00:00:00.000',
+            ),
+          ]),
+        });
+        await known.load();
+
+        await known.remember(_ble('b9', name: 'the one just connected'));
+
+        expect(known.devices, hasLength(2), reason: 'premise: both are kept');
+        expect(known.lastDevice?.name, 'the one just connected');
+      },
+    );
+
     test('is written over, not beside, when that Flipper connects', () async {
       SharedPreferences.setMockInitialValues({
         'known_devices_v1': jsonEncode([

@@ -57,15 +57,19 @@ void main() {
   // bump and the fold ship together - and a restored or hand-edited store
   // gets there too.
   //
-  // Measured: with `_replace`'s `putIfAbsent` fold dropped - assigning
-  // `next.take(_maxEntries)` straight through, so the sort and the cap both
-  // stay - two cases in the repository fail, this one and
-  // `known_devices_persist_test.dart`'s 'is written over, not beside'. The
-  // fold is the whole of what `remember` does about a duplicate too, so the
-  // read side and the write side go together. (#444's note gave the whole
-  // pre-fix body, `parsed.sort(); _devices = parsed;`, which also drops the
-  // cap and so fails the cap case below as well - the mutation to run is the
-  // collapse alone.) #444.
+  // Measured, with `_replace`'s body replaced by
+  // `_devices = next.take(_maxEntries)` and zero counts - the fold gone, the
+  // sort and the cap kept. Three cases fail: this one,
+  // `known_devices_persist_test.dart`'s 'is written over, not beside' - the
+  // fold is the whole of what `remember` does about a duplicate, so the read
+  // side and the write side go together - and the cap case below, which loses
+  // its `caught` line because the counts are computed from the fold and go
+  // with it.
+  //
+  // The recipe is the claim. A mutation that drops the fold *and* flattens
+  // the counts is not the same as one that drops the fold alone, and the
+  // third failure is the difference; #444's note gave a third recipe again,
+  // `parsed.sort(); _devices = parsed;`, which drops the cap as well. #444.
   test(
     'a store written by a 2.x build loads as one canonical device',
     () async {
@@ -212,17 +216,40 @@ void main() {
     expect(keptLevels, [KeptLevel.caught]);
   });
 
+  // And what pins the `_devices` half of the reset itself, now that the load
+  // writes it on every path that read the store: a reader between the rewind
+  // and the next load. `flutter_test_config.dart` rewinds before every case,
+  // so a case that reads `devices` without loading - or a `LinkService` still
+  // attached from a case that has finished - sees this and nothing else.
+  test('a rewound store is empty before anything has loaded it', () async {
+    await loadFrom([
+      storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
+    ]);
+    expect(KnownDevicesStore.instance.devices, isNotEmpty, reason: 'premise');
+
+    KnownDevicesStore.instance.debugReset();
+
+    expect(KnownDevicesStore.instance.devices, isEmpty);
+    expect(KnownDevicesStore.instance.lastDevice, isNull);
+  });
+
   test('a rewound store reads an empty disk as empty', () async {
-    // The empty-disk load, which is the path `known_devices_persist_test.dart`'s
-    // `setUp` and `serviceWith()` take and the only case here that takes it.
+    // The empty-disk load end to end: the memo was rewound, a real [_load]
+    // ran, and it read an empty store as empty. That is the path
+    // `known_devices_persist_test.dart`'s `setUp` and `serviceWith()` take and
+    // the only case here that takes it.
     //
-    // It pinned the `_devices` half of `KnownDevicesStore.debugReset` when it
-    // was written: `_load` returned at `raw == null` before touching
-    // `_devices`, so the reset was the only thing that emptied them and
-    // deleting that line failed here and nowhere else. #456 moved the answer
-    // one layer down - the early return assigns through `_replace` now - so
-    // what this fails for today is that assignment, and the reset's own line
-    // is left as defence for a reader that never loads.
+    // Measured, and worth writing down because the comment this replaces got
+    // it wrong twice: this case pins *neither* of the two assignments that
+    // could empty `_devices` here, because each masks the other. Deleting
+    // `_devices = const []` from `debugReset` leaves it green (the load
+    // assigns), and so does deleting `_replace(const [])` from `_load`'s
+    // `raw == null` branch (the reset assigned). The reset's line is pinned by
+    // the case above, which reads before any load. The early return's line is
+    // pinned by nothing, and cannot be: [load] memoises, so the only second
+    // load in a process follows a [debugReset] that has just emptied the
+    // field. It is there for the invariant - an exit that read the store has
+    // written `_devices` - not for a behaviour anything can observe.
     await loadFrom([
       storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
     ]);
