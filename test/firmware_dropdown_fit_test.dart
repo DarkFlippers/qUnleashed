@@ -121,17 +121,52 @@ void main() {
       expect(lines(tester, 'Stable'), 1);
     });
 
-    // The title keeps the gap as well as the glyphs: "fits" is "fits with
-    // room to read", not "the two strings touch". Dropping the gap from the
-    // fit leaves this case green and only moves the boundary, which is why
-    // the number is also drawn.
-    testWidgets('the gap between them is drawn', (tester) async {
-      await pump(tester, title: 'Update Channel', value: 'Stable');
-      final title = tester.getRect(find.text('Update Channel'));
-      final chip = tester.getRect(find.text('Stable'));
-      // The chip's own left padding is on top of the gap, so this is a lower
-      // bound rather than the gap itself.
-      expect(chip.left - title.right, greaterThanOrEqualTo(8));
+    // **The boundary, which is where everything about the fit is decided.**
+    // Anywhere else there is slack, and slack hides an arithmetic that is a
+    // few pixels out: the gap left uncounted, the chevron left uncounted, the
+    // style measured without the letter spacing `DefaultTextStyle` charges
+    // per glyph. Each of those leaves a comfortable row comfortable and only
+    // moves this width.
+    //
+    // So the narrowest width the row survives is searched for rather than
+    // written down - it is a property of the font, and no number here is a
+    // phone's - and the three claims are made there: both strings whole, and
+    // the gap between them the one the fit reserved.
+    testWidgets('and the narrowest row still has room to read', (tester) async {
+      const title = 'Update Channel';
+      const value = 'Stable';
+
+      // The arrangement is monotone in the width, so a bisection lands on the
+      // boundary. Both ends are asserted: without them a widget that always
+      // stacked, or never did, would make this case about nothing.
+      var stacks = 100.0;
+      var fits = 900.0;
+      await pump(tester, title: title, value: value, box: fits);
+      expect(stacked(tester, title, value), isFalse, reason: 'premise at 900');
+      await pump(tester, title: title, value: value, box: stacks);
+      expect(stacked(tester, title, value), isTrue, reason: 'premise at 100');
+      while (fits - stacks > 0.25) {
+        final mid = (stacks + fits) / 2;
+        await pump(tester, title: title, value: value, box: mid);
+        if (stacked(tester, title, value)) {
+          stacks = mid;
+        } else {
+          fits = mid;
+        }
+      }
+
+      await pump(tester, title: title, value: value, box: fits);
+      expect(lines(tester, title), 1, reason: 'the title wraps at $fits');
+      expect(lines(tester, value), 1, reason: 'the value wraps at $fits');
+      // Against the dropdown's border box rather than its value text, whose
+      // 10 of padding would otherwise stand in for the gap. `Expanded` hands
+      // the title a tight width, so the left side of this is the title's
+      // slot and not its glyphs - which is what makes it an equality and not
+      // a bound.
+      final gap =
+          tester.getRect(find.byType(Container)).left -
+          tester.getRect(find.text(title)).right;
+      expect(gap, closeTo(8, 0.01), reason: 'the gap at $fits');
     });
   });
 

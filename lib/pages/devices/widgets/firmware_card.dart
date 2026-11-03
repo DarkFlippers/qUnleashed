@@ -578,16 +578,22 @@ class SettingsDropdown<T> extends StatelessWidget {
   /// The gap the title keeps from the dropdown beside it.
   ///
   /// Counted in the fit as well as drawn, so "fits" means "fits with room to
-  /// read", not "the two strings touch".
+  /// read" rather than "the two strings touch".
   static const double _gap = 8;
 
   /// What the dropdown spends besides its value: 10 of padding on each side,
-  /// the 6 before the chevron, and the chevron's 18.
+  /// the 1 of border `Container` adds outside that padding on each side, the 6
+  /// before the chevron, and the chevron's 18.
   ///
   /// None of it follows the text scaler - `Icon` takes a size, not a scaler -
   /// which is why the row runs out of room for the title before the dropdown
   /// runs out of room for anything.
-  static const double _chrome = 10 + 10 + 6 + 18;
+  ///
+  /// The two border pixels are the kind of thing that is easy to leave out and
+  /// cost nothing until the boundary: `test/firmware_dropdown_fit_test.dart`
+  /// searches for the narrowest row rather than asserting a comfortable one,
+  /// and without them the title wrapped there by two pixels.
+  static const double _chrome = 10 + 1 + 10 + 1 + 6 + 18;
 
   @override
   Widget build(BuildContext context) {
@@ -623,10 +629,11 @@ class SettingsDropdown<T> extends StatelessWidget {
               _gap +
               _measure(valueLabel, valueStyle, scaler, direction) +
               _chrome;
-          // An unbounded width is not a width that ran out; the row is what
-          // this looks like, so it is what an unbounded one gets.
-          final stacked =
-              constraints.hasBoundedWidth && needed > constraints.maxWidth;
+          // An unbounded width is a width nothing ran out of, and falls out
+          // as the row without a guard of its own: nothing is greater than
+          // infinity. A `hasBoundedWidth` check here only reads as though
+          // something depended on it.
+          final stacked = needed > constraints.maxWidth;
           final label = Text(title, style: titleStyle);
 
           if (stacked) {
@@ -649,6 +656,12 @@ class SettingsDropdown<T> extends StatelessWidget {
           return Row(
             children: [
               Expanded(child: label),
+              // Drawn as well as counted. `Expanded` hands its child a tight
+              // width, so the title's paragraph is as wide as its slot
+              // whatever its glyphs do - and without this the slot runs right
+              // up to the dropdown's border. The glyphs sit in the same place
+              // either way, so the gap this keeps is the one the fit promised
+              // rather than one the arithmetic happens to leave over.
               const SizedBox(width: _gap),
               _dropdown(
                 context,
