@@ -545,6 +545,178 @@ void main() {
     });
   });
 
+  /// The half of a hold nobody asked for. #460.
+  ///
+  /// Everything in the group above is a hold with a user behind it, and the
+  /// rule there is that a setting flipped afterwards does not take it back.
+  /// Since #458 the app dials a cable at launch by itself, and that link
+  /// entered the same set - so the hold tier went on taking it back after the
+  /// user turned the setting off, on behalf of nobody. These cases are about
+  /// which statements count as the user asking for the link after all, and
+  /// the install path is one of them rather than a courtesy: `awaitUsbReturn`
+  /// has no deadline, so a hold that stood down on its return would hang an
+  /// install for good.
+  group('a USB link the app formed by itself', () {
+    /// The premise the whole group rests on: the app dials the cable, nobody
+    /// having asked, and the session report makes it a hold like any other.
+    Future<void> appDialled() async {
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+      expect(client.dialled, [
+        'usb:A',
+      ], reason: 'premise: the app dialled this cable by itself');
+
+      client.reportSessions([connected(usb('A'))]);
+      await settle();
+    }
+
+    /// Out and back in, which is the user's own repro and the only thing that
+    /// makes the cable a question again: the link is gone, so nothing is held,
+    /// and the absence prunes `_autoTriedUsb`.
+    Future<void> replug() async {
+      client.reportSessions(const []);
+      client.present = const [];
+      client.plugged();
+      await settle();
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+    }
+
+    // The tier is still one tier, and an app-formed hold is still in it: the
+    // setting that formed the link is on, so taking it back is what it asked
+    // for. Dropping app-formed entries from the hold tier outright would
+    // leave this cable dialled by nothing at all - the tier below skips
+    // everything `_holdUsbIds` holds.
+    test('is taken back while the setting is still on', () async {
+      await appDialled();
+
+      await replug();
+
+      expect(client.dialled, ['usb:A', 'usb:A']);
+    });
+
+    // The bug. Written against the old code first, where the second dial
+    // happened with `trigger: 'holding this one'`.
+    test('is not taken back once the user turns the setting off', () async {
+      await appDialled();
+      await DeviceSettings.instance.setAutoConnectUsb(false);
+
+      await replug();
+
+      expect(client.dialled, ['usb:A']);
+    });
+
+    // And what makes it an endorsement set rather than a flag. The user
+    // pressing Connect is the statement the hold tier exists for, whoever
+    // dialled the cable first.
+    test('is taken back once the user has asked for it by hand', () async {
+      await appDialled();
+      await DeviceSettings.instance.setAutoConnectUsb(false);
+      await replug();
+      expect(client.dialled, ['usb:A'], reason: 'premise: it stood down');
+
+      final entry = links.entries.firstWhere((e) => e.isUsb && e.id == 'A');
+      await links.connect(entry);
+      expect(client.dialled, [
+        'usb:A',
+        'usb:A',
+      ], reason: 'premise: and the user dialled it themselves');
+      client.reportSessions([connected(usb('A'))]);
+      await settle();
+
+      await replug();
+
+      expect(client.dialled, ['usb:A', 'usb:A', 'usb:A']);
+    });
+
+    // The other by-hand path, and the one that reaches a cable most often:
+    // the connection dialog has a `usbOnly` mode, and it dials the device it
+    // was given rather than a row of the list.
+    test('is taken back when the user picks it out of the dialog', () async {
+      await appDialled();
+      await DeviceSettings.instance.setAutoConnectUsb(false);
+      await replug();
+      expect(client.dialled, ['usb:A'], reason: 'premise: it stood down');
+
+      await links.connectDevice(usb('A'));
+      client.reportSessions([connected(usb('A'))]);
+      await settle();
+
+      await replug();
+
+      expect(client.dialled, ['usb:A', 'usb:A', 'usb:A']);
+    });
+
+    // And it stays theirs. Taking a hold back records nothing deliberately:
+    // if that counted as the app forming the link, an endorsed hold would
+    // survive exactly one knocked-out cable with the setting off, and the
+    // case above cannot tell - the dial it asserts happens before the
+    // recording would.
+    test('stays the user\'s once it has been taken back', () async {
+      await appDialled();
+      await DeviceSettings.instance.setAutoConnectUsb(false);
+      await replug();
+
+      final entry = links.entries.firstWhere((e) => e.isUsb && e.id == 'A');
+      await links.connect(entry);
+      client.reportSessions([connected(usb('A'))]);
+      await settle();
+      expect(client.dialled, [
+        'usb:A',
+        'usb:A',
+      ], reason: 'premise: the user asked for this link');
+
+      await replug();
+      await replug();
+
+      expect(client.dialled, ['usb:A', 'usb:A', 'usb:A', 'usb:A']);
+    });
+
+    // The origin does not outlive the hold: `disconnectDevice` lets go of
+    // both. So a link that comes back without either writer having run - a
+    // session flipperlib restored under the app, an activation from
+    // elsewhere - is not still answered by the dial that formed the one
+    // before it.
+    test('loses its origin when the user lets the link go', () async {
+      await appDialled();
+      await links.disconnectDevice(usb('A'), id: 'A', link: FlipperLink.usb);
+      await DeviceSettings.instance.setAutoConnectUsb(false);
+
+      client.reportSessions([connected(usb('A'))]);
+      await settle();
+
+      await replug();
+
+      expect(client.dialled, ['usb:A', 'usb:A']);
+    });
+
+    // The constraint #460 had to keep: the installer sends the Flipper into
+    // the updater and waits for the port to come back, and that wait is only
+    // over when the link is up again. With the setting off and nothing
+    // endorsing the link, the app-formed hold would stand down on the return
+    // and `awaitUsbReturn` - deliberately deadline-free - would never end.
+    test(
+      'is taken back across an install, whatever the setting says',
+      () async {
+        await appDialled();
+        await DeviceSettings.instance.setAutoConnectUsb(false);
+
+        final returned = links.awaitUsbReturn(usb('A'));
+        await replug();
+
+        expect(client.dialled, ['usb:A', 'usb:A']);
+
+        // And the wait the install is sitting in ends, rather than this case
+        // passing on a dial with nobody behind it.
+        client.reportSessions([connected(usb('A'))]);
+        await returned;
+      },
+    );
+  });
+
   group('the remembered Flipper', () {
     test('is dialled by the canonical id, under the remembered name', () async {
       // The whole chain #444 is about, in one case: an upper-case id as a

@@ -124,6 +124,35 @@ class LinkService extends ChangeNotifier {
   // it returns, whatever the auto-connect setting says, because nobody asked
   // for it to go. Only the user letting it go clears the entry.
   final Set<String> _holdUsbIds = {};
+
+  /// The ids in [_holdUsbIds] whose link the app formed by itself.
+  ///
+  /// [_holdUsbIds] means *the app is meant to be holding this link*, and the
+  /// hold tier in [_reconcileOnce] honours it ahead of `autoConnectUsb`:
+  /// a link the user asked for is not something a setting they flipped
+  /// afterwards takes back. Since #458 turned that setting on by default the
+  /// app's own dial became the main thing writing into the set, so a cable
+  /// dialled at launch kept being taken back after the user turned the
+  /// setting off - with `trigger: 'holding this one'`, on behalf of nobody.
+  /// #460.
+  ///
+  /// So the hold stays one tier and this records who formed it. An id is
+  /// written here by the one place that dials a cable nobody asked about, and
+  /// leaves again the moment the user asks for that link - by hand from the
+  /// picker, or by sending the Flipper away to install firmware and waiting
+  /// for it ([awaitUsbReturn]). That last one is why this is an endorsement
+  /// set rather than a flag on the setting: the install path needs the hold to
+  /// survive a reboot into the updater, and [awaitUsbReturn] has no deadline,
+  /// so a hold that stood down there would hang the install for good.
+  ///
+  /// Taking a hold back is not a write. The app is acting on a statement that
+  /// is already there, and recording it would turn every user-formed hold into
+  /// an app-formed one the first time a cable was knocked out.
+  ///
+  /// Not persisted, like [_holdUsbIds], and not pruned on absence, unlike
+  /// [_autoTriedUsb]: the answer surviving the cable going away is the point.
+  final Set<String> _appFormedUsbIds = {};
+
   String? _userDisconnectedKey;
   final Set<String> _autoTriedUsb = {};
 
@@ -372,6 +401,8 @@ class LinkService extends ChangeNotifier {
       trace.note('link', entry.link.name);
       trace.note('held', entry.held);
       _forgiveUserDisconnect(entry.key);
+      // Asked for by hand, so the app no longer owns this hold.
+      if (entry.isUsb) _appFormedUsbIds.remove(entry.id);
       if (entry.held) {
         await _c.activateById(entry.id, link: entry.link);
         return;
@@ -410,6 +441,7 @@ class LinkService extends ChangeNotifier {
       trace.note('link', device.link.name);
       final key = '${device.link.name}:${device.id}';
       _forgiveUserDisconnect(key);
+      if (device.isUsb) _appFormedUsbIds.remove(device.id);
       await _open(device, key, trace: trace);
       if (device.isBle) _heardBle.add(device.id);
       notifyListeners();
@@ -466,7 +498,10 @@ class LinkService extends ChangeNotifier {
     // Pressed while the attempt is still running, this is a cancel: the
     // teardown below aborts it and the attempt's own failure is swallowed.
     if (_activity[key] == LinkActivity.connecting) _cancelled.add(key);
-    if (link == FlipperLink.usb) _holdUsbIds.remove(id);
+    if (link == FlipperLink.usb) {
+      _holdUsbIds.remove(id);
+      _appFormedUsbIds.remove(id);
+    }
     final active = _c.connectedDevice ?? _c.connectingDevice;
     final wasActive = active != null && active.id == id && active.link == link;
     if (wasActive) {
@@ -498,6 +533,13 @@ class LinkService extends ChangeNotifier {
   /// coming back is the only honest signal that it is over. The wait ends on
   /// the OS event, not on a clock.
   Future<void> awaitUsbReturn(FlipperDevice device) async {
+    // Being sent away to install firmware and waited for is the user asking
+    // for this link as plainly as pressing Connect: whoever dialled it, the
+    // app is holding it on their behalf now and `autoConnectUsb` does not get
+    // a say in whether it comes back. Without this a cable the app dialled
+    // itself would stand down on its return with the setting off, and this
+    // wait - which has no deadline, by design - would never end. #460.
+    _appFormedUsbIds.remove(device.id);
     bool holds(List<FlipperSessionInfo> sessions) => sessions.any(
       (s) => s.connected && s.device.isUsb && s.device.id == device.id,
     );
@@ -542,14 +584,10 @@ class LinkService extends ChangeNotifier {
   // ── Events ───────────────────────────────────────────────────────────────
 
   void _onSessions(List<FlipperSessionInfo> sessions) {
-    // Every connected cable, whoever asked. With `autoConnectUsb` on by
-    // default the app's own dial is now the main producer of this set, so the
-    // hold tier in `_reconcileOnce` - which ignores the setting - can outrank
-    // a setting the user turns off mid-session. In memory only, so a restart
-    // honours the toggle. Telling an app-formed link from a user's needs an
-    // endorsement notion this does not have: a hold deliberately survives a
-    // reboot into the updater, so "the app formed it" is not a stable
-    // property. #460.
+    // Every connected cable, whoever asked - which is why who asked is
+    // recorded where the asking happens rather than guessed at here.
+    // `_appFormedUsbIds` is the other half of this set, and the hold tier in
+    // `_reconcileOnce` reads the two together.
     for (final session in sessions) {
       if (session.device.isUsb && session.connected) {
         _holdUsbIds.add(session.device.id);
@@ -688,10 +726,14 @@ class LinkService extends ChangeNotifier {
     if (cli != null && !cli.channel.isOpen && await _restoreCli(cli)) return;
 
     final held = _c.sessions.any((s) => s.connected || s.connecting);
-    // A Flipper the app is holding comes first and comes back whatever the
-    // setting says: the user asked for that link and never let it go. The
-    // setting adds the ones nobody has asked for yet, which is all it decides
-    // — whether the app forms that intent by itself when a cable appears.
+    // A Flipper the app is holding comes first, and one the user asked for
+    // comes back whatever the setting says: they asked for that link and never
+    // let it go. A hold the app formed by itself has no such statement behind
+    // it, so it is only taken back while the setting that formed it is still
+    // on - `_appFormedUsbIds` is which is which. The setting also adds the
+    // cables nobody has asked for yet, and between those two that is all it
+    // decides — whether the app forms that intent by itself when a cable
+    // appears.
     // It is **on** by default, so in a default build a cable that is in at
     // launch is dialled here and this method returns before the remembered
     // Bluetooth device below is ever considered. That ordering is the whole
@@ -705,7 +747,10 @@ class LinkService extends ChangeNotifier {
     if (!held) {
       final candidates = <FlipperDevice>[
         for (final device in _usbPresent)
-          if (_holdUsbIds.contains(device.id)) device,
+          if (_holdUsbIds.contains(device.id) &&
+              (_settings.autoConnectUsb ||
+                  !_appFormedUsbIds.contains(device.id)))
+            device,
         if (_settings.autoConnectUsb)
           for (final device in _usbPresent)
             if (!_holdUsbIds.contains(device.id)) device,
@@ -713,10 +758,11 @@ class LinkService extends ChangeNotifier {
       for (final device in candidates) {
         if (_userDisconnectedKey == 'usb:${device.id}') continue;
         if (!_autoTriedUsb.add(device.id)) continue;
-        await _autoConnect(
-          device,
-          _holdUsbIds.contains(device.id) ? 'holding this one' : 'plugged in',
-        );
+        final holding = _holdUsbIds.contains(device.id);
+        // The one place that dials a cable nobody asked about, and so the one
+        // place that writes the origin.
+        if (!holding) _appFormedUsbIds.add(device.id);
+        await _autoConnect(device, holding ? 'holding this one' : 'plugged in');
         return;
       }
     }
