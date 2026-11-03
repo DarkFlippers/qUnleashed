@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,10 +9,12 @@ import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/pages/archive/overview/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
+import 'package:qunleashed/services/localization/gen/l10n_generated.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/permissions/center.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
+import 'arb.dart';
 import 'archive_fakes.dart';
 import 'fake_device.dart';
 import 'firmware_fixture.dart';
@@ -90,6 +93,19 @@ void main() {
       .widget<FlipperRootScaffold>(find.byType(FlipperRootScaffold))
       .deviceLabel;
 
+  /// The class the tab's dot draws, which since #429 is the other half of the
+  /// same state.
+  ///
+  /// Asserted beside [label] in every branch below rather than in a group of
+  /// its own, because the claim worth keeping is that the two cannot
+  /// disagree: the dot is four classes over these eight sentences, so a
+  /// mapping that drifts would show a green dot over the word "Disconnected"
+  /// and nothing would say so. `_deviceStatus` reads the same three sources
+  /// in the same order as `_deviceLabel` for exactly that reason.
+  DeviceTabStatus status(WidgetTester tester) => tester
+      .widget<FlipperRootScaffold>(find.byType(FlipperRootScaffold))
+      .deviceStatus;
+
   /// The archive controller the shell built, taken back out of the tree.
   ///
   /// Private to `_AppShellState` and handed to `ArchivePage`, which is in the
@@ -160,6 +176,7 @@ void main() {
     final (device, _) = await pumpApp(tester);
 
     expect(label(tester), l10n.deviceStateNoDevice);
+    expect(status(tester), DeviceTabStatus.absent);
 
     await closeDevice(tester, device);
   });
@@ -178,6 +195,7 @@ void main() {
     await settle(tester);
 
     expect(label(tester), l10n.deviceStateDisconnected);
+    expect(status(tester), DeviceTabStatus.absent);
 
     await closeDevice(tester, device);
   });
@@ -192,6 +210,7 @@ void main() {
     await settle(tester);
 
     expect(label(tester), l10n.deviceStateConnecting);
+    expect(status(tester), DeviceTabStatus.working);
 
     await closeDevice(tester, device);
   });
@@ -203,6 +222,7 @@ void main() {
     await settle(tester);
 
     expect(label(tester), l10n.deviceStateDfu);
+    expect(status(tester), DeviceTabStatus.attention);
 
     await closeDevice(tester, device);
   });
@@ -218,6 +238,7 @@ void main() {
     await settle(tester);
 
     expect(label(tester), l10n.deviceStateRecovering);
+    expect(status(tester), DeviceTabStatus.working);
 
     await closeDevice(tester, device);
   });
@@ -238,6 +259,7 @@ void main() {
     await settle(tester);
 
     expect(label(tester), l10n.deviceStateSyncing);
+    expect(status(tester), DeviceTabStatus.working);
 
     await closeDevice(tester, device);
   });
@@ -249,6 +271,7 @@ void main() {
     await settle(tester);
 
     expect(label(tester), l10n.deviceStateConnected);
+    expect(status(tester), DeviceTabStatus.ready);
 
     await closeDevice(tester, device);
   });
@@ -317,6 +340,7 @@ void main() {
     // at all.
     expect(archive.syncStatus.value, ArchiveSyncStatus.synced);
     expect(label(tester), l10n.deviceStateSynced);
+    expect(status(tester), DeviceTabStatus.ready);
     expect(
       client.requests,
       contains(contains('storageReadRequest')),
@@ -389,6 +413,7 @@ void main() {
 
     expect(archive.syncStatus.value, ArchiveSyncStatus.idle);
     expect(label(tester), l10n.deviceStateDisconnected);
+    expect(status(tester), DeviceTabStatus.absent);
 
     client.arriveWithDevice();
     await settle(tester);
@@ -461,6 +486,37 @@ void main() {
     );
 
     await closeDevice(tester, device);
+  });
+
+  // Every `deviceState` string in the ARB is one `_deviceLabel` can produce.
+  //
+  // The branches above say each state is reachable; this says there is no
+  // ninth string that is not. That is the #420 bug class from the other
+  // side - a string with seven translations that nothing can ever show - and
+  // the ARB is what notices, because `_deviceLabel`'s switch is exhaustive
+  // over `DeviceConnectionState` and says nothing about how many strings
+  // exist.
+  //
+  // It lived in `nav_bar_label_fit_test.dart` until #429, where the states
+  // were the bar's labels and so the fit's subject. The bar draws a noun now
+  // and announces the state instead, so the claim came here, to the file that
+  // owns the eight branches.
+  test('no deviceState string is unreachable', () {
+    final keys = arbStrings(File('$kArbDir/app_en.arb')).keys
+        .where((k) => k.startsWith('deviceState'))
+        .toList();
+    final strings = lookupL10n(const Locale('en'));
+    final reachable = {
+      strings.deviceStateNoDevice,
+      strings.deviceStateDisconnected,
+      strings.deviceStateConnecting,
+      strings.deviceStateDfu,
+      strings.deviceStateRecovering,
+      strings.deviceStateSyncing,
+      strings.deviceStateSynced,
+      strings.deviceStateConnected,
+    };
+    expect(keys, hasLength(reachable.length), reason: '$keys');
   });
 }
 

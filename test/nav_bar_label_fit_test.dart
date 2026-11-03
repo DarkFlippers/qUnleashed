@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:qunleashed/app/nav_bar.dart';
 import 'package:qunleashed/services/localization/gen/l10n_generated.dart';
 import 'package:qunleashed/theme/theme.dart';
 
-import 'arb.dart';
 import 'view_size.dart';
 
 /// Built once: `buildAppTheme` runs an HSL loop per call, and every case here
@@ -33,18 +31,6 @@ const double _minFontSize = 8;
 /// translation that happened to be sixteen glyphs long would make a
 /// translator's edit read as a fit regression.
 const String _sixteen = 'Mmmmmmmmmmmmmmmm';
-
-/// Every state `_deviceLabel` can put in the bar (`lib/app/shell.dart`).
-List<String> _allStates(L10n s) => [
-  s.deviceStateNoDevice,
-  s.deviceStateDisconnected,
-  s.deviceStateConnecting,
-  s.deviceStateDfu,
-  s.deviceStateRecovering,
-  s.deviceStateSyncing,
-  s.deviceStateSynced,
-  s.deviceStateConnected,
-];
 
 /// That the bottom bar's labels fit the quarter of the bar they are given.
 ///
@@ -123,6 +109,44 @@ void main() {
     return tester.renderObject<RenderBox>(box).constraints.maxWidth;
   }
 
+  /// Pumps one [TabLabel] in the box a slot gives it.
+  ///
+  /// The bar's own labels are four ARB nouns since #429, so there is no way
+  /// left to hand the bar a label of a chosen length - which is the point of
+  /// that change and why `TabLabel` is `@visibleForTesting`. [box] defaults
+  /// to 134, the slot on the 600 dp window every number in this file is
+  /// measured against: a quarter of it less the 16 of padding.
+  Future<void> pumpLabel(
+    WidgetTester tester,
+    String label, {
+    double box = 134,
+    double textScale = 1,
+    Locale? locale,
+  }) async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _theme,
+        locale: locale,
+        localizationsDelegates: L10n.localizationsDelegates,
+        supportedLocales: L10n.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: box,
+              child: TabLabel(label: label, color: const Color(0xFFFFFFFF)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Pumps the bar with [deviceLabel] on a [width] dp window.
   ///
   /// Portrait unless [landscape], because `FlipperRootScaffold.isWide` reads
@@ -155,6 +179,7 @@ void main() {
           currentTab: FlipperRootTab.device,
           onTabSelected: (_) {},
           deviceLabel: deviceLabel,
+          deviceStatus: DeviceTabStatus.ready,
           railGroups: const [],
           child: const SizedBox.shrink(),
         ),
@@ -203,17 +228,16 @@ void main() {
 
   group('a label that fits', () {
     testWidgets('is drawn at the size the bar is designed at', (tester) async {
-      await pumpBar(tester, deviceLabel: 'Synced', width: 600);
+      await pumpLabel(tester, 'Synced');
       expect(paintedSize(tester, 'Synced'), _fontSize);
       expect(cut(tester, 'Synced'), isFalse);
-      // 600 / 4 - 16, which every number below is measured against.
       expect(boxOf(tester, 'Synced'), 134);
     });
 
     // The cap, and the reason it is one: a short label has room to grow into
     // and must not take it.
     testWidgets('follows the scaler up', (tester) async {
-      await pumpBar(tester, deviceLabel: 'Synced', width: 600, textScale: 1.5);
+      await pumpLabel(tester, 'Synced', textScale: 1.5);
       expect(paintedSize(tester, 'Synced'), _fontSize * 1.5);
       expect(cut(tester, 'Synced'), isFalse);
     });
@@ -230,7 +254,7 @@ void main() {
     // computed the size instead, and got 8.36 when it read the style without
     // the letter spacing and 8.16 from a single probe and a straight ratio.
     testWidgets('shrinks to exactly what fits', (tester) async {
-      await pumpBar(tester, deviceLabel: _sixteen, width: 600);
+      await pumpLabel(tester, _sixteen);
       expect(boxOf(tester, _sixteen), 134);
       expect(paintedSize(tester, _sixteen), closeTo(8.17, 0.005));
       expect(cut(tester, _sixteen), isFalse);
@@ -238,17 +262,37 @@ void main() {
 
     // Per slot, not per bar. Making the four labels agree on one size - the
     // smallest of the four - is the obvious tidy-up, and it would cost the
-    // three nouns their size for nothing.
+    // shorter ones their size for nothing.
+    //
+    // Driven at a scaler rather than with a long label, because #429 left the
+    // bar no long labels: Russian's `navTools` is the widest of the four and
+    // 3.1 is the largest scaler Android offers, which is enough to make it
+    // the only one that has to shrink.
     testWidgets('leaves the labels beside it alone', (tester) async {
-      await pumpBar(tester, deviceLabel: _sixteen, width: 600);
-      final strings = lookupL10n(const Locale('en'));
-      for (final noun in [
-        strings.navArchive,
-        strings.navApps,
-        strings.navTools,
-      ]) {
-        expect(paintedSize(tester, noun), _fontSize, reason: noun);
-      }
+      // Russian at twice the font size, which is the cheapest arrangement
+      // that still has both kinds of slot in one bar: in a 134 box at an
+      // asked 20, "Архив" and "Device" fit and "Приложения" and
+      // "Инструменты" do not.
+      //
+      // It used to be driven by a long label in the device slot. #429 left
+      // the bar four ARB nouns and no way to hand it a long one, so the
+      // scaler is the lever now - and the claim is better for it, because the
+      // four labels it compares are the four the bar really draws.
+      await pumpBar(
+        tester,
+        deviceLabel: 'Synced',
+        width: 600,
+        textScale: 2,
+        locale: const Locale('ru'),
+      );
+      final strings = lookupL10n(const Locale('ru'));
+
+      expect(paintedSize(tester, strings.navArchive), _fontSize * 2);
+      expect(
+        paintedSize(tester, strings.navTools),
+        lessThan(_fontSize * 2),
+        reason: 'the premise: this one has to shrink',
+      );
     });
 
     // **This case is the trade, not a mechanism.** A label already as wide as
@@ -264,12 +308,7 @@ void main() {
     testWidgets('barely moves when the scaler does', (tester) async {
       final sizes = <double, double>{};
       for (final scale in const [1.0, 1.3, 2.0, 3.1]) {
-        await pumpBar(
-          tester,
-          deviceLabel: _sixteen,
-          width: 600,
-          textScale: scale,
-        );
+        await pumpLabel(tester, _sixteen, textScale: scale);
         sizes[scale] = paintedSize(tester, _sixteen);
         expect(cut(tester, _sixteen), isFalse, reason: 'at $scale');
         expect(
@@ -290,12 +329,7 @@ void main() {
     // what says it still cannot be read as another state.
     testWidgets('stops at the floor and is cut after all', (tester) async {
       final long = lookupL10n(const Locale('de')).deviceStateConnecting;
-      await pumpBar(
-        tester,
-        deviceLabel: long,
-        width: 600,
-        locale: const Locale('de'),
-      );
+      await pumpLabel(tester, long, locale: const Locale('de'));
       expect(paintedSize(tester, long), _minFontSize);
       expect(cut(tester, long), isTrue);
       // Cut with an ellipsis rather than clipped: what is gone has to be
@@ -316,13 +350,7 @@ void main() {
       tester,
     ) async {
       final long = lookupL10n(const Locale('de')).deviceStateConnecting;
-      await pumpBar(
-        tester,
-        deviceLabel: long,
-        width: 600,
-        textScale: 0.5,
-        locale: const Locale('de'),
-      );
+      await pumpLabel(tester, long, textScale: 0.5, locale: const Locale('de'));
       expect(paintedSize(tester, long), _fontSize * 0.5);
       expect(cut(tester, long), isTrue);
       expect(
@@ -336,7 +364,7 @@ void main() {
     // paints no child whose size is empty, rather than dividing by it. The
     // draft this replaced computed the scale itself and needed a guard here.
     testWidgets('and an empty one is no label at all', (tester) async {
-      await pumpBar(tester, deviceLabel: '', width: 600);
+      await pumpLabel(tester, '');
       expect(tester.takeException(), isNull);
       expect(find.text(''), findsOneWidget);
     });
@@ -360,48 +388,64 @@ void main() {
     // the line reserved at the asked size the device tab's icon would sit
     // below its neighbours - and hop as the state word changed under it.
     testWidgets('stays level under a shrunken label', (tester) async {
-      await pumpBar(tester, deviceLabel: _sixteen, width: 600);
+      await pumpBar(
+        tester,
+        deviceLabel: 'Synced',
+        width: 600,
+        textScale: 2,
+        locale: const Locale('ru'),
+      );
       final tops = icons(tester).map((r) => r.top).toSet();
       expect(tops, hasLength(1), reason: '$tops');
+      // The premise, so this cannot pass on a bar where nothing shrank -
+      // which is what it would have done after #429 had it kept driving the
+      // device slot with a long string.
+      final strings = lookupL10n(const Locale('ru'));
+      expect(paintedSize(tester, strings.navTools), lessThan(_fontSize * 2));
     });
 
-    testWidgets('stays put as the state word changes', (tester) async {
-      await pumpBar(tester, deviceLabel: 'Synced', width: 600);
-      final before = icons(tester);
-      await pumpBar(tester, deviceLabel: _sixteen, width: 600);
-      expect(icons(tester), before);
-    });
+    // There was a case here for the icon staying put *as the state word
+    // changed*, which was the hop the reserved line exists to prevent. #429
+    // removed its subject rather than its mechanism: the device tab's label
+    // is a noun that does not change, and the state it used to carry is a dot
+    // in the icon's own box, so there is no longer a word whose width can
+    // move anything. The reserved line is still pinned, by the two cases
+    // around this note.
 
     // And the label is centred in the line that was reserved rather than
     // pushed to the top of it. That is the visible cost of reserving one, and
     // it is a choice: a shrunken label shares its middle with the labels
     // beside it rather than its baseline.
     testWidgets('centres a shrunken label in the line it kept', (tester) async {
-      await pumpBar(tester, deviceLabel: _sixteen, width: 600);
-      final strings = lookupL10n(const Locale('en'));
+      await pumpBar(
+        tester,
+        deviceLabel: 'Synced',
+        width: 600,
+        textScale: 2,
+        locale: const Locale('ru'),
+      );
+      final strings = lookupL10n(const Locale('ru'));
       final middles = [
-        _sixteen,
+        strings.navDevice,
         strings.navArchive,
         strings.navApps,
         strings.navTools,
       ].map((l) => tester.getRect(find.text(l)).center.dy).toSet();
       expect(middles, hasLength(1), reason: '$middles');
+      expect(
+        paintedSize(tester, strings.navTools),
+        lessThan(paintedSize(tester, strings.navArchive)),
+        reason: 'the premise: one of the four shrank and one did not',
+      );
     });
   });
 
-  // [_allStates] mirrors a switch in `lib/app/shell.dart`, and a ninth state
-  // added there would leave the claim above true of a stale eight. The ARB is
-  // what notices: every state the bar draws is a `deviceState` string, and
-  // there are exactly as many of those as the list has entries.
-  test('the eight states are all the states there are', () {
-    final keys = arbStrings(File('$kArbDir/app_en.arb')).keys
-        .where((k) => k.startsWith('deviceState'));
-    expect(
-      keys,
-      hasLength(_allStates(lookupL10n(const Locale('en'))).length),
-      reason: '$keys',
-    );
-  });
+  // The guard that used to be here - that the `deviceState` keys in the ARB
+  // are exactly the states the bar can draw - moved to
+  // `shell_device_label_test.dart` with #429. It was never about the fit, and
+  // the bar does not draw a state any more; what it is really about is a
+  // string nobody can reach, which is `_deviceLabel`'s business and that
+  // file's subject.
 
   // The wide layout has no labels to fit, and the fit would not save them if
   // it had: the rail is 58 wide.
@@ -410,87 +454,43 @@ void main() {
     expect(find.text('Synced'), findsNothing);
   });
 
-  // Every locale, because the collision is a property of the translations and
-  // the issue's own table is eight rows long.
+  // Every locale, because what fits is a property of the translations.
+  //
+  // **This group used to be about the device states**, and #429 is why it is
+  // not. The bar drew the link state as the device tab's label - eight
+  // sentences, of which `deviceStateSyncing` and `deviceStateSynced` share
+  // nine to thirteen leading characters in seven of the eight locales - so
+  // the group's real claim was that no state could be cut down into another
+  // state. That claim is unreachable now rather than merely true: the tab's
+  // label is `navDevice`, a noun, and the state is a dot on its icon plus the
+  // tab's semantics label. `test/nav_bar_device_badge_test.dart` is where the
+  // state went.
+  //
+  // What is left is the contract itself over the four labels the bar really
+  // draws, which is wider than the old subject in two ways: all four slots
+  // rather than one, and four scalers rather than two.
   group('every locale', () {
     for (final locale in L10n.supportedLocales) {
       testWidgets('in ${locale.languageCode}', (tester) async {
         final strings = lookupL10n(locale);
-
-        // The contract, over three states - the pair the issue is about, and
-        // the longest state there is, which is the one that reaches the floor.
-        // At the 320 end most of these are past the floor in this font, which
-        // is what makes the third invariant worth having: it holds there too,
-        // and says the ellipsis appears only once shrinking has run out. 900
-        // is covered by the eight-state loop below, at one scaler and five
-        // more states.
         for (final width in const [320.0, 600.0]) {
-          for (final state in [
-            strings.deviceStateSyncing,
-            strings.deviceStateSynced,
-            strings.deviceStateConnecting,
-          ]) {
-            for (final scale in const [1.0, 1.3]) {
-              await pumpBar(
-                tester,
-                deviceLabel: state,
-                width: width,
-                textScale: scale,
-                locale: locale,
-              );
-              expectFitted(
-                tester,
-                strings,
-                state,
-                _fontSize * scale,
-                '"$state" at $width, scale $scale',
-              );
-            }
+          for (final scale in const [1.0, 1.3, 2.0, 3.1]) {
+            await pumpBar(
+              tester,
+              deviceLabel: 'Synced',
+              width: width,
+              textScale: scale,
+              locale: locale,
+            );
+            expectFitted(
+              tester,
+              strings,
+              strings.navDevice,
+              _fontSize * scale,
+              'at $width, scale $scale',
+            );
           }
         }
-
-        // And the win is not a vacuous one. Both members of the sync pair are
-        // whole at a small phone's box, so neither can be read as the other -
-        // which is the one thing the contract permits and #425 is about. Every
-        // pair in every locale is at most sixteen glyphs today; a
-        // retranslation that pushes either member to the floor lands here.
-        for (final state in [
-          strings.deviceStateSyncing,
-          strings.deviceStateSynced,
-        ]) {
-          await pumpBar(tester, deviceLabel: state, width: 600, locale: locale);
-          expect(cut(tester, state), isFalse, reason: '"$state" at 600');
-        }
-
-        // The same claim over all eight states at a large phone's box, where
-        // German's `deviceStateConnecting` is the only string in any locale
-        // that does not fit: **at most one state can be cut**, and the eight
-        // strings are distinct, so no two of them can read the same. A whole
-        // string cannot equal a cut one, because a cut one ends in an
-        // ellipsis.
-        //
-        // This is the executable half of `_TabLabel`'s claim that the string
-        // left at the floor has nothing to be confused with. The other half -
-        // that it holds in a real font at a real width - is arithmetic, and it
-        // is in the PR: 20 of the 28 pairs collided before the fit, none
-        // after.
-        final labels = _allStates(strings);
-        final truncated = <String>[];
-        for (final label in labels) {
-          await pumpBar(tester, deviceLabel: label, width: 900, locale: locale);
-          expectFitted(tester, strings, label, _fontSize, '"$label" at 900');
-          if (cut(tester, label)) truncated.add(label);
-        }
-        expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
-        // **The remedy for this one is code, not a translation.** Crowdin owns
-        // seven of the eight locales, so a longer `deviceStateRecovering`
-        // arriving next cycle cannot be shortened here: what is left is a
-        // lower floor, a wider slot, or the layout #429 is about.
-        expect(
-          truncated,
-          hasLength(lessThanOrEqualTo(1)),
-          reason: '$truncated',
-        );
       });
     }
   });

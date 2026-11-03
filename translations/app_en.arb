@@ -31,6 +31,11 @@
     "description": "Explanation under the System default entry of the language list."
   },
 
+  "navDevice": "Device",
+  "@navDevice": {
+    "description": "Bottom navigation tab that opens the device screen. A noun, not a status: the tab used to be labelled with the connection state instead, which is a sentence in several languages and could not be drawn at a raised text size. The state is on the tab's icon now, and in the tab's accessibility label."
+  },
+
   "navArchive": "Archive",
   "@navArchive": {
     "description": "Bottom navigation tab that opens the file archive."
