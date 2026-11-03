@@ -50,8 +50,9 @@ FlipperDevice ble(String id) => FlipperDevice(
 /// A channel a test can kill without unplugging anything.
 ///
 /// That distinction is the whole subject here. A Flipper that detaches takes
-/// its id out of `_autoTriedUsb` on the next reconcile and everything works;
-/// a channel that dies while the cable stays in is the case that does not.
+/// its id out of both USB sets on the next reconcile, and the restore worked
+/// on that path all along; a channel that dies while the cable stays in is
+/// the one that did not, until #461.
 class _FakeChannel implements FlipperCliChannel {
   _FakeChannel(this.device);
 
@@ -269,10 +270,10 @@ void main() {
   }
 
   group('a CLI hold whose Flipper went away', () {
-    // The path that works today, and the reason it works: the device going
-    // absent is what prunes `_autoTriedUsb`, so the cable is a candidate
-    // again when it comes back. Pinned first, because the fix for the case
-    // below must not cost this one.
+    // The path that worked before #461 as well, and the reason it did: the
+    // device going absent is what prunes the set the restore filters on, so
+    // the cable is a candidate again when it comes back. Pinned first,
+    // because the fix for the group below must not cost this one.
     test('is taken back when the cable returns', () async {
       final links = await serviceWith();
       final hold = await heldCliOnDialledCable(links);
@@ -298,27 +299,6 @@ void main() {
         isEmpty,
         reason: 'the CLI restore ends the reconcile before any dial',
       );
-    });
-
-    // The hold outranks the setting, which is the rule the service states
-    // about held links generally. With the cable away and back, a restore
-    // happens even though nothing would have dialled it.
-    test('is taken back with USB auto-connect off', () async {
-      final links = await serviceWith(usbAuto: false);
-      client.present = [usb('A')];
-      client.plugged();
-      await settle();
-      client.dialled.clear();
-
-      final channel = _FakeChannel(usb('A'));
-      final handed = <FlipperCliChannel>[];
-      links.holdCli(channel, onChannel: handed.add, onFailure: (_) {});
-
-      channel.die();
-      client.plugged();
-      await settle();
-
-      expect(handed, hasLength(1));
     });
 
     test('is let go of by releaseCli', () async {
@@ -386,6 +366,34 @@ void main() {
       );
     });
 
+    // The restore consults no setting, which is the rule the service states
+    // about held links generally: the user asked for this terminal and the
+    // hold outranks a preference about forming links by itself.
+    //
+    // Also the one case in this group that passed before #461, and it is here
+    // to say why that is not a contradiction. With `usbAuto: false` nothing
+    // ever dialled this cable, so the set the restore used to filter on was
+    // empty and it found its candidate anyway. What #461 fixed is the default
+    // build, where the launch dial has filled that set - which is the case
+    // above.
+    test('is taken back with USB auto-connect off', () async {
+      final links = await serviceWith(usbAuto: false);
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+      client.dialled.clear();
+
+      final channel = _FakeChannel(usb('A'));
+      final handed = <FlipperCliChannel>[];
+      links.holdCli(channel, onChannel: handed.add, onFailure: (_) {});
+
+      channel.die();
+      client.plugged();
+      await settle();
+
+      expect(handed, hasLength(1));
+    });
+
     // The guard the filter is actually for, which is why the fix is a second
     // set rather than dropping the clause. `_restoreCli` ends the reconcile
     // whenever it has a candidate, and a failed open is itself one of the
@@ -439,9 +447,13 @@ void main() {
     // `holdCli` clears the attempt set, and this is what that is for. Without
     // it a cable one hold failed on would be unreachable to the next for as
     // long as it stays plugged in - the same shape as #461, one hold along.
-    // The CLI page calls `holdCli` for every channel it gets, so a page that
-    // reopened its own terminal after a failed restore is the real path here
-    // rather than a contrived one.
+    //
+    // Defence rather than a path a user walks today, and worth being exact
+    // about: the CLI page takes one hold per instance - `holdCli` is called
+    // from `_openChannel` only, and a restored channel arrives at
+    // `_onChannel`, which attaches without re-holding - and leaving the page
+    // calls `releaseCli`, which clears the set anyway. So what this pins is
+    // the invariant, which is what the next holder will rely on.
     test('does not inherit the cables a previous hold failed on', () async {
       final links = await serviceWith();
       final hold = await heldCliOnDialledCable(links);

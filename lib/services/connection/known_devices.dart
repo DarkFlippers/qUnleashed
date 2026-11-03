@@ -120,7 +120,8 @@ class KnownDevicesStore extends ChangeNotifier {
   /// state has no way to notify about a write it did not make. Every caller
   /// only reads, and before [_replace] the assignment sites disagreed about
   /// growability, so what a caller *could* do depended on which path last
-  /// ran. One site writes it now, and it writes `growable: false`.
+  /// ran. One production site writes it now - [_replace] - and it writes
+  /// `growable: false`; the other writer is [debugReset], with `const []`.
   ///
   /// A view rather than the `List.unmodifiable` copy this codebase uses
   /// elsewhere, because this getter is read on every `LinkService.entries`
@@ -143,7 +144,10 @@ class KnownDevicesStore extends ChangeNotifier {
   /// first `await` from assigning `_devices` in the next case. Reachable in
   /// principle, since `LinkService.start` does not await its load; closing it
   /// would need a generation counter, which is more machinery than the
-  /// exposure justifies.
+  /// exposure justifies. #456 widened it from one assignment site to three -
+  /// [_load]'s two early returns write `const []` through [_replace] now, so a
+  /// stale load that used to return having touched nothing can empty what the
+  /// current case loaded.
   ///
   /// Wired once in `test/flutter_test_config.dart` rather than called by the
   /// files that need it, which is the rule that file's own header states: a
@@ -170,11 +174,16 @@ class KnownDevicesStore extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
-      // Through [_replace] like every other exit from this method, so that
-      // "a load that completed has written `_devices`" holds without a
-      // reader checking which branch ran. Silent, and in the first case not
-      // even a degradation: a store nobody has written yet is the ordinary
-      // first launch.
+      // Through [_replace] like every other exit that read the store, so
+      // that "a load that got as far as reading has written `_devices`" holds
+      // without a reader checking which branch ran. The `catch` at the end is
+      // the one exit outside that: it writes nothing, which is only harmless
+      // because the field starts and resets to `const []`.
+      //
+      // Silent, and in the first case not even a degradation: a store nobody
+      // has written yet is the ordinary first launch. The second case is a
+      // degradation and the silence there is not defended - it is older than
+      // this method's rewrite and wants its own fix.
       if (raw == null) {
         _replace(const []);
         return;
@@ -255,10 +264,10 @@ class KnownDevicesStore extends ChangeNotifier {
         // and without this line it is also indistinguishable from a store
         // that never loaded.
         //
-        // Once per launch rather than once ever, unlike the unreadable drop:
-        // nothing here writes the trim back, so an over-cap store stays
-        // over-cap on disk until the user connects, renames or forgets
-        // something. That is deliberate - "a store a future build with a
+        // Once per launch rather than once ever, as with the unreadable drop
+        // above and for the same reason: nothing here writes the trim back, so
+        // an over-cap store stays over-cap on disk until the user connects,
+        // renames or forgets something. That is deliberate - "a store a future build with a
         // larger cap wrote" is one of the inputs - and persisting the trim
         // would destroy entries that build can still read. Lossless until a
         // mutation is the forward-compatible answer, and the repeat is its
@@ -292,11 +301,12 @@ class KnownDevicesStore extends ChangeNotifier {
   /// [_maxEntries] of them - and reports what it dropped getting there.
   ///
   /// The one assignment every production path goes through. There were four,
-  /// and two of them capped: [updateName] and [forget] were correct because
-  /// their input had been capped by whichever path ran before them, an
-  /// induction that nothing enforced and nothing wrote down. #453 was the
-  /// second time the cap was found missing from an assignment site, and the
-  /// fifth writer would have looked exactly like [updateName] does. #456
+  /// and two of them capped. The other two, [updateName] and [forget], were
+  /// correct only because their input had been capped by whichever path ran
+  /// before them - an induction that nothing enforced and nothing wrote down.
+  /// #453 was the second time the cap was found missing from an assignment
+  /// site, and a fifth writer would have looked exactly like [updateName] did
+  /// then. #456
   ///
   /// **Order-preserving, and that is load-bearing.** The caller fixes the
   /// order; on a collision the earlier entry wins. That is why [remember]
@@ -334,10 +344,13 @@ class KnownDevicesStore extends ChangeNotifier {
     // on write, id-keyed folding on load - which is the divergence that
     // method's own doc flags as the hazard. #456
     //
-    // Both counts discarded on purpose. A merge cannot happen here: the list
-    // this is handed already holds one entry per device. A cap can, and is
-    // silent, because the user tapped connect on a ninth Flipper and
-    // displaced one they chose.
+    // Both counts discarded on purpose. A merge is the ordinary reconnect -
+    // `entry` is a second spelling of a device `_devices` already holds, and
+    // folding it away is the whole of what this call does, which
+    // `known_devices_persist_test.dart`'s write-over case is about. There is
+    // nothing to report: the entry it displaced is the same Flipper, one
+    // moment older. A cap is silent for a different reason - the user tapped
+    // connect on a ninth Flipper and displaced one they chose.
     _replace([entry, ..._devices]);
     notifyListeners();
     await _persist();

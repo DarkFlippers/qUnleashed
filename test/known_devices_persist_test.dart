@@ -29,9 +29,12 @@ class _Discovered implements DiscoveredDevice {
   final DeviceTransport transport;
 }
 
-FlipperDevice _ble(String id) => FlipperDevice(
+/// [name] defaults to [id], which most cases want; a case that asserts
+/// *which* entry survived a write has to tell the two apart by something the
+/// fold does not touch.
+FlipperDevice _ble(String id, {String? name}) => FlipperDevice(
   id: id,
-  name: id,
+  name: name ?? id,
   link: FlipperLink.ble,
   source: _Discovered(id, DeviceTransport.ble),
 );
@@ -116,7 +119,7 @@ void main() {
   test('the list the store hands out cannot be written to', () async {
     // A [ChangeNotifier] that hands out its own mutable state has no way to
     // notify about a write it did not make. Only a view stops this: the
-    // non-growable list `_load` assigns refuses `add` but takes `[]=`.
+    // non-growable list `_replace` assigns refuses `add` but takes `[]=`.
     await known.remember(_ble('B1'));
 
     expect(
@@ -198,7 +201,7 @@ void main() {
         reportedById,
       ], reason: 'premise: the entry loaded, and loaded folded');
 
-      await known.remember(_ble(reportedById));
+      await known.remember(_ble(reportedById, name: 'the fresh name'));
 
       // One row. The live id is canonical here because that is what a 3.x
       // plugin reports; the uncanonical direction is pinned by the `matches`
@@ -206,8 +209,9 @@ void main() {
       expect(known.devices, hasLength(1));
       // And it is the fresh entry that survived, not the stored one - which
       // is what makes this a replacement rather than the new entry being
-      // dropped as the duplicate.
-      expect(known.devices.single.name, reportedById);
+      // dropped as the duplicate. By name, because the two entries agree on
+      // every other field by the time the fold sees them.
+      expect(known.devices.single.name, 'the fresh name');
     });
   });
 }

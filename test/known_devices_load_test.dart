@@ -59,10 +59,13 @@ void main() {
   //
   // Measured: with `_replace`'s `putIfAbsent` fold dropped - assigning
   // `next.take(_maxEntries)` straight through, so the sort and the cap both
-  // stay - this is the only case in the repository that fails. (#444's note
-  // gave the whole pre-fix body, `parsed.sort(); _devices = parsed;`, which
-  // also drops the cap and so fails the cap case below as well - the mutation
-  // to run is the collapse alone.) #444.
+  // stay - two cases in the repository fail, this one and
+  // `known_devices_persist_test.dart`'s 'is written over, not beside'. The
+  // fold is the whole of what `remember` does about a duplicate too, so the
+  // read side and the write side go together. (#444's note gave the whole
+  // pre-fix body, `parsed.sort(); _devices = parsed;`, which also drops the
+  // cap and so fails the cap case below as well - the mutation to run is the
+  // collapse alone.) #444.
   test(
     'a store written by a 2.x build loads as one canonical device',
     () async {
@@ -210,16 +213,16 @@ void main() {
   });
 
   test('a rewound store reads an empty disk as empty', () async {
-    // What pins the `_devices` half of `KnownDevicesStore.debugReset`. Every
-    // other case here seeds a non-empty fixture, and `_load` then assigns
-    // `_devices` wholesale - so deleting that line from the reset left the
-    // whole suite green, which is the state-leak class #452 exists to close
-    // surviving inside its own fix.
+    // The empty-disk load, which is the path `known_devices_persist_test.dart`'s
+    // `setUp` and `serviceWith()` take and the only case here that takes it.
     //
-    // It is the empty disk that needs it: `_load` returns at `raw == null`
-    // before touching `_devices`, so without the reset the devices of
-    // whichever case ran before are still there. That is also the path
-    // `known_devices_persist_test.dart`'s `setUp` and `serviceWith()` take.
+    // It pinned the `_devices` half of `KnownDevicesStore.debugReset` when it
+    // was written: `_load` returned at `raw == null` before touching
+    // `_devices`, so the reset was the only thing that emptied them and
+    // deleting that line failed here and nowhere else. #456 moved the answer
+    // one layer down - the early return assigns through `_replace` now - so
+    // what this fails for today is that assignment, and the reset's own line
+    // is left as defence for a reader that never loads.
     await loadFrom([
       storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
     ]);

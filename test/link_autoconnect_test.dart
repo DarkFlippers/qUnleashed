@@ -547,8 +547,9 @@ void main() {
 
   /// The half of a hold nobody asked for. #460.
   ///
-  /// Everything in the group above is a hold with a user behind it, and the
-  /// rule there is that a setting flipped afterwards does not take it back.
+  /// The cases above about a hold have a user behind it - they report the
+  /// session rather than letting the app dial - and the rule there is that a
+  /// setting flipped afterwards does not take it back.
   /// Since #458 the app dials a cable at launch by itself, and that link
   /// entered the same set - so the hold tier went on taking it back after the
   /// user turned the setting off, on behalf of nobody. These cases are about
@@ -632,9 +633,11 @@ void main() {
       expect(client.dialled, ['usb:A', 'usb:A', 'usb:A']);
     });
 
-    // The other by-hand path, and the one that reaches a cable most often:
-    // the connection dialog has a `usbOnly` mode, and it dials the device it
-    // was given rather than a row of the list.
+    // The other by-hand path: the picker dialog, which dials the device it
+    // was handed rather than a row of the connection list. Both are real -
+    // `connectPickedDevice` for this one, `connectLinkEntry` for the case
+    // above - and they reach `LinkService` through different methods, so one
+    // case cannot stand in for the other.
     test('is taken back when the user picks it out of the dialog', () async {
       await appDialled();
       await DeviceSettings.instance.setAutoConnectUsb(false);
