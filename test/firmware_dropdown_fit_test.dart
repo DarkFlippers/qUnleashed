@@ -266,6 +266,10 @@ void main() {
       'uk': ['Канал оновлень', 'Варіант збірки'],
     };
 
+    // fr, hr, ru and uk pass the first mutation below - their labels are
+    // short enough that the old row still left the title a word - which is
+    // the reason the group is per locale rather than one case over all eight:
+    // the four that do catch it name themselves.
     for (final entry in labels.entries) {
       testWidgets('in ${entry.key}', (tester) async {
         for (final title in entry.value) {
@@ -295,3 +299,32 @@ void main() {
     }
   });
 }
+
+// ## Mutations
+//
+// Eleven against `SettingsDropdown`, all caught.
+//
+// | mutation | killed by |
+// |---|---|
+// | the row is always used - **the bug** | every locale, in en, de, es and be |
+// | the stacked arrangement is a `Row` again | every locale, in the same four |
+// | the fit ignores the text scaler | every locale, in the same four |
+// | the fit measures only the title | every locale, in the same four |
+// | stacked, the value is inflexible too | every locale, in the same four - a `RenderFlex` overflow rather than a wrap |
+// | the gap is not counted in the fit | "the narrowest row" **alone** |
+// | the two border pixels are left out of the chrome | "the narrowest row" **alone** |
+// | the drawn gap is dropped from the row | "the narrowest row" **alone** |
+// | the fit measures the style without `DefaultTextStyle` | "the narrowest row" **alone** |
+// | the chrome is not counted at all | "the narrowest row", and "the title goes above the dropdown" |
+// | the chevron is left out of the chrome | the same two |
+//
+// Four of the eleven are caught by the bisection and by nothing else, and the
+// two-pixel one was a real mistake in the first draft of the fix rather than
+// an invented mutation. That is the case's whole argument: every arithmetic
+// error available here is worth a few pixels, and a row with slack in it
+// cannot see any of them.
+//
+// fr, hr, ru and uk never fail the first five. Their labels are short enough
+// that the old row left the title a word even at 3.1, so the locales that
+// catch the bug are the four with the longest ones - which is why the group
+// is eight cases and not one.
