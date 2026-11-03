@@ -27,9 +27,44 @@ class DiagnosticsScope extends InheritedNotifier<DiagnosticsSettings> {
     required super.child,
   });
 
+  /// The switch, with a dependency on it: the reader redraws when it moves.
+  ///
+  /// For a widget that draws the value - the settings screen's own `Switch`,
+  /// which is the one call site. **Not for reading it once from a callback**,
+  /// which is what [notifierOf] is for: nothing clears
+  /// `Element._dependencies` on a rebuild, so a single read from a gesture
+  /// handler or a post-frame callback subscribes that element for its whole
+  /// life rather than until its next build.
   static DiagnosticsSettings of(BuildContext context) {
     return context
         .dependOnInheritedWidgetOfExactType<DiagnosticsScope>()!
         .notifier!;
+  }
+
+  /// The switch, without a dependency.
+  ///
+  /// `getInheritedWidgetOfExactType` reads the current inherited widget
+  /// without registering one, and Flutter's doc on it blesses exactly this
+  /// use: "interaction event handlers (e.g. gesture callbacks) or timers, to
+  /// obtain a value once, as long as that value is not cached and/or reused
+  /// later". The one call site is `AppShell`'s post-frame callback, which
+  /// reads the switch to decide whether ADR 0013 §1's notice is due - once, at
+  /// the first frame, for a shell whose `build` assembles the page stack and
+  /// the rail groups. Taken the listening way, flipping the reporting switch
+  /// rebuilt all of that. #415.
+  ///
+  /// This is `DeviceScope.notifierOf`'s shape and the third version of the
+  /// same mistake - #344 and #407 were the first two - with one difference
+  /// worth keeping in view: there the poll notified twelve times a minute,
+  /// here it is a switch a user flips, so the cost was a rebuild nobody would
+  /// have measured. The accessor is the point, so the next reader has the
+  /// non-listening spelling to hand.
+  ///
+  /// **For a value read once and not kept.** A non-listening read taken into
+  /// a `build` is a silent staleness bug: `DiagnosticsSettings` carries
+  /// `shareLogs` and `shareReplay`, and either one drawn from this would show
+  /// whatever it was when something else last rebuilt the reader.
+  static DiagnosticsSettings notifierOf(BuildContext context) {
+    return context.getInheritedWidgetOfExactType<DiagnosticsScope>()!.notifier!;
   }
 }
