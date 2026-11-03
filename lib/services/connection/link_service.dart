@@ -126,6 +126,28 @@ class LinkService extends ChangeNotifier {
   final Set<String> _holdUsbIds = {};
   String? _userDisconnectedKey;
   final Set<String> _autoTriedUsb = {};
+
+  /// The cables [_restoreCli] has already tried for the hold it is on now.
+  ///
+  /// Separate from [_autoTriedUsb] because the two answer different
+  /// questions - *has auto-connect dialled this cable* and *has the CLI
+  /// restore attempted it* - and #461 was what it cost to have one set
+  /// answering both. [_restoreCli] filtered on [_autoTriedUsb], which the
+  /// launch dial fills and only an unplug empties, so a CLI channel that died
+  /// while its cable stayed in found no candidate at all: the restore
+  /// declined, the USB branch skipped the same id, and the remembered
+  /// Bluetooth Flipper was dialled while the user sat on the CLI page with a
+  /// cable in hand. With `autoConnectUsb` on by default since #458, that was
+  /// everybody's path rather than an opted-in one.
+  ///
+  /// Emptied where the question changes rather than on a timer: when a new
+  /// hold is taken, when one is let go, when the device goes absent, and on a
+  /// restore that *worked* - a channel that opens and later dies is a new
+  /// question, not a retry of the one before it. What is left is a failed
+  /// attempt, which stays, and that is the loop [_restoreCli] has to not
+  /// start: it ends the reconcile whenever it has a candidate, and a failed
+  /// open is itself one of the things that schedules the next one.
+  final Set<String> _cliRestoreTried = {};
   // Keys whose connect the user called off while it was in flight. The
   // platform reports an aborted connect as a failure like any other, and a
   // cancel that answered with "connection failed" would read as the app
@@ -506,10 +528,15 @@ class LinkService extends ChangeNotifier {
     required void Function(Object error) onFailure,
   }) {
     _cliHold = _CliHold(channel, onChannel, onFailure);
+    // This hold has tried nothing yet. Without the clear, a cable a previous
+    // hold failed on would be unreachable to this one for as long as it stays
+    // plugged in - the same shape as #461, one hold along.
+    _cliRestoreTried.clear();
   }
 
   void releaseCli() {
     _cliHold = null;
+    _cliRestoreTried.clear();
   }
 
   // ── Events ───────────────────────────────────────────────────────────────
@@ -636,6 +663,11 @@ class LinkService extends ChangeNotifier {
 
     final presentIds = {for (final d in _usbPresent) d.id};
     _autoTriedUsb.removeWhere((id) => !presentIds.contains(id));
+    // The same prune for the same reason: a cable that went away and came
+    // back is a fresh question for the CLI restore too. This is the clause
+    // that made the restore work at all before #461 - it was the only thing
+    // that ever emptied what `_restoreCli` filtered on.
+    _cliRestoreTried.removeWhere((id) => !presentIds.contains(id));
     // Unplugged, so there is nothing left to explain - and the same event
     // that clears `_autoTriedUsb` is what lets the next appearance be dialled
     // again, which is the thing the hint was standing in for.
@@ -707,20 +739,22 @@ class LinkService extends ChangeNotifier {
     );
   }
 
+  /// Takes the CLI back on a cable, and says whether it got as far as
+  /// trying - which is what ends the reconcile, success or not.
+  ///
+  /// Filters on [_cliRestoreTried] rather than [_autoTriedUsb]. Those were
+  /// one set until #461, and because the launch dial fills [_autoTriedUsb]
+  /// and only an unplug empties it, a channel that died with its cable still
+  /// in had no candidate here at all. The guard was never about
+  /// auto-connect: it is there because this returns true whenever it has a
+  /// candidate, so a cable that cannot be reopened would be retried on every
+  /// reconcile, and a failed open is itself one of the things that schedules
+  /// the next one.
   Future<bool> _restoreCli(_CliHold hold) async {
-    // The `_autoTriedUsb` clause is wrong and known to be - #461. With
-    // `autoConnectUsb` on by default the launch dial puts the cable's id in
-    // that set and nothing takes it out while the cable stays in, so a CLI
-    // channel that dies *without* the device detaching finds no candidate
-    // here, the USB branch skips the same id, and the remembered Bluetooth
-    // device gets dialled instead. Dropping the clause outright risks the
-    // retry loop it is there to prevent, since this returns true whenever it
-    // has a candidate - so the fix wants attempt-tracking of its own, with
-    // the `holdCli` tests that do not exist yet.
     final candidates = [
       for (final device in _usbPresent)
         if (_userDisconnectedKey != 'usb:${device.id}' &&
-            !_autoTriedUsb.contains(device.id))
+            !_cliRestoreTried.contains(device.id))
           device,
     ];
     if (candidates.isEmpty) return false;
@@ -729,6 +763,11 @@ class LinkService extends ChangeNotifier {
       (d) => d.id == previous,
       orElse: () => candidates.first,
     );
+    _cliRestoreTried.add(device.id);
+    // Still marked auto-tried, so that a restore which fails does not leave
+    // the USB branch free to dial the same cable into RPC underneath a user
+    // who is asking for a terminal on it. Unchanged by #461, and not the
+    // clause that was wrong: what was wrong was *reading* this set here.
     _autoTriedUsb.add(device.id);
     final key = 'usb:${device.id}';
     LogService.info('[Link] restoring CLI on ${device.name}');
@@ -736,6 +775,11 @@ class LinkService extends ChangeNotifier {
     try {
       final channel = await _c.openCli(device);
       _clearAutoFailure(key);
+      // It opened, so this cable is no longer an attempt that failed. The
+      // next time a channel on it dies the restore gets to try again, which
+      // is the difference between a hold that survives a fault and one that
+      // survives exactly one.
+      _cliRestoreTried.remove(device.id);
       if (!identical(_cliHold, hold)) {
         await channel.close();
         return true;

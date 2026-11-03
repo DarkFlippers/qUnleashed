@@ -1,0 +1,520 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flipperlib/flipperlib.dart' hide DateTime;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/services/connection/device_settings.dart';
+import 'package:qunleashed/services/connection/link_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'known_device_ids.dart';
+
+/// Keeping a CLI channel across the link, which had no tests at all.
+///
+/// `grep holdCli test/` returned nothing before this file, in either
+/// direction: neither the restore that works nor the one that does not was
+/// asserted anywhere, which is most of why #461 reached a default build
+/// unnoticed.
+///
+/// The hold is what the remote CLI page runs inside. It is not a convenience:
+/// a channel that dies takes the terminal with it, and the user is looking at
+/// a cable that is still plugged in.
+class _Discovered implements DiscoveredDevice {
+  const _Discovered(this.id, this.transport);
+
+  @override
+  final String id;
+
+  @override
+  String get name => id;
+
+  @override
+  final DeviceTransport transport;
+}
+
+FlipperDevice usb(String id) => FlipperDevice(
+  id: id,
+  name: id,
+  link: FlipperLink.usb,
+  source: _Discovered(id, DeviceTransport.usb),
+);
+
+FlipperDevice ble(String id) => FlipperDevice(
+  id: id,
+  name: id,
+  link: FlipperLink.ble,
+  source: _Discovered(id, DeviceTransport.ble),
+);
+
+/// A channel a test can kill without unplugging anything.
+///
+/// That distinction is the whole subject here. A Flipper that detaches takes
+/// its id out of `_autoTriedUsb` on the next reconcile and everything works;
+/// a channel that dies while the cable stays in is the case that does not.
+class _FakeChannel implements FlipperCliChannel {
+  _FakeChannel(this.device);
+
+  @override
+  final FlipperDevice device;
+
+  bool _open = true;
+
+  @override
+  bool get isOpen => _open;
+
+  /// A session fault, the firmware closing the CLI, an RPC error - whatever
+  /// ended it, the cable is still in.
+  void die() => _open = false;
+
+  int closeCalls = 0;
+
+  @override
+  Future<void> close({bool backToRpc = true}) async => closeCalls += 1;
+
+  @override
+  Future<void> write(Uint8List bytes) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeCliClient implements FlipperClient {
+  final _usbEvents = StreamController<void>.broadcast();
+  final _sessions = StreamController<List<FlipperSessionInfo>>.broadcast();
+  final _connection = StreamController<FlipperConnectionState>.broadcast();
+  final _heard = StreamController<FlipperDevice>.broadcast();
+
+  /// What is on the bus. Set it, then [plugged], to move a cable.
+  List<FlipperDevice> present = const [];
+
+  @override
+  List<FlipperSessionInfo> sessions = const [];
+
+  /// Every dial, in the order it was asked for, keyed the way the service
+  /// keys its own activity - so a case can say *which transport* was dialled,
+  /// which is the user-visible half of #461.
+  final List<String> dialled = [];
+
+  /// Every `openCli`, in order.
+  final List<_FakeChannel> opened = [];
+
+  /// Raised by the next `openCli`, for the failure half of the hold.
+  Object? cliThrows;
+
+  Future<void> close() async {
+    await _usbEvents.close();
+    await _sessions.close();
+    await _connection.close();
+    await _heard.close();
+  }
+
+  void plugged() => _usbEvents.add(null);
+
+  void reportSessions(List<FlipperSessionInfo> now) {
+    sessions = now;
+    _sessions.add(now);
+  }
+
+  @override
+  Future<FlipperCliChannel> openCli(FlipperDevice device) async {
+    final failure = cliThrows;
+    if (failure != null) throw failure;
+    final channel = _FakeChannel(device);
+    opened.add(channel);
+    return channel;
+  }
+
+  @override
+  Stream<void> get usbEvents => _usbEvents.stream;
+
+  @override
+  Stream<List<FlipperSessionInfo>> get sessionsStream => _sessions.stream;
+
+  @override
+  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
+
+  @override
+  Stream<FlipperDevice> get bleHeard => _heard.stream;
+
+  @override
+  List<FlipperDevice> get devices => present;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  bool get isConnected => sessions.any((s) => s.connected);
+
+  @override
+  FlipperDevice? get connectedDevice =>
+      sessions.where((s) => s.connected).map((s) => s.device).firstOrNull;
+
+  @override
+  FlipperDevice? get connectingDevice => null;
+
+  @override
+  bool isFlipperDevice(FlipperDevice device) => true;
+
+  @override
+  String? getNameOf(FlipperDevice device) => null;
+
+  @override
+  Future<List<FlipperDevice>> refreshUsbOnly() async => present;
+
+  @override
+  Future<FlipperDevice> connect(FlipperDevice device) async {
+    dialled.add('usb:${device.id}');
+    return device;
+  }
+
+  @override
+  Future<FlipperDevice> connectBleAddress(
+    String address, {
+    String? name,
+    Duration timeout = FlipperClient.bleAddressConnectTimeout,
+  }) async {
+    dialled.add('ble:$address');
+    return ble(address);
+  }
+
+  @override
+  Future<void> switchToRpcMode() async {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> disconnectDevice(String id, {FlipperLink? link}) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late _FakeCliClient client;
+
+  setUp(() {
+    client = _FakeCliClient();
+    addTearDown(() async => client.close());
+  });
+
+  /// Builds a service with the two auto-connect settings in force, and a
+  /// remembered BLE Flipper on disk.
+  ///
+  /// The remembered device is not decoration: the BLE branch of
+  /// `_reconcileOnce` is where control lands when the CLI restore declines,
+  /// so without a `lastDevice` the difference between "the restore worked"
+  /// and "nothing happened at all" is invisible.
+  ///
+  /// `DeviceSettings` is a singleton that caches its load, hence the reset and
+  /// the setters - `link_autoconnect_test.dart` says the same thing at more
+  /// length, and ADR 0002 is about the day neither has to.
+  Future<LinkService> serviceWith({
+    bool usbAuto = true,
+    bool bleAuto = true,
+  }) async {
+    SharedPreferences.setMockInitialValues({
+      'known_devices_v1': jsonEncode([
+        storedEntry(
+          reportedById,
+          'the remembered one',
+          '2026-10-01T10:00:00.000',
+        ),
+      ]),
+    });
+    final settings = DeviceSettings.instance..reset();
+    await settings.load();
+    await settings.setAutoConnectUsb(usbAuto);
+    await settings.setAutoConnectBle(bleAuto);
+
+    final service = LinkService.forTest(client);
+    addTearDown(service.dispose);
+    return service;
+  }
+
+  /// Lets the reconcile debounce and the reconcile behind it run.
+  Future<void> settle() =>
+      Future<void>.delayed(const Duration(milliseconds: 400));
+
+  /// A cable dialled by the app at launch, with a CLI opened on it and then
+  /// held - which is what the remote CLI page leaves behind.
+  ///
+  /// Returns the channel the page would be holding. The dial list is cleared
+  /// afterwards so a case asserts on what happened *after* the hold, not on
+  /// the arrangement.
+  Future<
+    ({
+      _FakeChannel channel,
+      List<FlipperCliChannel> handed,
+      List<Object> failures,
+    })
+  >
+  heldCliOnDialledCable(LinkService links) async {
+    client.present = [usb('A')];
+    client.plugged();
+    await settle();
+    expect(client.dialled, [
+      'usb:A',
+    ], reason: 'premise: the app dialled the cable itself, so A is auto-tried');
+
+    final channel = _FakeChannel(usb('A'));
+    final handed = <FlipperCliChannel>[];
+    final failures = <Object>[];
+    links.holdCli(channel, onChannel: handed.add, onFailure: failures.add);
+    client.dialled.clear();
+    return (channel: channel, handed: handed, failures: failures);
+  }
+
+  group('a CLI hold whose Flipper went away', () {
+    // The path that works today, and the reason it works: the device going
+    // absent is what prunes `_autoTriedUsb`, so the cable is a candidate
+    // again when it comes back. Pinned first, because the fix for the case
+    // below must not cost this one.
+    test('is taken back when the cable returns', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      hold.channel.die();
+      client.present = const [];
+      client.plugged();
+      await settle();
+
+      // Cleared here and not before: while the cable is away, dialling the
+      // remembered Bluetooth Flipper is the right answer and the service
+      // gives it. What this case is about is the reconcile *after* the cable
+      // comes back.
+      client.dialled.clear();
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+
+      expect(hold.handed, hasLength(1));
+      expect(hold.handed.single.device.id, 'A');
+      expect(
+        client.dialled,
+        isEmpty,
+        reason: 'the CLI restore ends the reconcile before any dial',
+      );
+    });
+
+    // The hold outranks the setting, which is the rule the service states
+    // about held links generally. With the cable away and back, a restore
+    // happens even though nothing would have dialled it.
+    test('is taken back with USB auto-connect off', () async {
+      final links = await serviceWith(usbAuto: false);
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+      client.dialled.clear();
+
+      final channel = _FakeChannel(usb('A'));
+      final handed = <FlipperCliChannel>[];
+      links.holdCli(channel, onChannel: handed.add, onFailure: (_) {});
+
+      channel.die();
+      client.plugged();
+      await settle();
+
+      expect(handed, hasLength(1));
+    });
+
+    test('is let go of by releaseCli', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      links.releaseCli();
+      hold.channel.die();
+      client.present = const [];
+      client.plugged();
+      await settle();
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+
+      expect(hold.handed, isEmpty);
+    });
+
+    // A restore that cannot open tells the holder, which is what lets the CLI
+    // page say so rather than sit on a dead terminal.
+    test('tells the holder when the CLI will not open', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      client.cliThrows = StateError('no transport');
+      hold.channel.die();
+      client.present = const [];
+      client.plugged();
+      await settle();
+      client.present = [usb('A')];
+      client.plugged();
+      await settle();
+
+      expect(hold.failures, hasLength(1));
+      expect(hold.handed, isEmpty);
+    });
+  });
+
+  group('a CLI hold whose channel died with the cable still in', () {
+    // #461. The app dialled this cable at launch, so its id is in
+    // `_autoTriedUsb` and stays there while the cable is present. The restore
+    // used to filter on that set, so it found no candidate, the USB branch
+    // skipped the same id, and control fell through to the remembered
+    // Bluetooth Flipper - dialled while the user sat on the CLI page with a
+    // cable in hand, and with nothing told to the page about why its channel
+    // had not come back.
+    //
+    // The premise is in `heldCliOnDialledCable`, which asserts the launch
+    // dial happened: without it this case would pass on a cable that was
+    // never auto-tried, which is exactly the state #461 is not about.
+    test('is taken back on the cable it was already on', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      hold.channel.die();
+      client.plugged();
+      await settle();
+
+      expect(hold.handed, hasLength(1));
+      expect(hold.handed.single.device.id, 'A');
+      expect(
+        client.dialled,
+        isEmpty,
+        reason: 'and Bluetooth is not dialled instead',
+      );
+    });
+
+    // The guard the filter is actually for, which is why the fix is a second
+    // set rather than dropping the clause. `_restoreCli` ends the reconcile
+    // whenever it has a candidate, and a failed open is itself one of the
+    // things that schedules the next one - so a cable that cannot be reopened
+    // would be retried forever.
+    test('is tried once, not on every reconcile', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      client.cliThrows = StateError('no transport');
+      hold.channel.die();
+      client.plugged();
+      await settle();
+      expect(
+        hold.failures,
+        hasLength(1),
+        reason: 'premise: it tried, and failed',
+      );
+
+      client.plugged();
+      await settle();
+      client.plugged();
+      await settle();
+
+      expect(
+        hold.failures,
+        hasLength(1),
+        reason: 'two more reconciles, no second attempt',
+      );
+    });
+
+    // And the other side of that: holding on to the failure would mean a hold
+    // survived exactly one fault. A restore that worked clears the cable, so
+    // the next death of the channel it handed over is a new question.
+    test('is taken back again when the restored channel dies too', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      hold.channel.die();
+      client.plugged();
+      await settle();
+      expect(hold.handed, hasLength(1), reason: 'premise: the first restore');
+
+      (hold.handed.single as _FakeChannel).die();
+      client.plugged();
+      await settle();
+
+      expect(hold.handed, hasLength(2));
+    });
+
+    // `holdCli` clears the attempt set, and this is what that is for. Without
+    // it a cable one hold failed on would be unreachable to the next for as
+    // long as it stays plugged in - the same shape as #461, one hold along.
+    // The CLI page calls `holdCli` for every channel it gets, so a page that
+    // reopened its own terminal after a failed restore is the real path here
+    // rather than a contrived one.
+    test('does not inherit the cables a previous hold failed on', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      client.cliThrows = StateError('no transport');
+      hold.channel.die();
+      client.plugged();
+      await settle();
+      expect(
+        hold.failures,
+        hasLength(1),
+        reason: 'premise: this hold tried A and failed',
+      );
+
+      client.cliThrows = null;
+      final second = _FakeChannel(usb('A'));
+      final handed = <FlipperCliChannel>[];
+      links.holdCli(second, onChannel: handed.add, onFailure: (_) {});
+
+      second.die();
+      client.plugged();
+      await settle();
+
+      expect(handed, hasLength(1));
+    });
+
+    // The absence prune, which nothing else here reaches: the cases above
+    // that unplug a cable never got as far as recording an attempt on it, so
+    // removing the prune left every one of them green. A *failed* attempt is
+    // the only thing the prune has to clear, and a replug is the same fresh
+    // question for the restore that it is for auto-connect.
+    test(
+      'is tried again once that cable has been unplugged and put back',
+      () async {
+        final links = await serviceWith();
+        final hold = await heldCliOnDialledCable(links);
+
+        client.cliThrows = StateError('no transport');
+        hold.channel.die();
+        client.plugged();
+        await settle();
+        expect(
+          hold.failures,
+          hasLength(1),
+          reason: 'premise: it tried A, failed, and will not try again',
+        );
+
+        client.cliThrows = null;
+        client.present = const [];
+        client.plugged();
+        await settle();
+        client.present = [usb('A')];
+        client.plugged();
+        await settle();
+
+        expect(hold.handed, hasLength(1));
+      },
+    );
+
+    // The cable is still the one the hold was on, so a second Flipper plugged
+    // in beside it is not what gets taken - `_restoreCli` prefers the
+    // previous device and only falls back to the first candidate.
+    test('is taken back on its own cable, not on a neighbour', () async {
+      final links = await serviceWith();
+      final hold = await heldCliOnDialledCable(links);
+
+      client.present = [usb('B'), usb('A')];
+      hold.channel.die();
+      client.plugged();
+      await settle();
+
+      expect(hold.handed, hasLength(1));
+      expect(hold.handed.single.device.id, 'A');
+    });
+  });
+}
