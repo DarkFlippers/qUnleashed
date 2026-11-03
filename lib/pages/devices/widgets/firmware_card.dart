@@ -356,11 +356,21 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   Widget _carousel(FirmwareConfig config) {
     return SizedBox(
-      // A fixed height holding text that scales is the same class of bug as
-      // #463, and this was looked at while fixing that one: the slide did not
-      // visibly clip in the 2x screenshot #463 came from, so it is left alone
-      // rather than changed on an assumption. #463's "Same card, not
-      // confirmed" section is where that is written down.
+      // **A known overflow, not an open question.** A fixed height holding
+      // text that scales is the same class of bug as #463, which filed it as
+      // "same card, not confirmed" on the strength of a screenshot. A
+      // screenshot is the one instrument that cannot see it: the slide's
+      // `Column` overflows this box, and the `Material` above wraps the card
+      // in `Clip.antiAlias`, so a release build clips the excess and reports
+      // nothing - the same trap `device_header_fit_test.dart` records.
+      //
+      // Pumped through `test/firmware_fixture.dart` at a 360 dp window, this
+      // overflows by 10 pixels at a scaler of 1.3, 163 at 2.0 and 555 at 3.1,
+      // and by 73 at 1.3 on a 320. Fixing it means deciding what the carousel
+      // does instead - a `PageView` needs a bounded height, and the slide's
+      // 22pt name wraps before the box runs out - which is a design question
+      // rather than the one-line change #463's two rows were. It is #471, and this comment is here so the next reader does not take the
+      // 110 for a number that was measured.
       height: 110,
       child: Row(
         children: [
@@ -531,7 +541,8 @@ class _FirmwareControls extends StatelessWidget {
   }
 }
 
-/// A setting's title beside a tap target showing its current value.
+/// A setting's title beside a tap target showing its current value, or
+/// above it once both will not fit one line.
 ///
 /// ## The two arrangements, and why there are two
 ///
@@ -541,10 +552,9 @@ class _FirmwareControls extends StatelessWidget {
 /// value plus 22 of padding and border, the 6 before the chevron and the
 /// chevron's 18, none of which follows the text scaler because nothing here
 /// sets `Icon.applyTextScaling` - and the title got the remainder. At a
-/// scaler of 2 that remainder fell to about one glyph and `Text` wrapped
-/// per character: a
-/// vertical column of letters, tall enough to push the build-variant row and
-/// the update button off the screen. #463.
+/// scaler of 2 that remainder fell to about one glyph, and `Text` with no
+/// `maxLines` wraps per character: a vertical column of letters, tall enough
+/// to push the build-variant row and the update button off the screen. #463.
 ///
 /// So the row is kept only while both strings fit it whole, and below that
 /// the title moves above the dropdown instead. Of the three fixes the issue
@@ -582,15 +592,17 @@ class _FirmwareControls extends StatelessWidget {
 /// shipping upstream. The variant row's three values and both placeholders
 /// are ARB strings, and a translator can lengthen those just as freely.
 ///
-/// ## An unbounded width is no longer a crash
+/// ## It wants a bounded width, as the `Expanded` it replaces did
 ///
-/// Worth knowing because it used to be: the `Expanded` this replaces is
-/// `FlexFit.tight`, and a tight flex child under an unbounded width
-/// constraint is the `RenderFlex` assertion - so the old row threw outright
-/// if anything ever put one of these in a `Row`. The `Flexible` inside the
-/// dropdown is `FlexFit.loose` under a `MainAxisSize.min` row, which is the
-/// combination that assertion's own hint recommends, so it lays out at its
-/// natural width instead. `Wrap` needs no bound either. A case pins it.
+/// Because it claims the whole of it: a `Wrap` is as wide as its children, and
+/// the `Column` these sit in centres anything narrower than itself, so without
+/// `width: double.infinity` the two rows would hug their content and drift to
+/// the middle of the card. An infinite width then makes that `SizedBox`
+/// infinite, which is an assertion of its own - the old row's was the
+/// `RenderFlex` one, since `Expanded` is `FlexFit.tight`. Everything that
+/// builds one of these is inside the device page's `ListView`, and a case pins
+/// the full width rather than the bound, because filling the card is the part
+/// a caller depends on.
 ///
 /// `@visibleForTesting` so `test/firmware_dropdown_fit_test.dart` can drive
 /// the contract at a scaler; nothing outside this file builds one.
@@ -625,34 +637,39 @@ class SettingsDropdown<T> extends StatelessWidget {
   /// disagree, because they are the same number read once.
   static const double _gap = 8;
 
-  /// The gap between the title and the dropdown once they are stacked.
-  static const double _runGap = 6;
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-      child: Wrap(
-        // Holds the dropdown against the trailing edge while the two share a
-        // run, which is what the `Expanded` used to do. With one child on a
-        // run there is nothing to space, so a stacked title sits at the
-        // leading edge.
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: _gap,
-        runSpacing: _runGap,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: colors.textPrimary,
+      // The `SizedBox` is not decoration. A `Row` with no `mainAxisSize`
+      // takes the width it is offered; a `Wrap` takes the width of its
+      // children, and the `Column` these sit in centres what is narrower than
+      // itself - so without this the two rows would hug their content and
+      // drift to the middle of the card instead of filling it.
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          // Holds the dropdown against the trailing edge while the two share a
+          // run, which is what the `Expanded` used to do. With one child on a
+          // run there is nothing to space, so a stacked title sits at the
+          // leading edge.
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: _gap,
+          runSpacing: 6,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: colors.textPrimary,
+              ),
             ),
-          ),
-          _dropdown(context, colors),
-        ],
+            _dropdown(context, colors),
+          ],
+        ),
       ),
     );
   }
@@ -674,9 +691,7 @@ class SettingsDropdown<T> extends StatelessWidget {
             children: [
               // `Flexible`, so a value too long for the card wraps inside the
               // dropdown rather than overflowing it: `Wrap` hands each child
-              // its own maxWidth, which here is the card's width. Loose, in a
-              // `MainAxisSize.min` row, so an unbounded width is a natural
-              // layout rather than an assertion - see the note above.
+              // its own maxWidth, which here is the card's width.
               Flexible(
                 child: Text(
                   value == null ? placeholder : labelOf(value as T),

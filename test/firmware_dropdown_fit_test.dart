@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_card.dart';
+import 'package:qunleashed/services/localization/gen/l10n_generated.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 /// Built once. `ThemeData()` is not free and nothing here varies it, so every
@@ -18,34 +19,36 @@ const double _gap = 8;
 
 /// The channel title #463's screenshot was taken with.
 ///
-/// It is **server data** - `directory.dart` reads it out of the firmware
-/// feed - which is why no width picked in the widget and no ARB kept short
-/// would have fixed this: nothing in `translations/` or in this repository
-/// decides how long it is. Nothing pins the longest one the feed can ship
-/// either, so this is a length that has been seen rather than a bound.
+/// Server data, read out of the firmware feed - the class doc is where that
+/// matters. Nothing pins the longest title the feed can ship, so this is a
+/// length that has been seen rather than a bound.
 const String _longChannel = 'Stable Release Channel';
 
 /// That the firmware card's two setting rows keep both of their strings whole
 /// at every text size.
 ///
-/// The title was an `Expanded` beside an inflexible dropdown, so the dropdown
-/// took its full intrinsic width - its value plus 22 of padding and border,
-/// the 6 before the chevron and the chevron's 18, none of which follows the
-/// text scaler - and the title got what was left. At a scaler of 2 that was
-/// about one glyph, and `Text` with no `maxLines` wrapped per character:
-/// "Update Channel" drawn as a vertical column of letters, tall enough to
-/// push the build-variant row and the update button off the screen. #463.
+/// `SettingsDropdown`'s own doc has the mechanism and why the fix is a `Wrap`
+/// rather than a measurement; in one line, the title was an `Expanded` beside
+/// an inflexible dropdown, so at a scaler of 2 it had about one glyph to work
+/// with and `Text` spent it a letter at a time. #463.
 ///
 /// ## No width here is a phone's
 ///
 /// `flutter_test` renders every glyph as a square of the font size, about
 /// twice what Roboto gives at the same size - `nav_bar_label_fit_test.dart`
-/// has the measurement that ratio comes from. So the boxes here are chosen
-/// through it rather than as phone widths: 600 is roughly what this font
-/// spends where Roboto spends the ~292 dp of card interior on a 320 dp phone,
-/// and 900 is deliberately wider than any phone's card, as the width where a
-/// row has room to spare. Neither mapping is derived anywhere; they are two
-/// widths far enough apart that the arrangement differs between them.
+/// has the measurement that ratio comes from. So the widths here are chosen
+/// through it rather than as phone widths, and there are six of them, none a
+/// device size:
+///
+///  * **600** is roughly what this font spends where Roboto spends the ~292 dp
+///    of card interior on a 320 dp phone, and **900** is deliberately wider
+///    than any phone's card. Neither mapping is derived anywhere; they are two
+///    widths far enough apart that the arrangement differs between them.
+///  * **360** and **320** are two narrow cases, chosen to make a long value
+///    and a long value at a scaler the thing that runs out of room. In this
+///    font they are *narrower* than the phones whose numbers they look like.
+///  * **100** and **2000** are the bisection's brackets, one arrangement each,
+///    and it asserts that before it searches.
 ///
 /// It also means the eight locale cases are eight label-*length* cases with
 /// diagnostic names, since width here is exactly proportional to glyph count.
@@ -78,6 +81,11 @@ void main() {
     double box = 600,
     double textScale = 1,
   }) async {
+    // From an empty tree each time, and the bisection depends on it: a
+    // `RenderFlex` reports an overflow once per render object, and
+    // `pumpWidget` reuses the elements - so a second overflowing width in the
+    // same case would throw nothing and read as a pass.
+    // `device_header_fit_test.dart` is where that is written down.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(
       MaterialApp(
@@ -144,8 +152,9 @@ void main() {
   /// boxes here - which every layout breaks mid-word and this fix does not
   /// change. Giving the title its own line is what makes that rare rather
   /// than the normal case.
-  int wrapSlots(String text) =>
-      1 + text.split('').where((c) => c == ' ' || c == '-').length;
+  // n separators yield n + 1 parts, which is the plus one. The trailing
+  // hyphen in the class is literal and needs no escape.
+  int wrapSlots(String text) => text.split(RegExp(r'[ -]')).length;
 
   /// The dropdown's border box, which is what the title keeps its gap from.
   ///
@@ -279,12 +288,9 @@ void main() {
 
     // **A tripwire, not a measurement.** Both strings are whole at every
     // width in this file for a structural reason - neither `Text` sets
-    // `maxLines` or an `overflow`, so nothing can be cut - and that is the
-    // claim worth pinning, because it is what the two cheaper fixes the issue
-    // weighed would have changed. An ellipsised value brings the #425 trap
-    // here, where a cut string cannot be told from another cut string; a
-    // clamped title leaves the user reading "Upd..." for the setting they are
-    // changing.
+    // `maxLines` or an `overflow`, so nothing can be cut. That is worth
+    // pinning because it is exactly what the two cheaper fixes the issue
+    // weighed would have changed; the class doc says why each was refused.
     //
     // Asserted on the widgets rather than through `didExceedMaxLines`, which
     // the engine only ever sets when `maxLines` is non-null: against this
@@ -343,8 +349,7 @@ void main() {
     });
 
     // The dropdown's value is `Flexible`, so a value too long for the card
-    // wraps inside it instead of overflowing it. `Wrap` hands each child its
-    // own maxWidth, which is what makes that legal.
+    // wraps inside it instead of overflowing it.
     testWidgets('a value too long for the card wraps instead of overflowing', (
       tester,
     ) async {
@@ -361,73 +366,57 @@ void main() {
     });
   });
 
-  // The `Expanded` this widget used to open with is `FlexFit.tight`, and a
-  // tight flex child under an unbounded width constraint is the `RenderFlex`
-  // assertion - so before the fix, putting one of these in a `Row` threw
-  // outright. Nothing in the app does, which is why nothing caught it.
+  // **The row fills the width it is offered rather than hugging its content.**
   //
-  // It does not any more: `Wrap` wants no bound, and the `Flexible` left
-  // inside the dropdown is loose under a `MainAxisSize.min` row, the
-  // combination that assertion's own hint recommends. This is the case that
-  // says so, because the claim is in the class doc and no other case can
-  // reach it.
-  testWidgets('an unbounded width is a layout rather than an assertion', (
+  // A `Row` with no `mainAxisSize` takes the width it is given; a `Wrap` takes
+  // the width of its children. The card puts these in a `Column`, which
+  // centres anything narrower than itself - so the rewrite would have left the
+  // two settings rows hugging their text and sitting in the middle of the
+  // card, which the fit cases cannot see because they pump in a tight box.
+  // `width: double.infinity` is what keeps it, and this is the case that says
+  // so.
+  testWidgets('the row fills a loose width instead of hugging its text', (
     tester,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: _theme,
         home: Scaffold(
-          body: Row(
-            children: [
-              SettingsDropdown<String>(
-                title: 'Update Channel',
-                value: _longChannel,
-                items: const ['one', 'two'],
-                labelOf: (item) => item,
-                descriptionOf: (item) => 'about $item',
-                accent: const Color(0xFFCC241D),
-                placeholder: 'Unavailable',
-                onChanged: (_) {},
-              ),
-            ],
+          body: SizedBox(
+            width: 600,
+            // Loose, and centring, which is what `Column` does by default and
+            // what `_FirmwareControls` hands these rows.
+            child: Column(
+              children: [
+                SettingsDropdown<String>(
+                  title: 'Update Channel',
+                  value: 'Stable',
+                  items: const ['one', 'two'],
+                  labelOf: (item) => item,
+                  descriptionOf: (item) => 'about $item',
+                  accent: const Color(0xFFCC241D),
+                  placeholder: 'Unavailable',
+                  onChanged: (_) {},
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(lines(tester, 'Update Channel'), 1);
-    expect(lines(tester, _longChannel), 1);
+    // The title on the leading edge and the dropdown on the trailing one, 600
+    // apart less the widget's own 2 of horizontal padding - not 'Update
+    // Channel' and 'Stable' side by side somewhere in the middle.
+    final row = tester.getRect(find.byType(SettingsDropdown<String>));
+    expect(row.width, closeTo(600, 0.01));
+    expect(chipOf(tester).right, closeTo(row.right - 2, 0.01));
   });
 
   // Every locale, because what fits is a property of the translations, and
-  // four scalers because the chrome does not follow them.
-  //
-  // Both of the card's rows are here. The channel's label is the longer of
-  // the two in half of the eight locales - en, fr, be and ru - level in hr
-  // and uk, and the *shorter* one in de and es, which is why neither row
-  // stands in for the other.
+  // four scalers because the dropdown's padding and chevron do not follow
+  // them while the strings do.
   group('every locale', () {
-    // `firmwareUpdateChannel`, `firmwareBuildVariant` and the longer of
-    // `firmwareUnavailable` and `firmwareLoading`, read out of
-    // `translations/*.arb`. Copied rather than looked up so that a
-    // translator's edit reports here as a fit to re-check rather than as a
-    // silent change of subject.
-    const strings = <String, List<String>>{
-      'en': ['Update Channel', 'Build Variant', 'Unavailable'],
-      'de': ['Update-Kanal', 'Build-Variante', 'Nicht verfügbar'],
-      'es': [
-        'Canal de actualización',
-        'Variante de compilación',
-        'No disponible',
-      ],
-      'fr': ['Canal de mise à jour', 'Variante de build', 'Indisponible'],
-      'hr': ['Kanal ažuriranja', 'Varijanta builda', 'Učitavanje…'],
-      'be': ['Канал абнаўленняў', 'Варыянт зборкі', 'Недаступна'],
-      'ru': ['Канал обновлений', 'Вариант сборки', 'Недоступно'],
-      'uk': ['Канал оновлень', 'Варіант збірки', 'Завантаження…'],
-    };
-
     // Four scalers spanning what the platforms offer, not all of them: 1.0
     // and 1.3 are Android steps, 2.0 is the one #463's screenshot was taken
     // at, and 3.1 is the largest this repository tests anywhere - see
@@ -437,11 +426,31 @@ void main() {
     // file does go there.
     const scales = [1.0, 1.3, 2.0, 3.1];
 
-    for (final entry in strings.entries) {
-      testWidgets('in ${entry.key}', (tester) async {
-        final titles = entry.value.take(2);
-        // Both the longest channel title the directory ships and this
-        // locale's own placeholder, which is the value on a cold open.
+    // Through `lookupL10n`, as `nav_bar_label_fit_test.dart` and
+    // `device_header_fit_test.dart` do, rather than copied into a table here.
+    // A copy looks safer and is the opposite: nothing would compare it with
+    // `translations/`, so a translation that grew past what fits would leave
+    // this file measuring the retired string and passing. Read from the ARB,
+    // that edit is exactly what fails - and a ninth locale arrives covered
+    // instead of silently uncovered.
+    for (final locale in L10n.supportedLocales) {
+      testWidgets('in ${locale.languageCode}', (tester) async {
+        final strings = lookupL10n(locale);
+        // Both of the card's rows. The channel's label is the longer of the
+        // two in half of the eight locales, level in hr and uk, and the
+        // shorter one in de and es, so neither stands in for the other.
+        final titles = [
+          strings.firmwareUpdateChannel,
+          strings.firmwareBuildVariant,
+        ];
+        // The longest channel title the directory ships, and this locale's
+        // own placeholder, which is the value on a cold open. Picked by
+        // length rather than by hand: in this font every glyph is a square of
+        // the font size, so the longer string is the wider one.
+        final placeholder = [
+          strings.firmwareUnavailable,
+          strings.firmwareLoading,
+        ].reduce((a, b) => a.length >= b.length ? a : b);
         final values = <String?>[_longChannel, null];
         for (final title in titles) {
           for (final value in values) {
@@ -451,11 +460,11 @@ void main() {
                   tester,
                   title: title,
                   value: value,
-                  placeholder: entry.value[2],
+                  placeholder: placeholder,
                   box: box,
                   textScale: scale,
                 );
-                final shown = value ?? entry.value[2];
+                final shown = value ?? placeholder;
                 final where = '"$title" / "$shown" at $box, scale $scale';
                 expect(tester.takeException(), isNull, reason: where);
                 // The title, against its own break points rather than a line
