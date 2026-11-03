@@ -9,6 +9,7 @@ import 'package:qunleashed/services/connection/link_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'known_device_ids.dart';
+import 'link_autoconnect_test.dart' show FakeDialClient, usb;
 
 /// Keeping a CLI channel across the link, which had no tests at all.
 ///
@@ -20,33 +21,6 @@ import 'known_device_ids.dart';
 /// The hold is what the remote CLI page runs inside. It is not a convenience:
 /// a channel that dies takes the terminal with it, and the user is looking at
 /// a cable that is still plugged in.
-class _Discovered implements DiscoveredDevice {
-  const _Discovered(this.id, this.transport);
-
-  @override
-  final String id;
-
-  @override
-  String get name => id;
-
-  @override
-  final DeviceTransport transport;
-}
-
-FlipperDevice usb(String id) => FlipperDevice(
-  id: id,
-  name: id,
-  link: FlipperLink.usb,
-  source: _Discovered(id, DeviceTransport.usb),
-);
-
-FlipperDevice ble(String id) => FlipperDevice(
-  id: id,
-  name: id,
-  link: FlipperLink.ble,
-  source: _Discovered(id, DeviceTransport.ble),
-);
-
 /// A channel a test can kill without unplugging anything.
 ///
 /// That distinction is the whole subject here. A Flipper that detaches takes
@@ -80,23 +54,15 @@ class _FakeChannel implements FlipperCliChannel {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _FakeCliClient implements FlipperClient {
-  final _usbEvents = StreamController<void>.broadcast();
-  final _sessions = StreamController<List<FlipperSessionInfo>>.broadcast();
-  final _connection = StreamController<FlipperConnectionState>.broadcast();
-  final _heard = StreamController<FlipperDevice>.broadcast();
-
-  /// What is on the bus. Set it, then [plugged], to move a cable.
-  List<FlipperDevice> present = const [];
-
-  @override
-  List<FlipperSessionInfo> sessions = const [];
-
-  /// Every dial, in the order it was asked for, keyed the way the service
-  /// keys its own activity - so a case can say *which transport* was dialled,
-  /// which is the user-visible half of #461.
-  final List<String> dialled = [];
-
+/// The dial fake, plus the CLI half this file is about.
+///
+/// `FakeDialClient` is the shared one - `auto_connect_hint_test.dart` and
+/// `connect_transport_labels_test.dart` import it too, the second by
+/// subclassing it exactly as this does - and everything here that is not CLI
+/// came from it: the four stream controllers, `present`, `sessions`,
+/// `dialled`, `plugged()` and `reportSessions()`. Its `connectThrows` and
+/// `parkConnect` come along and are never set in this file.
+class _FakeCliClient extends FakeDialClient {
   /// Every `openCli`, in order.
   final List<_FakeChannel> opened = [];
 
@@ -106,20 +72,6 @@ class _FakeCliClient implements FlipperClient {
   /// When set, `openCli` waits on it before handing a channel back, so a case
   /// can let the hold go while an open is still in flight.
   Completer<void>? parkOpen;
-
-  Future<void> close() async {
-    await _usbEvents.close();
-    await _sessions.close();
-    await _connection.close();
-    await _heard.close();
-  }
-
-  void plugged() => _usbEvents.add(null);
-
-  void reportSessions(List<FlipperSessionInfo> now) {
-    sessions = now;
-    _sessions.add(now);
-  }
 
   @override
   Future<FlipperCliChannel> openCli(FlipperDevice device) async {
@@ -131,71 +83,6 @@ class _FakeCliClient implements FlipperClient {
     opened.add(channel);
     return channel;
   }
-
-  @override
-  Stream<void> get usbEvents => _usbEvents.stream;
-
-  @override
-  Stream<List<FlipperSessionInfo>> get sessionsStream => _sessions.stream;
-
-  @override
-  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
-
-  @override
-  Stream<FlipperDevice> get bleHeard => _heard.stream;
-
-  @override
-  List<FlipperDevice> get devices => present;
-
-  @override
-  bool get isConnecting => false;
-
-  @override
-  bool get isConnected => sessions.any((s) => s.connected);
-
-  @override
-  FlipperDevice? get connectedDevice =>
-      sessions.where((s) => s.connected).map((s) => s.device).firstOrNull;
-
-  @override
-  FlipperDevice? get connectingDevice => null;
-
-  @override
-  bool isFlipperDevice(FlipperDevice device) => true;
-
-  @override
-  String? getNameOf(FlipperDevice device) => null;
-
-  @override
-  Future<List<FlipperDevice>> refreshUsbOnly() async => present;
-
-  @override
-  Future<FlipperDevice> connect(FlipperDevice device) async {
-    dialled.add('usb:${device.id}');
-    return device;
-  }
-
-  @override
-  Future<FlipperDevice> connectBleAddress(
-    String address, {
-    String? name,
-    Duration timeout = FlipperClient.bleAddressConnectTimeout,
-  }) async {
-    dialled.add('ble:$address');
-    return ble(address);
-  }
-
-  @override
-  Future<void> switchToRpcMode() async {}
-
-  @override
-  Future<void> disconnect() async {}
-
-  @override
-  Future<void> disconnectDevice(String id, {FlipperLink? link}) async {}
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -246,8 +133,14 @@ void main() {
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 400));
 
-  /// A cable dialled by the app at launch, with a CLI opened on it and then
-  /// held - which is what the remote CLI page leaves behind.
+  /// A cable with a CLI opened on it and then held - which is what the remote
+  /// CLI page leaves behind.
+  ///
+  /// [appDials] is whether the app dialled that cable itself on the way, and
+  /// it is asserted either way. With `autoConnectUsb` on, the dial is the
+  /// premise #461 is about: it is the only observable proof that the id is in
+  /// `_autoTriedUsb`. With it off, the *absence* of a dial is the premise
+  /// instead, and that case is about the restore consulting no setting.
   ///
   /// Returns the channel the page would be holding. The dial list is cleared
   /// afterwards so a case asserts on what happened *after* the hold, not on
@@ -259,13 +152,21 @@ void main() {
       List<Object> failures,
     })
   >
-  heldCliOnDialledCable(LinkService links) async {
+  heldCliOnDialledCable(LinkService links, {bool appDials = true}) async {
     client.present = [usb('A')];
     client.plugged();
     await settle();
-    expect(client.dialled, [
-      'usb:A',
-    ], reason: 'premise: the app dialled the cable itself, so A is auto-tried');
+    // The USB dials only. With `appDials` off the setting that would have
+    // taken this cable is off, so control reaches the Bluetooth branch and
+    // the remembered Flipper is dialled - which is correct, and which the
+    // arrangement this replaced hid behind a `dialled.clear()`.
+    expect(
+      client.dialled.where((d) => d.startsWith('usb:')),
+      appDials ? ['usb:A'] : isEmpty,
+      reason: appDials
+          ? 'premise: the app dialled the cable itself, so A is auto-tried'
+          : 'premise: nothing dialled this cable, so A is not auto-tried',
+    );
 
     final channel = _FakeChannel(usb('A'));
     final handed = <FlipperCliChannel>[];
@@ -440,20 +341,13 @@ void main() {
     // above.
     test('is taken back with USB auto-connect off', () async {
       final links = await serviceWith(usbAuto: false);
-      client.present = [usb('A')];
-      client.plugged();
-      await settle();
-      client.dialled.clear();
+      final hold = await heldCliOnDialledCable(links, appDials: false);
 
-      final channel = _FakeChannel(usb('A'));
-      final handed = <FlipperCliChannel>[];
-      links.holdCli(channel, onChannel: handed.add, onFailure: (_) {});
-
-      channel.die();
+      hold.channel.die();
       client.plugged();
       await settle();
 
-      expect(handed, hasLength(1));
+      expect(hold.handed, hasLength(1));
     });
 
     // Driven by a sessions emission rather than a replug, because that is

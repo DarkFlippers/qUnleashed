@@ -216,50 +216,38 @@ void main() {
     expect(keptLevels, [KeptLevel.caught]);
   });
 
-  // And what pins the `_devices` half of the reset itself, now that the load
-  // writes it on every path that read the store: a reader between the rewind
-  // and the next load. `flutter_test_config.dart` rewinds before every case,
-  // so a case that reads `devices` without loading - or a `LinkService` still
-  // attached from a case that has finished - sees this and nothing else.
-  test('a rewound store is empty before anything has loaded it', () async {
-    await loadFrom([
-      storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
-    ]);
-    expect(KnownDevicesStore.instance.devices, isNotEmpty, reason: 'premise');
+  // The rewind, and then the empty-disk load that follows it in every file
+  // that seeds through `SharedPreferences` - which is the path
+  // `known_devices_persist_test.dart`'s `setUp` and `serviceWith()` take, and
+  // the only case here that takes it.
+  //
+  // Two acts because they pin different things, and the comment this replaces
+  // got that wrong twice. The read *before* any load is what pins
+  // `debugReset` emptying `_devices` at all: measured, deleting that leaves
+  // the rest of the suite green. The load after it pins nothing on its own -
+  // deleting `_replace(const [])` from `_load`'s `raw == null` branch leaves
+  // the whole suite green too, because the reset has already emptied the
+  // field - and it cannot: [load] memoises, so the only second load in a
+  // process follows a reset. That branch assigns for the invariant, which is
+  // what its own comment now says rather than claiming a test.
+  test(
+    'is empty when it is rewound, and stays empty on an empty disk',
+    () async {
+      await loadFrom([
+        storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
+      ]);
+      expect(KnownDevicesStore.instance.devices, isNotEmpty, reason: 'premise');
 
-    KnownDevicesStore.instance.debugReset();
+      KnownDevicesStore.instance.debugReset();
 
-    expect(KnownDevicesStore.instance.devices, isEmpty);
-    expect(KnownDevicesStore.instance.lastDevice, isNull);
-  });
+      expect(KnownDevicesStore.instance.devices, isEmpty);
+      expect(KnownDevicesStore.instance.lastDevice, isNull);
 
-  test('a rewound store reads an empty disk as empty', () async {
-    // The empty-disk load end to end: the memo was rewound, a real [_load]
-    // ran, and it read an empty store as empty. That is the path
-    // `known_devices_persist_test.dart`'s `setUp` and `serviceWith()` take and
-    // the only case here that takes it.
-    //
-    // Measured, and worth writing down because the comment this replaces got
-    // it wrong twice: this case pins *neither* of the two assignments that
-    // could empty `_devices` here, because each masks the other. Deleting
-    // `_devices = const []` from `debugReset` leaves it green (the load
-    // assigns), and so does deleting `_replace(const [])` from `_load`'s
-    // `raw == null` branch (the reset assigned). The reset's line is pinned by
-    // the case above, which reads before any load. The early return's line is
-    // pinned by nothing, and cannot be: [load] memoises, so the only second
-    // load in a process follows a [debugReset] that has just emptied the
-    // field. It is there for the invariant - an exit that read the store has
-    // written `_devices` - not for a behaviour anything can observe.
-    await loadFrom([
-      storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
-    ]);
-    expect(KnownDevicesStore.instance.devices, isNotEmpty, reason: 'premise');
+      SharedPreferences.setMockInitialValues(const {});
+      await KnownDevicesStore.instance.load();
 
-    SharedPreferences.setMockInitialValues(const {});
-    KnownDevicesStore.instance.debugReset();
-    await KnownDevicesStore.instance.load();
-
-    expect(KnownDevicesStore.instance.devices, isEmpty);
-    expect(KnownDevicesStore.instance.lastDevice, isNull);
-  });
+      expect(KnownDevicesStore.instance.devices, isEmpty);
+      expect(KnownDevicesStore.instance.lastDevice, isNull);
+    },
+  );
 }

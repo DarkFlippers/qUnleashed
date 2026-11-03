@@ -120,8 +120,9 @@ class KnownDevicesStore extends ChangeNotifier {
   /// state has no way to notify about a write it did not make. Every caller
   /// only reads, and before [_replace] the assignment sites disagreed about
   /// growability, so what a caller *could* do depended on which path last
-  /// ran. One production site writes it now - [_replace] - and it writes
-  /// `growable: false`; the other writer is [debugReset], with `const []`.
+  /// ran. One site writes it now, [_replace], and it writes
+  /// `growable: false` - [debugReset] goes through it too, so that is by
+  /// construction rather than by everyone remembering.
   ///
   /// A view rather than the `List.unmodifiable` copy this codebase uses
   /// elsewhere, because this getter is read on every `LinkService.entries`
@@ -167,7 +168,7 @@ class KnownDevicesStore extends ChangeNotifier {
   @visibleForTesting
   void debugReset() {
     _loading = null;
-    _devices = const [];
+    _replace(const []);
   }
 
   Future<void> _load() async {
@@ -320,15 +321,16 @@ class KnownDevicesStore extends ChangeNotifier {
   /// worth a line is the caller's to know. The same drop is a
   /// [LogService.caught] in [_load], where the user asked for nothing, and
   /// silent in [remember], where they tapped connect on a ninth Flipper.
-  ({int merged, int capped}) _replace(Iterable<KnownDevice> next) {
+  ({int merged, int capped}) _replace(List<KnownDevice> next) {
     final byId = <String, KnownDevice>{};
-    var seen = 0;
     for (final device in next) {
-      seen++;
       byId.putIfAbsent(device.id, () => device);
     }
     _devices = byId.values.take(_maxEntries).toList(growable: false);
-    return (merged: seen - byId.length, capped: byId.length - _devices.length);
+    return (
+      merged: next.length - byId.length,
+      capped: byId.length - _devices.length,
+    );
   }
 
   Future<void> remember(FlipperDevice device) async {
