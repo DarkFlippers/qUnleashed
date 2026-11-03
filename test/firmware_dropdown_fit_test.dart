@@ -270,6 +270,11 @@ void main() {
       expect(stacked(tester, 'Update Channel'), isTrue);
       expect(lines(tester, 'Update Channel'), lessThanOrEqualTo(2));
       expect(lines(tester, 'Stable'), 1);
+      // With the run gap between them, and exactly it: each run here holds
+      // one child, so its cross extent is that child's own height and
+      // `runSpacing` is the whole distance.
+      final title = tester.getRect(find.text('Update Channel'));
+      expect(chipOf(tester).top - title.bottom, closeTo(6, 0.01));
     });
 
     // **A tripwire, not a measurement.** Both strings are whole at every
@@ -478,3 +483,39 @@ void main() {
     }
   });
 }
+
+// ## Mutations
+//
+// Eleven against `SettingsDropdown`. Nine caught; the two that survive could
+// not do otherwise, and that is the point of the rewrite.
+//
+// | mutation | killed by |
+// |---|---|
+// | **the pre-fix row**, faithfully - `Expanded` title, drawn gap, inflexible dropdown | 16 of the 18, all eight locales and the unbounded-width case among them |
+// | the value is inflexible again | 14 of the 18, all eight locales |
+// | the title and the dropdown swap places | 10 of the 18 |
+// | the gap is dropped (`spacing: 0`) | both bisections, and nothing else |
+// | the gap is doubled | both bisections, and nothing else |
+// | `WrapAlignment.start` for `spaceBetween` | "stays against the trailing edge" **alone** |
+// | the run gap is dropped | "the title goes above the dropdown" **alone** |
+// | the title clamped to one line with an ellipsis | "neither of the fixes the issue rejected" **alone** |
+// | an absent value draws `''` rather than the placeholder | "the placeholder is measured too" **alone** |
+// | the dropdown's 10 of padding is dropped | **survives** |
+// | the chevron drawn at size 0 | **survives** |
+//
+// The last two change what the dropdown looks like and nothing about which
+// arrangement it gets, because the fit is the layout's own: a narrower
+// dropdown is simply a narrower dropdown, and the bisection finds the
+// boundary wherever it has moved to. Under the measured fit this file
+// replaced, both would have been arithmetic errors and both would have been
+// caught here - which is the trade this made deliberately. A padding or a
+// chevron is a visual regression, and the file for that is one that looks at
+// the card, not at the fit.
+//
+// **The pre-fix row is run as it really was** - `Expanded`, a drawn gap and
+// an inflexible dropdown - rather than as a `Row` of two plain children,
+// which is a different bug with a different shape. An earlier draft of this
+// note claimed four locales could not catch it; a probe that reproduced the
+// arrangement properly showed all eight do, because at a scaler of 2 the
+// dropdown alone wants more than the box and the title's slot goes to zero in
+// every language.
