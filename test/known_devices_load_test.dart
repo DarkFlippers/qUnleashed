@@ -57,11 +57,19 @@ void main() {
   // bump and the fold ship together - and a restored or hand-edited store
   // gets there too.
   //
-  // Measured: with `_newestPerDevice(parsed)` replaced by a plain newest-first
-  // sort and the cap left in place, this is the only case in the repository
-  // that fails. (#444's note gave the whole pre-fix body, `parsed.sort();
-  // _devices = parsed;`, which also drops the cap and so fails the cap case
-  // below as well - the mutation to run is the collapse alone.) #444.
+  // Measured, with `_replace`'s body replaced by
+  // `_devices = next.take(_maxEntries)` and zero counts - the fold gone, the
+  // sort and the cap kept. Three cases fail: this one,
+  // `known_devices_persist_test.dart`'s 'is written over, not beside' - the
+  // fold is the whole of what `remember` does about a duplicate, so the read
+  // side and the write side go together - and the cap case below, which loses
+  // its `caught` line because the counts are computed from the fold and go
+  // with it.
+  //
+  // The recipe is the claim. A mutation that drops the fold *and* flattens
+  // the counts is not the same as one that drops the fold alone, and the
+  // third failure is the difference; #444's note gave a third recipe again,
+  // `parsed.sort(); _devices = parsed;`, which drops the cap as well. #444.
   test(
     'a store written by a 2.x build loads as one canonical device',
     () async {
@@ -208,27 +216,38 @@ void main() {
     expect(keptLevels, [KeptLevel.caught]);
   });
 
-  test('a rewound store reads an empty disk as empty', () async {
-    // What pins the `_devices` half of `KnownDevicesStore.debugReset`. Every
-    // other case here seeds a non-empty fixture, and `_load` then assigns
-    // `_devices` wholesale - so deleting that line from the reset left the
-    // whole suite green, which is the state-leak class #452 exists to close
-    // surviving inside its own fix.
-    //
-    // It is the empty disk that needs it: `_load` returns at `raw == null`
-    // before touching `_devices`, so without the reset the devices of
-    // whichever case ran before are still there. That is also the path
-    // `known_devices_persist_test.dart`'s `setUp` and `serviceWith()` take.
-    await loadFrom([
-      storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
-    ]);
-    expect(KnownDevicesStore.instance.devices, isNotEmpty, reason: 'premise');
+  // The rewind, and then the empty-disk load that follows it in every file
+  // that seeds through `SharedPreferences` - which is the path
+  // `known_devices_persist_test.dart`'s `setUp` and `serviceWith()` take, and
+  // the only case here that takes it.
+  //
+  // Two acts because they pin different things, and the comment this replaces
+  // got that wrong twice. The read *before* any load is what pins
+  // `debugReset` emptying `_devices` at all: measured, deleting that leaves
+  // the rest of the suite green. The load after it pins nothing on its own -
+  // deleting `_replace(const [])` from `_load`'s `raw == null` branch leaves
+  // the whole suite green too, because the reset has already emptied the
+  // field - and it cannot: [load] memoises, so the only second load in a
+  // process follows a reset. That branch assigns for the invariant, which is
+  // what its own comment now says rather than claiming a test.
+  test(
+    'is empty when it is rewound, and stays empty on an empty disk',
+    () async {
+      await loadFrom([
+        storedEntry(reportedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
+      ]);
+      expect(KnownDevicesStore.instance.devices, isNotEmpty, reason: 'premise');
 
-    SharedPreferences.setMockInitialValues(const {});
-    KnownDevicesStore.instance.debugReset();
-    await KnownDevicesStore.instance.load();
+      KnownDevicesStore.instance.debugReset();
 
-    expect(KnownDevicesStore.instance.devices, isEmpty);
-    expect(KnownDevicesStore.instance.lastDevice, isNull);
-  });
+      expect(KnownDevicesStore.instance.devices, isEmpty);
+      expect(KnownDevicesStore.instance.lastDevice, isNull);
+
+      SharedPreferences.setMockInitialValues(const {});
+      await KnownDevicesStore.instance.load();
+
+      expect(KnownDevicesStore.instance.devices, isEmpty);
+      expect(KnownDevicesStore.instance.lastDevice, isNull);
+    },
+  );
 }
