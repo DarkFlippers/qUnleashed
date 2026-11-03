@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/app/app.dart';
@@ -7,6 +5,7 @@ import 'package:qunleashed/app/nav_bar.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/pages/archive/overview/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
+import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/permissions/center.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
@@ -23,12 +22,26 @@ import 'view_size.dart';
 /// them — it covers the locals the #407 hoist created, which a layout flip is
 /// what moves.
 ///
-/// The third reaches the shell by a different route, which is why it is here
-/// rather than in a file of its own: not a listener the shell adds, but an
+/// The third reached the shell by a different route, which is why it is here
+/// rather than in a file of its own: not a listener the shell added, but an
 /// inherited dependency, registered by a single `DiagnosticsScope.of` in
 /// `initState`'s post-frame callback. One read, for one decision - whether
 /// ADR 0013 §1's notice is due - subscribing the element for the widget's
-/// life, because nothing clears `Element._dependencies` on a rebuild.
+/// life, because nothing clears `Element._dependencies` on a rebuild. Since
+/// #415 that read is `notifierOf` and the switch reaches the shell by no route
+/// at all, which is what the case below asserts.
+///
+/// **§1's notice sheet is on screen in every case in this file**, which no
+/// case here arranged: `setUp(resetFirmwareState)` installs an empty
+/// `SharedPreferences` mock (`firmware_fixture.dart`), so `settings.load()`
+/// completes, `noticeShown` reads false and the shell raises the sheet from
+/// its first frame - measured, `loaded=true` and one `BottomSheet`. It costs
+/// these cases nothing, because every witness here is read off a widget rather
+/// than tapped. It is worth knowing anyway: `diagnostics_notice.dart` records
+/// that this sheet once overflowed a short window by 15px and "took two
+/// unrelated tests down with it", precisely because it is raised over the app
+/// on first launch. A case added here at a shorter height should expect to
+/// meet it.
 ///
 /// `AppShell` holds the whole app: a `FlipperRootScaffold` whose `child` is an
 /// `IndexedStack` carrying every tab the user has visited, all of them still
@@ -387,18 +400,29 @@ void main() {
 
     final groupsBefore = scaffoldIn(tester).railGroups;
 
-    // `unawaited`, and not for tidiness. `setShareLogs` notifies **before** it
-    // writes - deliberately, and its own doc says why - and the write asks
-    // `SharedPreferences`, which no mock answers in this file: awaiting it
-    // would hang rather than fail. The notification is the whole stimulus and
-    // it has already landed by the time this returns.
-    unawaited(settings.setShareLogs(false));
+    // **The stimulus is witnessed, not its end state**, and the first draft
+    // got that wrong: it asserted `shareLogs` was false afterwards, which
+    // `setShareLogs` also satisfies by returning at its own guard when the
+    // value has not changed - notifying nothing. Under that guard the identity
+    // assertion below holds for free, whatever `notifierOf` does. Measured:
+    // with a `setShareLogs(false)` ahead of this one and #415's own defect put
+    // back, the case passed; with the counter, it fails on this line.
+    var notified = 0;
+    settings.addListener(() => notified++);
+
+    // Awaited, not `unawaited`: this file's `setUp(resetFirmwareState)`
+    // installs an empty `SharedPreferences` mock, so the write completes
+    // rather than hanging - which the first draft had backwards. It notifies
+    // before it writes either way, deliberately and for the reason its own doc
+    // gives; awaiting is just the spelling that does not ask the reader to
+    // take that on trust.
+    await settings.setShareLogs(false);
     await tester.pumpAndSettle();
 
     expect(
-      settings.shareLogs,
-      isFalse,
-      reason: 'the switch did not move, so the next line proves nothing',
+      notified,
+      1,
+      reason: 'the switch never notified, so nothing below proves anything',
     );
     expect(
       scaffoldIn(tester).railGroups,
@@ -412,11 +436,68 @@ void main() {
     await showArchive(tester);
 
     expect(
+      scaffoldIn(tester).currentTab,
+      FlipperRootTab.archive,
+      reason: 'the tab did not switch, so the rebuild below is not a tab tap',
+    );
+    expect(
       scaffoldIn(tester).railGroups,
       isNot(same(groupsBefore)),
       reason:
           'railGroups is the same list after a real shell rebuild, so it '
           'cannot witness the absence of one - it has been memoised',
+    );
+
+    await closeDevice(tester, device);
+  });
+
+  testWidgets('and the notice it raises moves the switch the app is holding', (
+    tester,
+  ) async {
+    // What nothing pinned, and what #415 rewrote. `notifierOf` is a
+    // non-listening read, so the loudest signal the old spelling gave - a
+    // rebuild - is gone by design, and with it the only thing that said the
+    // shell had reached the **scope's** object rather than any
+    // `DiagnosticsSettings`. Hand the notice a throwaway one instead and every
+    // case in this file, in `diagnostics_notice_test.dart` and in
+    // `diagnostics_screen_test.dart` stays green.
+    //
+    // What that costs is §1's one promise: **Turn it off** would call
+    // `setShareLogs(false)` on an object `Telemetry` does not listen to, so
+    // reporting carries on - and `markNoticeShown` still writes the
+    // preference, so the offer never comes back. Found by review rather than
+    // by a failure, which is the point of the case.
+    //
+    // `diagnostics_notice_test.dart` cannot cover this: it raises the notice
+    // from a host of its own, deliberately, so the shell-to-notice wiring has
+    // no coverage there by construction.
+    final settings = DiagnosticsSettings();
+    final (device, _) = await pumpApp(
+      tester,
+      const Size(360, 900),
+      diagnostics: settings,
+    );
+
+    expect(
+      find.text(l10nGlobal.diagnosticsNoticeTitle),
+      findsOneWidget,
+      reason: "the shell did not raise ADR 0013 §1's notice at all",
+    );
+    expect(
+      settings.shareLogs,
+      isTrue,
+      reason: 'sharing was already off, so the tap below cannot move anything',
+    );
+
+    await tester.tap(find.text(l10nGlobal.diagnosticsNoticeTurnOff));
+    await tester.pumpAndSettle();
+
+    expect(
+      settings.shareLogs,
+      isFalse,
+      reason:
+          'the notice moved a different DiagnosticsSettings - the one the '
+          'shell read is not the one the app and Telemetry hold',
     );
 
     await closeDevice(tester, device);

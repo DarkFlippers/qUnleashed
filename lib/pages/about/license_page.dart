@@ -45,8 +45,12 @@ class _AppLicensePageState extends State<AppLicensePage> {
   ///
   /// Which branch `_buildBody` draws is unchanged: [_text] is still null until
   /// this completes, so the spinner is still what a loading page shows, and the
-  /// failure path still sets [_error] rather than a normalised empty string -
-  /// writing `''` here would swap the spinner for the error view.
+  /// failure path still sets [_error] rather than a normalised empty string.
+  /// That substitution would cost the **error view**, not the spinner:
+  /// `_buildBody` tests [_error] first, so a null one with `_text` set to
+  /// `_normalize('')` falls past both branches and draws a blank
+  /// `SelectableText` - a reader told nothing at all. Measured by the mutation
+  /// in `test/license_page_test.dart`.
   Future<void> _load() async {
     try {
       final value = await rootBundle.loadString('LICENSE');

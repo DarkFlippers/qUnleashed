@@ -12,7 +12,8 @@ import 'firmware_fixture.dart';
 /// When the licence is reflowed, and what the page draws when it cannot be
 /// read.
 ///
-/// `_normalize` splits all 674 lines of the LICENSE and reassembles them
+/// `_normalize` splits the whole LICENSE - 674 lines, so 675 split parts, the
+/// last of them the empty string after the final newline - and reassembles it
 /// through two `StringBuffer`s. It ran from `build`, for a string that arrives
 /// once and never changes - so every rebuild paid for it again. #344 cut the
 /// *rate* by taking the five-second device-info poll off this page, and
@@ -20,10 +21,20 @@ import 'firmware_fixture.dart';
 /// the work itself, on every rebuild that is left.
 ///
 /// **The witness is the identity of the string the page hands `SelectableText`,
-/// and that is the whole trick here.** `StringBuffer.toString()` builds a new
-/// instance every time, so a reflow in `build` cannot hand back the same one
-/// twice; a reflow in `_load` can hand back nothing else. There is no counter
-/// to read and no seam worth adding for one.
+/// and that is the whole trick here.** `out` takes a part per line, so its
+/// `toString()` concatenates into a fresh string on every call: a reflow in
+/// `build` cannot hand back the same instance twice, and a reflow in `_load`
+/// can hand back nothing else. There is no counter to read and no seam worth
+/// adding for one.
+///
+/// **Not because `toString()` always allocates** - it does not, and the
+/// difference is the hole this witness has. `_StringBase._concatRange` returns
+/// the single part unchanged when there is one, so an empty buffer and a
+/// one-`write` buffer both hand back the identical instance on every call
+/// (measured: `empty=true one=true oneLn=false many=false`). A `_normalize`
+/// rewritten as one `write` into one buffer would therefore satisfy the
+/// identity assertion while reflowing on every build, and only the first case
+/// below would notice.
 ///
 /// Two things keep that from passing for the wrong reason, and both are
 /// asserted rather than assumed. The page must really have rebuilt - a theme
@@ -33,9 +44,11 @@ import 'firmware_fixture.dart';
 /// nothing to do with where the reflow runs: the `State` is read back and
 /// compared.
 ///
-/// `rootBundle` answers `LICENSE` under `flutter_test` - 35 149 characters of
-/// the real GPL, measured - so these cases run against the asset the app
-/// ships rather than a fixture.
+/// `rootBundle` answers `LICENSE` under `flutter_test` - the whole real GPL,
+/// measured - so these cases run against the asset the app ships rather than a
+/// fixture. Nothing here asserts its length or its line count, deliberately:
+/// the first case compares the reflowed text against the raw text it just
+/// read, so it says what it means on whatever `LICENSE` becomes.
 ///
 /// ## Three mutations, three caught
 ///
@@ -55,10 +68,14 @@ void main() {
 
   setUp(resetFirmwareState);
 
-  // `rootBundle` is a `CachingAssetBundle` and a process-wide one: a case that
-  // loads the real licence leaves it in `_stringCache`, where the failure case
-  // below would find it and never reach its mock. Cleared before every case so
-  // the order of the file does not decide what it tests.
+  // `rootBundle` is a `CachingAssetBundle` and a process-wide one, and
+  // `loadString` caches the **future** rather than the string. So the entry a
+  // case leaves behind was created inside that case's async zone and never
+  // delivers in another one: measured with this line commented out, both
+  // later cases fail with `pumpAndSettle timed out` - the page sits on its
+  // forever-animating spinner - rather than quietly reading a licence from the
+  // cache. Fail-safe either way, which is the point: what this buys is
+  // order-independence, not protection from a false pass.
   setUp(rootBundle.clear);
 
   /// The page under a theme built from [seed].
@@ -145,9 +162,11 @@ void main() {
           'the page was remounted rather than rebuilt, so a fresh string is '
           'a reloaded asset and not a second reflow',
     );
-    // `identical` and not `same(before)`: the matcher prints both operands on
-    // a failure, and both are the whole licence - 35 KB of GPL in the log, and
-    // the one fact that matters nowhere in it.
+    // `identical` and not `same(before)`: on a failure the matcher
+    // pretty-prints the expected operand and `expect`'s own formatter prints
+    // the actual, neither truncates a `String`, and both are the whole licence
+    // - 35 KB of GPL in the log, with the one fact that matters nowhere in
+    // it.
     expect(
       identical(after, before),
       isTrue,
@@ -167,6 +186,12 @@ void main() {
     // directly. A null reply is what `PlatformAssetBundle` turns into its
     // "Unable to load asset" throw, which is the real failure here: a build
     // whose assets did not ship.
+    //
+    // It blanks the **whole** bundle rather than `LICENSE` alone - a mock
+    // handler has no way to pass the other keys through to the real one - so
+    // the app bar's icons fail with it. Harmless and checked: nothing records
+    // an icon failure in this case, and `flutter_test_config.dart` rewinds
+    // that static per test anyway.
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMessageHandler('flutter/assets', (message) async => null);
