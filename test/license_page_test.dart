@@ -36,6 +36,20 @@ import 'firmware_fixture.dart';
 /// `rootBundle` answers `LICENSE` under `flutter_test` - 35 149 characters of
 /// the real GPL, measured - so these cases run against the asset the app
 /// ships rather than a fixture.
+///
+/// ## Three mutations, three caught
+///
+/// | mutation | caught by |
+/// |---|---|
+/// | the reflow moves back into `build` - #408's own defect | reflows it once |
+/// | `_normalize` returns its argument | reflows the licence |
+/// | a failed load sets `_text`, not `_error` | shows the failure |
+///
+/// The second is why the first case exists, and that is measured rather than
+/// argued: under it the identity assertion **passes**, because a `_normalize`
+/// that hands back `raw` hands back the same instance on every build. An
+/// identity witness cannot tell "reflowed once" from "never reflowed", so
+/// something has to say the reflow happens at all.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -131,9 +145,12 @@ void main() {
           'the page was remounted rather than rebuilt, so a fresh string is '
           'a reloaded asset and not a second reflow',
     );
+    // `identical` and not `same(before)`: the matcher prints both operands on
+    // a failure, and both are the whole licence - 35 KB of GPL in the log, and
+    // the one fact that matters nowhere in it.
     expect(
-      after,
-      same(before),
+      identical(after, before),
+      isTrue,
       reason:
           'a new string means `_normalize` ran again - 674 lines split and '
           'reassembled for a licence that cannot change',

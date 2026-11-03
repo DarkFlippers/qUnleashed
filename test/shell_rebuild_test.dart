@@ -42,10 +42,10 @@ import 'view_size.dart';
 /// controller can change.
 ///
 /// The two listener sources are not symmetric any more, and the archive case
-/// turns on it. The shell listens to the **whole** device controller, so a poll tick
-/// rebuilds the nav bar; it listens only to `ArchiveController.syncStatus`, a
-/// `ValueNotifier`, so an archive notification rebuilds nothing of the
-/// shell's at all.
+/// turns on it. The shell listens to the **whole** device controller, so a
+/// poll tick rebuilds the nav bar; it listens only to
+/// `ArchiveController.syncStatus`, a `ValueNotifier`, so an archive
+/// notification rebuilds nothing of the shell's at all.
 ///
 /// Two things used to make a tick rebuild all of it, and both are needed:
 ///
@@ -372,6 +372,12 @@ void main() {
     // The witness is `railGroups`, as in the case above, and the liveness
     // check at the foot is the same one: a memoised `_railGroups` would
     // satisfy the assertion forever, whatever the shell did.
+    //
+    // Two mutations, both caught here: the call site back on
+    // `DiagnosticsScope.of`, which is #415's own defect, and `notifierOf`
+    // reimplemented with `dependOnInheritedWidgetOfExactType`, which is the
+    // same defect one file inwards and would take every future caller with
+    // it.
     final settings = DiagnosticsSettings();
     final (device, _) = await pumpApp(
       tester,
