@@ -509,6 +509,7 @@ void main() {
 // | the run gap is dropped | "the title goes above the dropdown" **alone** |
 // | the title clamped to one line with an ellipsis | "neither of the fixes the issue rejected" **alone** |
 // | an absent value draws `''` rather than the placeholder | "the placeholder is measured too" **alone** |
+// | the `SizedBox(width: double.infinity)` dropped | "fills a loose width" **alone** |
 // | the dropdown's 10 of padding is dropped | **survives** |
 // | the chevron drawn at size 0 | **survives** |
 //

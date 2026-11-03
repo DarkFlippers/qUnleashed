@@ -180,3 +180,19 @@ void main() {
     }
   });
 }
+
+// ## Mutations
+//
+// Two against `FlipperPageCard`'s header, both caught.
+//
+// | mutation | killed by |
+// |---|---|
+// | **the pre-fix `Row`** - `Expanded` title, inflexible `trailing` | 6 cases: "a chip that no longer fits", and nothing-overflows at 320/2.0, 320/3.1, 600/2.0, 600/3.1 and 900/3.1 |
+// | the `SizedBox(width: double.infinity)` dropped | "the chip is on the trailing edge" and "a title with no chip sits on the leading edge" |
+//
+// The second is the one worth having a case for. It is not a fit defect at
+// all: every nothing-overflows case stays green, because a `Wrap` that hugs
+// its children cannot overflow anything. What it changes is where the header
+// sits - the `Column` centres whatever is narrower than itself - so the two
+// edge cases are the only thing standing between the rewrite and a card whose
+// title drifted to the middle.
