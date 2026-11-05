@@ -258,6 +258,7 @@ abstract final class BmCodec {
   }) async {
     final codec = await ui.instantiateImageCodec(png);
     final frame = await codec.getNextFrame();
+    codec.dispose();
     final src = frame.image;
     final w = src.width;
     final h = src.height;

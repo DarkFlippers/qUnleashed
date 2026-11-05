@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
+import '../../data/catalog_api.dart' show CatalogFamily;
 import '../../data/models/category.dart';
 import '../../../../components/remote_image.dart';
 
@@ -35,22 +37,22 @@ class CategoryIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final asset = category.iconAsset;
     final uri = category.iconUri;
-    final Widget icon;
     if (asset != null) {
-      icon = QIcon(asset: asset, color: color, size: size);
-    } else if (uri != null && uri.isNotEmpty) {
-      icon = SafeNetworkSvg(
-        url: uri,
-        width: size,
-        height: size,
-        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      return Padding(
+        padding: EdgeInsets.only(right: gap),
+        child: QIcon(asset: asset, color: color, size: size),
       );
-    } else {
-      return const SizedBox.shrink();
     }
-    return Padding(
+    if (uri == null || uri.isEmpty) return const SizedBox.shrink();
+    // Until it loads, and if it never does, the chip is just its label: an
+    // empty slot the icon's size used to pad a broken icon into the chip.
+    return SafeNetworkSvg(
+      url: uri,
+      width: size,
+      height: size,
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      placeholder: const SizedBox.shrink(),
       padding: EdgeInsets.only(right: gap),
-      child: icon,
     );
   }
 }
@@ -105,6 +107,76 @@ class CategoryChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+String catalogFamilyLabel(BuildContext context, CatalogFamily family) =>
+    switch (family) {
+      CatalogFamily.apps => context.l10n.navApps,
+      CatalogFamily.animations => context.l10n.catalogFamilyAnimations,
+      CatalogFamily.menuStyles => context.l10n.catalogFamilyMenuStyles,
+      CatalogFamily.cli => context.l10n.catalogFamilyCli,
+    };
+
+String catalogFamilyIcon(CatalogFamily family) => switch (family) {
+  CatalogFamily.apps => 'assets/ic/app/apps.svg',
+  CatalogFamily.animations => 'assets/ic/app/paint.svg',
+  CatalogFamily.menuStyles => 'assets/ic/app/settings.svg',
+  CatalogFamily.cli => 'assets/ic/app/cli.svg',
+};
+
+class SectionChip extends StatelessWidget {
+  const SectionChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    this.onTap,
+    this.asset,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+  final String? asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return CategoryChip(
+      category: AppCategory(
+        id: label,
+        name: label,
+        color: context.appColors.accent.toARGB32().toRadixString(16),
+        iconAsset: asset,
+      ),
+      selected: selected,
+      onTap: onTap,
+    );
+  }
+}
+
+class FamilyChip extends StatelessWidget {
+  const FamilyChip({
+    super.key,
+    required this.family,
+    required this.selected,
+    this.count,
+    this.onTap,
+  });
+
+  final CatalogFamily family;
+  final bool selected;
+  final int? count;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = catalogFamilyLabel(context, family);
+    return SectionChip(
+      label: count == null ? label : '$label $count',
+      selected: selected,
+      onTap: onTap,
+      asset: catalogFamilyIcon(family),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -7,6 +8,11 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import 'codec/bm.dart';
 
+typedef ScreenAnimationSource = Future<Uint8List?> Function(
+  String name,
+  bool Function() wanted,
+);
+
 class FlipperScreenAnimation extends StatefulWidget {
   const FlipperScreenAnimation({
     super.key,
@@ -14,12 +20,16 @@ class FlipperScreenAnimation extends StatefulWidget {
     required this.fg,
     required this.bg,
     this.deadZonePx = 0,
+    this.source,
+    this.still = false,
   });
 
   final bool active;
   final Color fg;
   final Color bg;
   final int deadZonePx;
+  final ScreenAnimationSource? source;
+  final bool still;
 
   @override
   State<FlipperScreenAnimation> createState() => _FlipperScreenAnimationState();
@@ -35,11 +45,32 @@ class _FlipperScreenAnimationState extends State<FlipperScreenAnimation> {
   Timer? _timer;
   int _cursor = 0;
   int _delayMs = 333;
+  int _loadToken = 0;
+  bool _ticking = true;
 
   @override
   void initState() {
     super.initState();
     if (widget.active) _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ticking = TickerMode.valuesOf(context).enabled;
+    if (ticking == _ticking) return;
+    _ticking = ticking;
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = null;
+    if (!_ticking || _frames.length < 2) return;
+    _timer = Timer.periodic(Duration(milliseconds: _delayMs), (_) {
+      if (!mounted) return;
+      setState(() => _cursor = (_cursor + 1) % _frames.length);
+    });
   }
 
   @override
@@ -53,6 +84,7 @@ class _FlipperScreenAnimationState extends State<FlipperScreenAnimation> {
   }
 
   void _clear() {
+    _loadToken++;
     _timer?.cancel();
     _timer = null;
     _disposeFrames(_frames);
@@ -65,32 +97,44 @@ class _FlipperScreenAnimationState extends State<FlipperScreenAnimation> {
   }
 
   Future<void> _load() async {
+    final token = ++_loadToken;
+    bool wanted() => mounted && widget.active && token == _loadToken;
     final fg = widget.fg.toARGB32();
     final bg = widget.bg.toARGB32();
-    final anim = await _ScreenAnimation.load(_animDir);
+    final source = widget.source;
+    Future<Uint8List?> read(String name) =>
+        source == null ? _readAsset(name) : source(name, wanted);
+    final anim = widget.still
+        ? _ScreenAnimation.still(read)
+        : await _ScreenAnimation.load(read);
+    if (!wanted()) return;
+    ui.Image? handedOver;
     final frames = anim == null
         ? <ui.Image>[]
-        : await anim.loadFrames(fg: fg, bg: bg);
-    ui.Image? statusBar;
-    try {
-      final png = await rootBundle.load(_statusBarAsset);
-      statusBar = await BmCodec.statusBarPngToImage(
-        png.buffer.asUint8List(),
-        fg: fg,
-        bg: bg,
-      );
-    } catch (_) {
-      statusBar = null;
+        : await anim.loadFrames(
+            fg: fg,
+            bg: bg,
+            wanted: wanted,
+            onFirst: (first) {
+              if (!wanted() || _frames.isNotEmpty) return;
+              handedOver = first;
+              setState(() => _frames = [first]);
+            },
+          );
+    if (!wanted()) {
+      _disposeFrames(frames.where((f) => !identical(f, handedOver)).toList());
+      return;
     }
+    final statusBar = (await _statusBarFor(fg, bg))?.clone();
 
-    if (!mounted || !widget.active) {
-      _disposeFrames(frames);
+    if (!wanted()) {
+      _disposeFrames(frames.where((f) => !identical(f, handedOver)).toList());
       statusBar?.dispose();
       return;
     }
 
     _timer?.cancel();
-    _disposeFrames(_frames);
+    _disposeFrames(_frames.where((f) => !frames.contains(f)).toList());
     _statusBar?.dispose();
     setState(() {
       _frames = frames;
@@ -98,16 +142,33 @@ class _FlipperScreenAnimationState extends State<FlipperScreenAnimation> {
       _cursor = 0;
       _delayMs = (anim?.frameDelayMs ?? 333).clamp(33, 2000);
     });
-    if (frames.length > 1) {
-      _timer = Timer.periodic(Duration(milliseconds: _delayMs), (_) {
-        if (!mounted) return;
-        setState(() => _cursor = (_cursor + 1) % _frames.length);
+    _startTimer();
+  }
+
+  static final Map<String, Future<ui.Image?>> _statusBars = {};
+
+  static Future<ui.Image?> _statusBarFor(int fg, int bg) =>
+      _statusBars.putIfAbsent('$fg/$bg', () async {
+        try {
+          final png = await rootBundle.load(_statusBarAsset);
+          return await BmCodec.statusBarPngToImage(
+            png.buffer.asUint8List(),
+            fg: fg,
+            bg: bg,
+          );
+        } catch (_) {
+          return null;
+        }
       });
-    }
+
+  static Future<Uint8List?> _readAsset(String name) async {
+    final data = await rootBundle.load('$_animDir/$name');
+    return data.buffer.asUint8List();
   }
 
   @override
   void dispose() {
+    _loadToken++;
     _timer?.cancel();
     _disposeFrames(_frames);
     _statusBar?.dispose();
@@ -163,25 +224,39 @@ class _FlipperScreenAnimationState extends State<FlipperScreenAnimation> {
 
 class _ScreenAnimation {
   _ScreenAnimation._({
-    required this.assetDir,
+    required this.read,
     required this.width,
     required this.height,
     required this.frameRate,
     required this.order,
   });
 
-  final String assetDir;
+  final Future<Uint8List?> Function(String name) read;
   final int width;
-  final int height;
+  final int? height;
   final int frameRate;
   final List<int> order;
 
   int get frameDelayMs => frameRate > 0 ? (1000 / frameRate).round() : 500;
 
-  static Future<_ScreenAnimation?> load(String assetDir) async {
+  factory _ScreenAnimation.still(
+    Future<Uint8List?> Function(String name) read,
+  ) => _ScreenAnimation._(
+    read: read,
+    width: kBmWidth,
+    height: null,
+    frameRate: 0,
+    order: const [0],
+  );
+
+  static Future<_ScreenAnimation?> load(
+    Future<Uint8List?> Function(String name) read,
+  ) async {
     final String text;
     try {
-      text = await rootBundle.loadString('$assetDir/meta.txt');
+      final bytes = await read('meta.txt');
+      if (bytes == null) return null;
+      text = utf8.decode(bytes, allowMalformed: true);
     } catch (_) {
       return null;
     }
@@ -212,7 +287,7 @@ class _ScreenAnimation {
     final passiveOrder = passive > 0 ? order.take(passive).toList() : order;
 
     return _ScreenAnimation._(
-      assetDir: assetDir,
+      read: read,
       width: BmCodec.parseDolphinInt(text, 'Width') ?? kBmWidth,
       height: BmCodec.parseDolphinInt(text, 'Height') ?? kBmHeight,
       frameRate: BmCodec.parseDolphinInt(text, 'Frame rate') ?? 2,
@@ -222,19 +297,28 @@ class _ScreenAnimation {
 
   Future<Uint8List?> _loadFramePixels(int fileIndex) async {
     try {
-      final bytes = await rootBundle.load('$assetDir/frame_$fileIndex.bm');
-      final xbm = BmCodec.decodeBmFile(bytes.buffer.asUint8List());
+      final bytes = await read('frame_$fileIndex.bm');
+      if (bytes == null) return null;
+      final xbm = BmCodec.decodeBmFile(bytes);
       if (xbm == null || xbm.length < 16) return null;
-      return BmCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height);
+      final rows = height ?? xbm.length ~/ ((width + 7) >> 3);
+      if (rows <= 0) return null;
+      return BmCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: rows);
     } catch (_) {
       return null;
     }
   }
 
-  Future<List<ui.Image>> loadFrames({int? fg, int? bg}) async {
+  Future<List<ui.Image>> loadFrames({
+    int? fg,
+    int? bg,
+    bool Function()? wanted,
+    void Function(ui.Image first)? onFirst,
+  }) async {
     final cache = <int, ui.Image>{};
     final frames = <ui.Image>[];
     for (final idx in order) {
+      if (wanted != null && !wanted()) break;
       final cached = cache[idx];
       if (cached != null) {
         frames.add(cached);
@@ -245,6 +329,7 @@ class _ScreenAnimation {
       final img = await BmCodec.frameToImage(pixels, fg: fg, bg: bg);
       cache[idx] = img;
       frames.add(img);
+      if (frames.length == 1) onFirst?.call(img);
     }
     return frames;
   }

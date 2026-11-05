@@ -63,6 +63,7 @@ class SafeNetworkSvg extends StatefulWidget {
     this.colorFilter,
     this.placeholder,
     this.semanticsLabel,
+    this.padding = EdgeInsets.zero,
   });
 
   final String url;
@@ -72,6 +73,10 @@ class SafeNetworkSvg extends StatefulWidget {
   final ColorFilter? colorFilter;
   final Widget? placeholder;
   final String? semanticsLabel;
+
+  /// Around the picture once it has loaded, not around the placeholder - so
+  /// an icon that never arrives leaves no gap beside it.
+  final EdgeInsets padding;
 
   @override
   State<SafeNetworkSvg> createState() => _SafeNetworkSvgState();
@@ -104,13 +109,16 @@ class _SafeNetworkSvgState extends State<SafeNetworkSvg> {
       builder: (context, snap) {
         final bytes = snap.data;
         if (bytes == null) return fallback;
-        return SvgPicture.memory(
-          bytes,
-          width: widget.width,
-          height: widget.height,
-          fit: widget.fit,
-          colorFilter: widget.colorFilter,
-          semanticsLabel: widget.semanticsLabel,
+        return Padding(
+          padding: widget.padding,
+          child: SvgPicture.memory(
+            bytes,
+            width: widget.width,
+            height: widget.height,
+            fit: widget.fit,
+            colorFilter: widget.colorFilter,
+            semanticsLabel: widget.semanticsLabel,
+          ),
         );
       },
     );
