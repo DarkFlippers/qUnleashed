@@ -29,11 +29,18 @@ class _Discovered implements DiscoveredDevice {
   final DeviceTransport transport;
 }
 
-FlipperDevice usb(String id) => FlipperDevice(
+/// A cable, optionally one that reported a [serial].
+///
+/// Default null, which is the shape every case here had before #465 and a real
+/// one: macOS and Linux report no serial as null. `serial: ''` is the other
+/// real one - Windows' `getParentSerialNumber` returns `''` from its own
+/// fallback - and both must mean *no identity but the port*.
+FlipperDevice usb(String id, {String? serial}) => FlipperDevice(
   id: id,
   name: id,
   link: FlipperLink.usb,
   source: _Discovered(id, DeviceTransport.usb),
+  serialNumber: serial,
 );
 
 FlipperDevice ble(String id) => FlipperDevice(
@@ -259,6 +266,120 @@ void main() {
       await tick();
 
       client.reportSessions([up(usb('B'))]);
+      await tick();
+
+      expect(done, isFalse);
+    });
+
+    // #465. A desktop USB id is the port, so the Flipper that came back from
+    // the updater on another `COM` number was not the device this watched for -
+    // and with no deadline the install sat on "Installing..." until the app was
+    // restarted.
+    test(
+      'ends when it returns on another port under the same serial',
+      () async {
+        client.sessions = [up(usb('COM3', serial: 'flip-1'))];
+        var done = false;
+        unawaited(
+          links
+              .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+              .then((_) => done = true),
+        );
+        await tick();
+
+        client.reportSessions(const []);
+        await tick();
+
+        client.reportSessions([up(usb('COM7', serial: 'flip-1'))]);
+        await tick();
+
+        expect(done, isTrue);
+      },
+    );
+
+    // The wait can begin with the Flipper already back: `installer.dart`
+    // deletes a hundreds-of-megabyte extraction in the `finally` before this is
+    // awaited, and `autoConnectUsb` is on by default, so the cable can be
+    // dialled and up first. Requiring a gone event before a returned one
+    // latched "Installing..." for the life of the app on the commonest
+    // configuration there is.
+    test('ends when it is already back on another port', () async {
+      client.sessions = [up(usb('COM7', serial: 'flip-1'))];
+      var done = false;
+      unawaited(
+        links
+            .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+            .then((_) => done = true),
+      );
+      await tick();
+
+      expect(done, isTrue);
+    });
+
+    // Still this device. The serial is what widened, not the question.
+    test('is not ended by another Flipper on another port', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(
+        links
+            .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+            .then((_) => done = true),
+      );
+      await tick();
+
+      client.reportSessions([up(usb('COM7', serial: 'flip-2'))]);
+      await tick();
+
+      expect(done, isFalse);
+    });
+
+    // The dangerous one, and the reason the serial has to be able to say *no*.
+    // A port this Flipper vacated can be handed straight to the next one
+    // plugged in - on Linux `/dev/ttyACM<n>` takes the lowest free index, so it
+    // usually is - and `installer.dart` reports `UpdateDone` the line after
+    // this future completes. Ending here tells the user the install finished
+    // while their Flipper is still being written to.
+    test('is not ended by another Flipper on the port it vacated', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(
+        links
+            .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+            .then((_) => done = true),
+      );
+      await tick();
+
+      client.reportSessions([up(usb('COM3', serial: 'flip-2'))]);
+      await tick();
+
+      expect(done, isFalse, reason: 'the install is not over');
+    });
+
+    // The deliberate limit, pinned: with no serial on either side the port is
+    // all there is to go on, and this behaves as it did before #465.
+    test('is not ended by another port when neither has a serial', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(links.awaitUsbReturn(usb('COM3')).then((_) => done = true));
+      await tick();
+
+      client.reportSessions([up(usb('COM7'))]);
+      await tick();
+
+      expect(done, isFalse);
+    });
+
+    // `''` is Windows' "no serial". It must not fuse two cables into one
+    // device, or a second Flipper would satisfy an install's wait.
+    test('is not ended by another cable reporting an empty serial', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(
+        links.awaitUsbReturn(usb('COM3', serial: '')).then((_) => done = true),
+      );
+      await tick();
+
+      client.reportSessions([up(usb('COM7', serial: ''))]);
       await tick();
 
       expect(done, isFalse);

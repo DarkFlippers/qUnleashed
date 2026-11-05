@@ -39,11 +39,18 @@ class _Discovered implements DiscoveredDevice {
   final DeviceTransport transport;
 }
 
-FlipperDevice usb(String id) => FlipperDevice(
+/// A cable, optionally one that reported a [serial].
+///
+/// Default null, which is the shape every case here had before #465 and a real
+/// one: macOS and Linux report no serial as null. `serial: ''` is the other
+/// real one - Windows' `getParentSerialNumber` returns `''` from its own
+/// fallback - and both must mean *no identity but the port*.
+FlipperDevice usb(String id, {String? serial}) => FlipperDevice(
   id: id,
   name: id,
   link: FlipperLink.usb,
   source: _Discovered(id, DeviceTransport.usb),
+  serialNumber: serial,
 );
 
 FlipperDevice ble(String id) => FlipperDevice(
@@ -496,6 +503,146 @@ void main() {
       await settle();
 
       expect(client.dialled, ['usb:A']);
+    });
+
+    // #465. A desktop USB id *is* the port, so a Flipper that reboots into the
+    // updater and re-enumerates on another `COM` number used to be a different
+    // id to every hold - this tier had no candidate for it, nothing dialled it
+    // with the setting off, and the install's own wait had no session to end
+    // on.
+    test('comes back on another port under the same serial', () async {
+      links = await serviceWith(usbAuto: false);
+      client.present = [usb('COM3', serial: 'flip-1')];
+      client.reportSessions([connected(usb('COM3', serial: 'flip-1'))]);
+      await settle();
+      expect(client.dialled, isEmpty, reason: 'it is already up');
+
+      client.reportSessions(const []);
+      client.present = [usb('COM7', serial: 'flip-1')];
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, ['usb:COM7']);
+    });
+
+    // The serial decides, and a second Flipper is not a match.
+    test('does not take back a different Flipper on a new port', () async {
+      links = await serviceWith(usbAuto: false);
+      client.present = [usb('COM3', serial: 'flip-1')];
+      client.reportSessions([connected(usb('COM3', serial: 'flip-1'))]);
+      await settle();
+
+      client.reportSessions(const []);
+      client.present = [usb('COM7', serial: 'flip-2')];
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, isEmpty);
+    });
+
+    // The deliberate limit of #465, pinned so that widening it stays a
+    // decision: no usable serial means the port is the whole identity.
+    test('is not taken back across ports without a serial', () async {
+      links = await serviceWith(usbAuto: false);
+      client.present = [usb('COM3')];
+      client.reportSessions([connected(usb('COM3'))]);
+      await settle();
+
+      client.reportSessions(const []);
+      client.present = [usb('COM7')];
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, isEmpty);
+    });
+
+    // `''` is Windows' "no serial", not a serial. Fusing every cable that
+    // reports it into one identity would take an unrelated cable back under
+    // another's hold - and `null` cannot catch that, because the guard being
+    // checked is `isNotEmpty` and not the null check beside it.
+    test('does not fuse two cables that report an empty serial', () async {
+      links = await serviceWith(usbAuto: false);
+      client.present = [usb('COM3', serial: '')];
+      client.reportSessions([connected(usb('COM3', serial: ''))]);
+      await settle();
+
+      client.reportSessions(const []);
+      client.present = [usb('COM7', serial: '')];
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, isEmpty);
+    });
+
+    // #460 across #465, and the whole state machine rather than the window
+    // before the new port has a session. While the hold was one entry per
+    // port, the take-back on the new port wrote no origin for it, so an
+    // app-formed hold read as user-formed from then on and a setting the user
+    // had since turned off took the link back anyway.
+    test(
+      'does not take an app-formed hold back after it changed port',
+      () async {
+        links = await serviceWith(usbAuto: true);
+        client.present = [usb('COM3', serial: 'flip-1')];
+        client.plugged();
+        await settle();
+        expect(client.dialled, ['usb:COM3'], reason: 'the app formed this one');
+        client.reportSessions([connected(usb('COM3', serial: 'flip-1'))]);
+        await settle();
+
+        client.reportSessions(const []);
+        client.present = [usb('COM7', serial: 'flip-1')];
+        client.plugged();
+        await settle();
+        client.reportSessions([connected(usb('COM7', serial: 'flip-1'))]);
+        await settle();
+
+        await DeviceSettings.instance.setAutoConnectUsb(false);
+        client.reportSessions(const []);
+        client.present = const [];
+        client.plugged();
+        await settle();
+        client.present = [usb('COM9', serial: 'flip-1')];
+        client.plugged();
+        await settle();
+
+        expect(client.dialled, ['usb:COM3', 'usb:COM7']);
+      },
+    );
+
+    // The other half of one-record-per-cable. Releasing a hold that is spread
+    // over several ports has to release the Flipper, not the port the user
+    // happened to press Disconnect on - otherwise a sibling entry answers for
+    // the same cable and the app takes back a link the user explicitly let go,
+    // with the setting off, for the life of the process.
+    test('is let go across ports once the user lets it go', () async {
+      links = await serviceWith(usbAuto: false);
+      client.present = [usb('COM3', serial: 'flip-1')];
+      client.reportSessions([connected(usb('COM3', serial: 'flip-1'))]);
+      await settle();
+
+      client.reportSessions(const []);
+      client.present = [usb('COM7', serial: 'flip-1')];
+      client.plugged();
+      await settle();
+      expect(client.dialled, ['usb:COM7'], reason: 'the hold came back');
+      client.reportSessions([connected(usb('COM7', serial: 'flip-1'))]);
+      await settle();
+
+      await links.disconnectDevice(
+        usb('COM7', serial: 'flip-1'),
+        id: 'COM7',
+        link: FlipperLink.usb,
+      );
+      client.reportSessions(const []);
+      client.present = const [];
+      client.plugged();
+      await settle();
+      client.present = [usb('COM9', serial: 'flip-1')];
+      client.plugged();
+      await settle();
+
+      expect(client.dialled, ['usb:COM7']);
     });
 
     test('is let go for good once the user lets it go', () async {

@@ -56,7 +56,7 @@ class LinkEntry {
 /// Auto-connect runs off a debounced timer with no gesture behind it, so
 /// there is nothing to hang a dialog on - and popping one for a cable event
 /// would be wrong even if there were. The condition also outlives the
-/// attempt: the cable stays `_UsbCable.autoTried` while it is present, so the
+/// attempt: the port stays in `_UsbCable.autoTried` while it is present, so the
 /// Flipper that just failed is not dialled again until something changes.
 /// From the user's side the cable does nothing, forever, with no explanation.
 ///
@@ -157,38 +157,60 @@ class _UsbCable {
   /// that failed leaves it behind with no hold at all.
   bool appFormed = false;
 
-  /// Auto-connect has dialled this cable since it appeared.
+  /// The ports of this cable auto-connect has dialled since they appeared.
   ///
   /// The only one of the three that does not survive absence, and that is the
   /// whole of what makes the next appearance a fresh question rather than one
-  /// already answered. `_restoreCli` sets it too, so that a restore which
-  /// failed does not leave the USB branch free to dial the same cable into RPC
-  /// underneath a user who is asking for a terminal on it.
-  bool autoTried = false;
+  /// already answered. `_restoreCli` records a port too, so that a restore
+  /// which failed does not leave the USB branch free to dial the same cable
+  /// into RPC underneath a user who is asking for a terminal on it.
+  ///
+  /// Ports and not one flag for the cable, although [held] and [appFormed] are
+  /// per cable. Those two are statements about the Flipper; this is an attempt
+  /// against a port, and a Flipper that re-enumerates has a port nobody has
+  /// tried yet. As a flag it answered "already dialled" for the new port and
+  /// the take-back never happened - which is the hang #465 is about, rebuilt
+  /// out of its own fix. #465.
+  final Set<String> autoTried = {};
+
+  /// The ports this cable has been seen on, of those still present.
+  ///
+  /// A desktop USB id *is* the port - `DesktopUsbDiscoveredDevice.id` returns
+  /// `portName` - so one Flipper is several ids over its life: it reboots into
+  /// the updater and comes back as a different `COM` number. The record is
+  /// keyed by [LinkService._cableKey] so that it stays one record, and this is
+  /// what lets a question asked about a port still find it. #465.
+  ///
+  /// Pruned to what is present, in the same pass that calls [forgetPresence],
+  /// because the only thing that asks is `disconnectDevice` - and it is asked
+  /// about a link that is up.
+  final Set<String> ports = {};
 
   /// Nothing left to say about this cable, so the entry can go.
   ///
-  /// Read by the prune in `_reconcileOnce` after [forgetPresence], so that the
-  /// map does not keep an entry for every cable ever plugged into the machine
-  /// while the two answers that outlive absence still do.
-  bool get isSpent => !held && !appFormed && !autoTried;
+  /// Read by the prune in `_reconcileOnce` after [forgetAbsentPorts], so that
+  /// the map does not keep an entry for every cable ever plugged into the
+  /// machine while the two answers that outlive absence still do.
+  bool get isSpent => !held && !appFormed && ports.isEmpty && autoTried.isEmpty;
 
-  /// Claims the one automatic dial this appearance gets, or says it is taken.
+  /// Claims the one automatic dial [port] gets this appearance, or says it is
+  /// taken.
   ///
   /// One call because the caller is a `continue` in a loop: as a separate
   /// check and record it is two statements that have to agree, which is the
   /// shape the set's `add` return value was keeping honest.
-  bool claimAutoDial() {
-    if (autoTried) return false;
-    autoTried = true;
-    return true;
-  }
+  bool claimAutoDial(String port) => autoTried.add(port);
 
-  /// The cable is no longer present.
+  /// The ports of this cable that are no longer there.
   ///
-  /// [autoTried] is the only answer that stops being true. [held] and
-  /// [appFormed] surviving this is the point of both of them.
-  void forgetPresence() => autoTried = false;
+  /// [autoTried] is the only answer that stops being true, and a port going
+  /// away is what makes its next appearance a fresh question. [held] and
+  /// [appFormed] surviving this is the point of both of them - they are about
+  /// the Flipper, not about where it is plugged in.
+  void forgetAbsentPorts(Set<String> present) {
+    ports.removeWhere((port) => !present.contains(port));
+    autoTried.removeWhere((port) => !present.contains(port));
+  }
 }
 
 class LinkService extends ChangeNotifier {
@@ -237,14 +259,73 @@ class LinkService extends ChangeNotifier {
   /// cable with a live hold or a live origin plus the ones present right now.
   final Map<String, _UsbCable> _usbCables = {};
 
-  /// The record for [id], created if this is the first thing to say about it.
-  _UsbCable _cable(String id) => _usbCables.putIfAbsent(id, _UsbCable.new);
+  /// How [device] is keyed in [_usbCables]: what makes two sightings the same
+  /// cable.
+  ///
+  /// The serial when the cable reported a usable one, and the port otherwise.
+  /// The serial is what survives a re-enumeration and the port is not, so
+  /// keying on the port made one Flipper several records - which is #465, and
+  /// keying on the port *as well* made it several records that answered for
+  /// each other.
+  ///
+  /// It also decides when it says **no**. A port the Flipper vacated can be
+  /// handed straight to the next one plugged in - on Linux `/dev/ttyACM<n>`
+  /// takes the lowest free index, so it usually is - and two cables that both
+  /// report a serial are the same cable only if the serials agree. Widening on
+  /// the serial while still matching on the port is what let an install's wait
+  /// end on a different Flipper, and `installer.dart` reports `UpdateDone` the
+  /// line after.
+  ///
+  /// Prefixed, so that a serial can never be mistaken for a port name.
+  ///
+  /// A cable with no usable serial keeps exactly the behaviour it had: matched
+  /// by port, and a re-enumeration loses it. `''` counts as none - Windows
+  /// reports that from `getParentSerialNumber`'s own fallback when its parent
+  /// walk finds nothing, and `ports_linux.dart` passes an empty sysfs read
+  /// through - and so does Android, which needs none because its id is
+  /// `vid:pid` and does not change across a reboot. One cable that reports a
+  /// serial on one enumeration and `''` on the next is two records, which
+  /// loses the hold rather than attaching it to the wrong device: the failure
+  /// this is allowed to have.
+  static String _cableKey(FlipperDevice device) {
+    final serial = device.serialNumber;
+    return (serial != null && serial.isNotEmpty)
+        ? 'serial:$serial'
+        : 'port:${device.id}';
+  }
 
-  /// Whether the app is meant to be holding the USB link on [id].
-  bool _isHeld(String id) => _usbCables[id]?.held ?? false;
+  /// The record for [device], created if this is the first thing to say about
+  /// it.
+  _UsbCable _cable(FlipperDevice device) =>
+      _usbCables.putIfAbsent(_cableKey(device), _UsbCable.new)
+        ..ports.add(device.id);
 
-  /// Whether the hold on [id] is one the app formed by itself.
-  bool _isAppFormed(String id) => _usbCables[id]?.appFormed ?? false;
+  /// What is known about [device] without inventing an entry.
+  _UsbCable? _cableOf(FlipperDevice device) => _usbCables[_cableKey(device)];
+
+  /// The cable holding the port [id].
+  ///
+  /// A scan, over one entry per cable present plus those with a live hold.
+  _UsbCable? _cableOnPort(String id) =>
+      _usbCables.values.where((cable) => cable.ports.contains(id)).firstOrNull;
+
+  /// The cable [device] is, or the one holding port [id] when there is no
+  /// device to go on.
+  ///
+  /// `LinkEntry.device` and `disconnectDevice`'s argument are both nullable - a
+  /// remembered device the picker lists has no session behind it - and the id
+  /// is the one thing those callers always have. The device is preferred
+  /// because it carries the serial, which is the identity; the port is how the
+  /// record is found without one.
+  _UsbCable? _cableFor(String id, FlipperDevice? device) =>
+      device != null ? _cableOf(device) : _cableOnPort(id);
+
+  /// Whether the app is meant to be holding the USB link to [device].
+  bool _isHeld(FlipperDevice device) => _cableOf(device)?.held ?? false;
+
+  /// Whether the hold on [device] is one the app formed by itself.
+  bool _isAppFormed(FlipperDevice device) =>
+      _cableOf(device)?.appFormed ?? false;
 
   String? _userDisconnectedKey;
 
@@ -472,7 +553,7 @@ class LinkService extends ChangeNotifier {
       trace.note('link', entry.link.name);
       trace.note('held', entry.held);
       _forgiveUserDisconnect(entry.key);
-      if (entry.isUsb) _usbLinkAskedFor(entry.id);
+      if (entry.isUsb) _usbLinkAskedFor(entry.id, entry.device);
       if (entry.held) {
         await _c.activateById(entry.id, link: entry.link);
         return;
@@ -511,7 +592,7 @@ class LinkService extends ChangeNotifier {
       trace.note('link', device.link.name);
       final key = '${device.link.name}:${device.id}';
       _forgiveUserDisconnect(key);
-      if (device.isUsb) _usbLinkAskedFor(device.id);
+      if (device.isUsb) _usbLinkAskedFor(device.id, device);
       await _open(device, key, trace: trace);
       if (device.isBle) _heardBle.add(device.id);
       notifyListeners();
@@ -562,7 +643,8 @@ class LinkService extends ChangeNotifier {
   ///
   /// Nothing is created for a cable with no record: there is no hold to
   /// endorse, and the dial that would make one sets the origin itself.
-  void _usbLinkAskedFor(String id) => _usbCables[id]?.appFormed = false;
+  void _usbLinkAskedFor(String id, FlipperDevice? device) =>
+      _cableFor(id, device)?.appFormed = false;
 
   Future<void> disconnect(LinkEntry entry) =>
       disconnectDevice(entry.device, id: entry.id, link: entry.link);
@@ -582,7 +664,14 @@ class LinkService extends ChangeNotifier {
       // go with an origin left behind would answer for a link formed later by
       // some path that sets neither. The entry itself goes if the prune finds
       // nothing left on it.
-      _usbCables[id]
+      //
+      // Found by port rather than by key, because `device` is nullable here
+      // and the id is the only thing this always has. One record per cable is
+      // what makes that enough: while the hold was one entry per *port*, this
+      // released the port the user pressed Disconnect on and left a sibling
+      // entry answering for the same Flipper, so the next appearance was taken
+      // back on behalf of nobody. #465, and #460's shape through a new door.
+      _cableFor(id, device)
         ?..held = false
         ..appFormed = false;
     }
@@ -613,29 +702,46 @@ class LinkService extends ChangeNotifier {
   /// that was sent away to install, and the app is holding it on the user's
   /// behalf.
   ///
-  /// No deadline: a firmware install can run for half an hour, and the port
+  /// No deadline: a firmware install can run for half an hour, and the cable
   /// coming back is the only honest signal that it is over. The wait ends on
   /// the OS event, not on a clock.
+  ///
+  /// Which is why it matches on the cable rather than on the port. A Flipper
+  /// that re-enumerated as a different `COM` number was not the device this
+  /// watched for, and with no deadline that left the install on "Installing..."
+  /// until the app was restarted. [_cableKey] is the same answer the hold tier
+  /// uses, including where it says no: the port this device left can be handed
+  /// to the next Flipper plugged in, and ending on that one makes
+  /// `installer.dart` report `UpdateDone` while this one is still flashing.
   Future<void> awaitUsbReturn(FlipperDevice device) async {
     // Being sent away to install firmware and waited for is the user asking
     // for this link as plainly as pressing Connect, and [_UsbCable.appFormed]
     // says why this one is load-bearing rather than tidy: the wait below has
-    // no deadline. For the port it left on, though - a Flipper that
-    // re-enumerates as a different port is not matched by `holds` either, and
-    // that hole predates this line.
-    _usbLinkAskedFor(device.id);
-    bool holds(List<FlipperSessionInfo> sessions) => sessions.any(
-      (s) => s.connected && s.device.isUsb && s.device.id == device.id,
-    );
+    // no deadline.
+    _usbLinkAskedFor(device.id, device);
+    final key = _cableKey(device);
+    bool matches(FlipperSessionInfo s) =>
+        s.connected && s.device.isUsb && _cableKey(s.device) == key;
+    bool holds(List<FlipperSessionInfo> sessions) => sessions.any(matches);
+    // Back already, on a port it did not leave on - so not the link it still
+    // had when this started, which is the case the gone-then-returned pair
+    // below is for. `installer.dart` deletes a hundreds-of-megabyte extraction
+    // in the `finally` *before* this is awaited, and `autoConnectUsb` is on by
+    // default, so the Flipper can be dialled and up before the wait begins.
+    // Requiring a gone event first latched "Installing..." for the life of the
+    // app on the commonest configuration there is.
+    bool backOnAnotherPort(List<FlipperSessionInfo> sessions) =>
+        sessions.any((s) => matches(s) && s.device.id != device.id);
+    if (backOnAnotherPort(_c.sessions)) return;
     final result = Completer<void>();
     var left = !holds(_c.sessions);
     final sub = _c.sessionsStream.listen((sessions) {
+      if (result.isCompleted) return;
       if (!holds(sessions)) {
         left = true;
         return;
       }
-      if (!left || result.isCompleted) return;
-      result.complete();
+      if (left || backOnAnotherPort(sessions)) result.complete();
     });
     try {
       await result.future;
@@ -671,7 +777,7 @@ class LinkService extends ChangeNotifier {
     // tier in `_reconcileOnce` reads the two together.
     for (final session in sessions) {
       if (session.device.isUsb && session.connected) {
-        _cable(session.device.id).held = true;
+        _cable(session.device).held = true;
       }
     }
 
@@ -781,11 +887,11 @@ class LinkService extends ChangeNotifier {
     if (_suspended || _c.isConnecting) return;
 
     final presentIds = {for (final d in _usbPresent) d.id};
-    // One pass for the one answer that does not survive absence, and then the
-    // entries with nothing left on them at all. `_UsbCable.forgetPresence` is
-    // what decides which is which, rather than this loop knowing.
-    for (final entry in _usbCables.entries) {
-      if (!presentIds.contains(entry.key)) entry.value.forgetPresence();
+    // One pass for the answers that do not survive absence, and then the
+    // entries with nothing left on them at all. `_UsbCable.forgetAbsentPorts`
+    // is what decides which is which, rather than this loop knowing.
+    for (final cable in _usbCables.values) {
+      cable.forgetAbsentPorts(presentIds);
     }
     _usbCables.removeWhere((_, cable) => cable.isSpent);
     // The same prune for the same reason: a cable that went away and came
@@ -838,19 +944,19 @@ class LinkService extends ChangeNotifier {
     if (!held) {
       final candidates = <FlipperDevice>[
         for (final device in _usbPresent)
-          if (_takesHoldBack(device.id)) device,
+          if (_takesHoldBack(device)) device,
         if (_settings.autoConnectUsb)
           for (final device in _usbPresent)
-            if (!_isHeld(device.id)) device,
+            if (!_isHeld(device)) device,
       ];
       for (final device in candidates) {
         if (_userDisconnectedKey == 'usb:${device.id}') continue;
-        if (!_cable(device.id).claimAutoDial()) continue;
-        final holding = _isHeld(device.id);
+        if (!_cable(device).claimAutoDial(device.id)) continue;
+        final holding = _isHeld(device);
         // The dial that takes a cable nobody asked about, and the one place
         // that writes the origin. `_restoreCli` forms a link too and leaves
         // this alone on purpose - see the field.
-        if (!holding) _cable(device.id).appFormed = true;
+        if (!holding) _cable(device).appFormed = true;
         await _autoConnect(device, holding ? 'holding this one' : 'plugged in');
         return;
       }
@@ -901,7 +1007,7 @@ class LinkService extends ChangeNotifier {
     // the USB branch free to dial the same cable into RPC underneath a user
     // who is asking for a terminal on it. Unchanged by #461, and not the
     // clause that was wrong: what was wrong was *reading* this set here.
-    _cable(device.id).autoTried = true;
+    _cable(device).autoTried.add(device.id);
     final key = 'usb:${device.id}';
     LogService.info('[Link] restoring CLI on ${device.name}');
     _setActivity(key, LinkActivity.connecting);
@@ -984,8 +1090,13 @@ class LinkService extends ChangeNotifier {
   /// Held, and either the user asked for that link - in which case a setting
   /// they flipped afterwards does not take it back - or the setting that
   /// formed it is still on. [_UsbCable.appFormed] is which is which. #460.
-  bool _takesHoldBack(String id) =>
-      _isHeld(id) && (_settings.autoConnectUsb || !_isAppFormed(id));
+  ///
+  /// A [FlipperDevice] and not an id, because one record answers for every
+  /// port its cable has been on - and the origin has to be the same record's,
+  /// or an app-formed hold taken back on a new port would read as user-formed
+  /// and a since-disabled setting would take it back. #460 across #465.
+  bool _takesHoldBack(FlipperDevice device) =>
+      _isHeld(device) && (_settings.autoConnectUsb || !_isAppFormed(device));
 
   /// The USB half: a cable that appeared, or one the app is holding.
   ///

@@ -267,11 +267,15 @@ void main() {
       );
     });
 
-    // Not covered here: the USB path, whose outcome only exists once the port
+    // Not covered here: the USB path, whose outcome only exists once the cable
     // comes back. The case for it is further down - "a USB install says it is
     // installing, and does not finish" - where the flash is left running
-    // rather than awaited, because awaiting it enters LinkService's real
-    // thirty-second wait for a device no test has.
+    // rather than awaited, because awaiting it enters `LinkService`'s real
+    // wait for a device no test has. That wait has **no deadline** - a
+    // firmware install can run for half an hour, and the cable coming back is
+    // the only honest signal that it is over - so a test that awaited it would
+    // hang rather than fail. `link_recovery_test.dart` is where it is covered,
+    // against a fake whose sessions a test drives.
   });
 
   test(
