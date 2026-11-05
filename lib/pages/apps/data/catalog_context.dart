@@ -14,11 +14,21 @@ import '../../../components/path.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../services/logging.dart';
 import 'catalog_api.dart';
+import 'catalog_server.dart';
+import '../../../services/prefs_reader.dart';
 import 'catalog_mode.dart';
 import 'models/card.dart';
 
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
+const String kMenuStylesRoot = '/ext/apps_data/loader/plugins';
+const String kMenuStyleManifestsRoot = '/ext/apps_data/loader/manifests';
+const String kMenuStylePrefix = 'menu_style_';
+
+/// Where the firmware's terminal loads external commands from: a CLI app is
+/// a `.fal` here, picked up by `reload_ext_cmds`, never a `.fap` in apps.
+const String kCliPluginsRoot = '/ext/apps_data/cli/plugins';
+const int kMenuStyleNameLimit = 32;
 const Duration kTaskCooldown = Duration(seconds: 1);
 
 /// How long the catalog has to answer before the apps manager takes over.
@@ -83,9 +93,36 @@ class CatalogContext {
 
   Future<void> loadPreference() async {
     if (_preferenceLoaded) return;
+    final prefs = PrefsReader(await SharedPreferences.getInstance());
+    _preference = CatalogModePreference.parse(prefs.orNull<String>(_prefMode));
+    final stored = prefs.orNull<String>(CatalogServer.preferenceKey);
+    if (stored != null) {
+      try {
+        api.server = CatalogServer.normalize(stored);
+      } on FormatException catch (e) {
+        LogService.warn('[Catalog] ignored stored domain: $e');
+      }
+    }
+    prefs.report('[Catalog]');
     _preferenceLoaded = true;
-    final prefs = await SharedPreferences.getInstance();
-    _preference = CatalogModePreference.parse(prefs.getString(_prefMode));
+  }
+
+  Future<void> setServer(String server) async {
+    await loadPreference();
+    final normalized = CatalogServer.normalize(server);
+    if (api.server == normalized) return;
+    api.server = normalized;
+    api.unfiltered = false;
+    serverSdks = const [];
+    serverLatestSdk = null;
+    _compatApi = null;
+    resolvedForDeviceId = null;
+    mode.value = CatalogMode.resolving;
+    await persistSetting(
+      CatalogServer.preferenceKey,
+      (prefs) => prefs.setString(CatalogServer.preferenceKey, normalized),
+    );
+    await resolveMode(force: true);
   }
 
   Future<void> setPreference(CatalogModePreference value) async {
@@ -111,14 +148,18 @@ class CatalogContext {
     _modeResolving = true;
     if (force) mode.value = CatalogMode.resolving;
     final token = client.deviceToken;
+    String? server;
     try {
       await loadPreference();
+      server = api.server;
       await ensureDeviceFilters();
-      if (token.isStale) return;
+      if (token.isStale || server != api.server) return;
 
       var offline = false;
       try {
-        serverSdks = await api.fetchSdks().timeout(kCatalogTimeout);
+        final sdks = await api.fetchSdks().timeout(kCatalogTimeout);
+        if (server != api.server) return;
+        serverSdks = sdks;
       } catch (e) {
         // catalogOffline is read only by Settings -> Apps. On the apps
         // screen the failure turns into manager-only mode, which looks exactly
@@ -127,7 +168,7 @@ class CatalogContext {
         LogService.warn('[AppsBackend] fetchSdks failed: $e');
         offline = true;
       }
-      if (token.isStale) return;
+      if (token.isStale || server != api.server) return;
       _catalogOffline = offline;
 
       final target = _deviceTarget;
@@ -155,7 +196,7 @@ class CatalogContext {
       final builderAvailable = needsBuilder
           ? await AssemblerController.instance.builderAvailable()
           : false;
-      if (token.isStale) return;
+      if (token.isStale || server != api.server) return;
       _builderAvailable = builderAvailable;
       final next = resolveCatalogMode(
         verdict: res.verdict,
@@ -181,6 +222,7 @@ class CatalogContext {
         'builder=$_builderAvailable pref=${_preference.name}',
       );
     } catch (e) {
+      if (server != null && server != api.server) return;
       // Without this the mode stayed at `resolving`, which it was set to above
       // when forced - so Settings -> Apps rendered its Recheck button as
       // `resolving ? null : ...` and it was dead for as long as the page was
@@ -200,7 +242,7 @@ class CatalogContext {
       _useManagerOnly();
     } finally {
       _modeResolving = false;
-      if (token.isStale) {
+      if (token.isStale || (server != null && server != api.server)) {
         // The device changed under this resolution, so what it worked out
         // describes the Flipper that was attached when it started and the one
         // attached now has nothing resolved for it. Nobody else will start

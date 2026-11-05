@@ -3,7 +3,6 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
-import 'package:qunleashed/pages/apps/data/atp/atp_source.dart';
 import 'package:qunleashed/pages/apps/data/binary_sources.dart';
 import 'package:qunleashed/pages/apps/data/catalog_api.dart';
 import 'package:qunleashed/pages/apps/data/catalog_context.dart';
@@ -195,10 +194,7 @@ void main() {
           api: api,
           manifests: manifests,
           catalog: catalog,
-          sources: AppSourceRegistry(
-            catalog: CatalogBinarySource(api: api, catalog: catalog),
-            atp: AtpBinarySource(AtpSource.instance),
-          ),
+          source: CatalogBinarySource(api: api, catalog: catalog),
           onInstalled: ({
             required String alias,
             required String devicePath,
@@ -235,44 +231,6 @@ void main() {
       await updates.refresh(force: true);
 
       expect(updates.failed, isFalse);
-    });
-  });
-
-  group('the plugin pack', () {
-    setUp(() {
-      addTearDown(() => AtpSource.debugFetchReleaseIndex = null);
-    });
-
-    test('knows the release could not be fetched', () async {
-      AtpSource.debugFetchReleaseIndex = () async =>
-          throw StateError('no network');
-
-      await AtpSource.instance.downloadLatest();
-
-      expect(AtpSource.instance.failed, isTrue);
-    });
-
-    // The quiet half. The fetch decides there is nothing to take - a
-    // rate-limit object in place of the release, or a release with no index
-    // asset - and raises nothing, so the catch never runs.
-    test('knows an empty answer is not a release with no apps', () async {
-      AtpSource.debugFetchReleaseIndex = () async => null;
-
-      await AtpSource.instance.downloadLatest();
-
-      expect(AtpSource.instance.failed, isTrue);
-    });
-
-    test('forgets it once a release comes back', () async {
-      AtpSource.debugFetchReleaseIndex = () async =>
-          throw StateError('no network');
-      await AtpSource.instance.downloadLatest();
-      expect(AtpSource.instance.failed, isTrue);
-
-      AtpSource.debugFetchReleaseIndex = () async => '{"blocks":[]}';
-      await AtpSource.instance.downloadLatest();
-
-      expect(AtpSource.instance.failed, isFalse);
     });
   });
 }

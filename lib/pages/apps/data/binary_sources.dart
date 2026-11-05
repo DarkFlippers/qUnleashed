@@ -2,12 +2,8 @@ import '../../../services/localization/l10n.dart';
 
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart';
-
 import '../../../services/assembler/app_build_router.dart';
 import '../../../services/http/app_http.dart';
-import 'atp/atp_index.dart';
-import 'atp/atp_source.dart';
 import 'catalog_api.dart';
 import 'catalog_context.dart';
 import 'models/card.dart';
@@ -56,16 +52,23 @@ class CatalogBinarySource implements AppBinarySource {
     required BinaryProgress onProgress,
     required bool Function() isCancelled,
   }) async {
+    // A CLI app is built and written like any other, from its own family's
+    // routes: the application ones do not know its versions.
+    final family =
+        CatalogFamily.byServerName(card.family) ?? CatalogFamily.apps;
     if (catalog.sourceBuildEnabled) {
       return AppBuildRouter.build(
         alias: card.alias,
-        bundleUrl: api.sourceBundleUri(version.id).toString(),
+        bundleUrl: api.sourceBundleUri(version.id, family: family).toString(),
         target: catalog.deviceTarget ?? 'f7',
         api: catalog.deviceApi,
         uid: card.id,
         versionUid: version.id,
-        fetchBundle: (progress) =>
-            api.fetchSourceBundle(version.id, onProgress: progress),
+        fetchBundle: (progress) => api.fetchSourceBundle(
+          version.id,
+          onProgress: progress,
+          family: family,
+        ),
         isCancelled: isCancelled,
         onStage: (stage, progress) => onProgress(switch (stage) {
           AppBuildStage.queued => BinaryStage.queued,
@@ -81,7 +84,11 @@ class CatalogBinarySource implements AppBinarySource {
     }
 
     try {
-      return await api.fetchFapBuild(version.id, onProgress: report);
+      return await api.fetchFapBuild(
+        version.id,
+        onProgress: report,
+        family: family,
+      );
     } on AppHttpException catch (e) {
       if (e.statusCode != 404) rethrow;
       final appApi = await _appApi(card, version);
@@ -91,6 +98,7 @@ class CatalogBinarySource implements AppBinarySource {
           version.id,
           onProgress: report,
           apiOverride: appApi,
+          family: family,
         );
       }
       throw StateError(
@@ -105,78 +113,13 @@ class CatalogBinarySource implements AppBinarySource {
     final known = version.currentBuild?.sdk?.api ?? '';
     if (known.isNotEmpty) return known;
     try {
-      final detail = await api.fetchApp(card.alias);
+      final detail = await api.fetchApp(
+        card.alias,
+        family: CatalogFamily.byServerName(card.family) ?? CatalogFamily.apps,
+      );
       return detail.card.currentVersion?.currentBuild?.sdk?.api ?? '';
     } catch (_) {
       return '';
     }
   }
-}
-
-class AtpBinarySource implements AppBinarySource {
-  AtpBinarySource(this.source);
-
-  final AtpSource source;
-
-  @override
-  String buildApi(AppCard card, AppCurrentVersion version) =>
-      source.block?.api ?? '';
-
-  @override
-  Future<String> iconBase64(AppCard card, AppCurrentVersion version) async =>
-      source.entryFor(card.alias)?.iconBase64 ?? '';
-
-  @override
-  Future<List<int>> fetch(
-    AppCard card, {
-    required AppCurrentVersion version,
-    required BinaryProgress onProgress,
-    required bool Function() isCancelled,
-  }) async {
-    final entry = source.entryFor(card.alias);
-    if (entry == null) {
-      throw StateError(l10n.appsErrorNotInPack(card.alias));
-    }
-    final url = source.block?.urlFor(entry);
-    if (url == null || url.isEmpty) {
-      throw StateError(l10n.appsErrorNoPackArchive(entry.pack));
-    }
-    final bytes = await AtpArchive.instance.fetchFap(
-      entry,
-      url,
-      tag: source.tag,
-      onProgress: (received, total) {
-        if (total == null || total <= 0) return;
-        onProgress(BinaryStage.download, received / total);
-      },
-    );
-    _verify(entry, bytes);
-    return bytes;
-  }
-
-  void _verify(AtpEntry entry, List<int> bytes) {
-    if (entry.size > 0 && bytes.length != entry.size) {
-      throw StateError(
-        '${entry.appId}.fap is ${bytes.length} bytes, index says ${entry.size}',
-      );
-    }
-    if (entry.md5.isEmpty) return;
-    final actual = md5.convert(bytes).toString().toLowerCase();
-    if (actual != entry.md5) {
-      throw StateError(
-        '${entry.appId}.fap md5 $actual, index says ${entry.md5}',
-      );
-    }
-  }
-}
-
-class AppSourceRegistry {
-  AppSourceRegistry({required this.catalog, required this.atp});
-
-  final CatalogBinarySource catalog;
-  final AtpBinarySource atp;
-
-  AppBinarySource forCard(AppCard card) => card.isAtp ? atp : catalog;
-
-  String? installDir(String alias) => atp.source.entryFor(alias)?.installDir;
 }

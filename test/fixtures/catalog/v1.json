@@ -1,0 +1,911 @@
+{
+  "status": {
+    "version": "1.0.0",
+    "queue_length": 0,
+    "sdk": [
+      {
+        "version": "dev@851c6bf870f7",
+        "target": "f7",
+        "api": "88.16",
+        "channel": "dev"
+      }
+    ],
+    "firmware": {
+      "repo": "file:///fixture/firmware-origin",
+      "branch": "dev",
+      "commit": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+      "updated_at": 1793360006.7297962,
+      "ready": true,
+      "targets": {
+        "f7": {
+          "api": "88.16",
+          "major_since": 1793360006.7297962
+        }
+      }
+    },
+    "bootstrap": {
+      "stage": "firmware warmup",
+      "target": "f7"
+    },
+    "push": {
+      "enabled": false,
+      "disabled_reason": "not_configured"
+    }
+  },
+  "categories": [
+    {
+      "_id": "64971d0f6617ba37a4bc79b3",
+      "id": "64971d0f6617ba37a4bc79b3",
+      "name": "Sub-GHz",
+      "color": "A5F4BE",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d0f6617ba37a4bc79b3/icon",
+      "icon": "subghz",
+      "priority": 0,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d10577d519190ede5c2",
+      "id": "64971d10577d519190ede5c2",
+      "name": "RFID",
+      "color": "FFF493",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d10577d519190ede5c2/icon",
+      "icon": "rfid",
+      "priority": 1,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d10be1a76c06747de26",
+      "id": "64971d10be1a76c06747de26",
+      "name": "NFC",
+      "color": "98CEFE",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d10be1a76c06747de26/icon",
+      "icon": "nfc",
+      "priority": 2,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d106617ba37a4bc79b6",
+      "id": "64971d106617ba37a4bc79b6",
+      "name": "Infrared",
+      "color": "FE938C",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d106617ba37a4bc79b6/icon",
+      "icon": "infrared",
+      "priority": 3,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d106617ba37a4bc79b9",
+      "id": "64971d106617ba37a4bc79b9",
+      "name": "GPIO",
+      "color": "A7F2EA",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d106617ba37a4bc79b9/icon",
+      "icon": "gpio",
+      "priority": 4,
+      "parent_id": null,
+      "applications": 1
+    },
+    {
+      "_id": "GPIO/ESP32",
+      "id": "GPIO/ESP32",
+      "name": "ESP32",
+      "color": "A7F2EA",
+      "icon_uri": "",
+      "icon": null,
+      "priority": 0,
+      "parent_id": "64971d106617ba37a4bc79b9",
+      "applications": 1
+    },
+    {
+      "_id": "64971d11be1a76c06747de29",
+      "id": "64971d11be1a76c06747de29",
+      "name": "iButton",
+      "color": "E1BBA6",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d11be1a76c06747de29/icon",
+      "icon": "ibutton",
+      "priority": 5,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d11be1a76c06747de2c",
+      "id": "64971d11be1a76c06747de2c",
+      "name": "USB",
+      "color": "FFBEE9",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d11be1a76c06747de2c/icon",
+      "icon": "usb",
+      "priority": 6,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d11be1a76c06747de2f",
+      "id": "64971d11be1a76c06747de2f",
+      "name": "Games",
+      "color": "FFC486",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d11be1a76c06747de2f/icon",
+      "icon": "games",
+      "priority": 7,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d116617ba37a4bc79bc",
+      "id": "64971d116617ba37a4bc79bc",
+      "name": "Media",
+      "color": "DFB5FF",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d116617ba37a4bc79bc/icon",
+      "icon": "media",
+      "priority": 8,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64971d11577d519190ede5c5",
+      "id": "64971d11577d519190ede5c5",
+      "name": "Tools",
+      "color": "DFF159",
+      "icon_uri": "https://catalog.test/api/v0/category/64971d11577d519190ede5c5/icon",
+      "icon": "tools",
+      "priority": 9,
+      "parent_id": null,
+      "applications": 0
+    },
+    {
+      "_id": "64a69817effe1f448a4053b4",
+      "id": "64a69817effe1f448a4053b4",
+      "name": "Bluetooth",
+      "color": "8BACFF",
+      "icon_uri": "https://catalog.test/api/v0/category/64a69817effe1f448a4053b4/icon",
+      "icon": "bluetooth",
+      "priority": 10,
+      "parent_id": null,
+      "applications": 0
+    }
+  ],
+  "list": [
+    {
+      "_id": "pair",
+      "id": "pair",
+      "alias": "pair",
+      "category_id": "GPIO/ESP32",
+      "author": "@Ann & @Bob",
+      "created_at": 1793360006,
+      "updated_at": 1793360006,
+      "current_version": {
+        "_id": "pair@1.0",
+        "id": "pair@1.0",
+        "name": "Pair",
+        "version": "1.0",
+        "short_description": "s",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+        "screenshots": [
+          "https://catalog.test/api/v0/application/version/assets/5da2179c8dfbbd9d765ea311"
+        ],
+        "status": "READY",
+        "current_build": {
+          "id": "pair@1.0:f7:88",
+          "_id": "pair@1.0:f7:88",
+          "sdk": {
+            "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+            "name": "851c6bf870f7",
+            "target": "f7",
+            "api": "88.16",
+            "is_latest_release": true
+          },
+          "metadata": {
+            "length": 14
+          }
+        },
+        "application_id": "pair",
+        "bundle_id": "pair@1.0"
+      },
+      "family": "application",
+      "install_path": "GPIO/ESP32",
+      "category_path": "GPIO/ESP32",
+      "top_category_id": "64971d106617ba37a4bc79b9",
+      "authors": [
+        {
+          "id": "ann",
+          "name": "Ann"
+        },
+        {
+          "id": "bob",
+          "name": "Bob"
+        }
+      ],
+      "app_count": 2,
+      "stats": {
+        "downloads": 0,
+        "downloads_week": 0,
+        "downloads_month": 0,
+        "downloads_season": 0,
+        "downloads_year": 0,
+        "unique_week": 0
+      },
+      "builds": [
+        {
+          "target": "f7",
+          "api": "88.16",
+          "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "size": 14,
+          "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
+          "built_at": 1793360006,
+          "cached": true
+        }
+      ],
+      "availability": {
+        "status": "ready",
+        "last_ok_api": "88.16",
+        "failed_at": null
+      }
+    }
+  ],
+  "detail": {
+    "_id": "pair",
+    "id": "pair",
+    "alias": "pair",
+    "category_id": "GPIO/ESP32",
+    "author": "@Ann & @Bob",
+    "created_at": 1793360006,
+    "updated_at": 1793360006,
+    "current_version": {
+      "_id": "pair@1.0",
+      "id": "pair@1.0",
+      "name": "Pair",
+      "version": "1.0",
+      "short_description": "s",
+      "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+      "screenshots": [
+        "https://catalog.test/api/v0/application/version/assets/5da2179c8dfbbd9d765ea311"
+      ],
+      "status": "READY",
+      "current_build": {
+        "id": "pair@1.0:f7:88",
+        "_id": "pair@1.0:f7:88",
+        "sdk": {
+          "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "name": "851c6bf870f7",
+          "target": "f7",
+          "api": "88.16",
+          "is_latest_release": true
+        },
+        "metadata": {
+          "length": 14
+        }
+      },
+      "application_id": "pair",
+      "bundle_id": "pair@1.0",
+      "description": "d",
+      "changelog": "c",
+      "links": {
+        "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+        "manifest_uri": null,
+        "source_code": {
+          "uri": "https://git.example.org/pair"
+        }
+      }
+    },
+    "family": "application",
+    "install_path": "GPIO/ESP32",
+    "category_path": "GPIO/ESP32",
+    "top_category_id": "64971d106617ba37a4bc79b9",
+    "authors": [
+      {
+        "id": "ann",
+        "name": "Ann"
+      },
+      {
+        "id": "bob",
+        "name": "Bob"
+      }
+    ],
+    "app_count": 2,
+    "stats": {
+      "downloads": 0,
+      "downloads_week": 0,
+      "downloads_month": 0,
+      "downloads_season": 0,
+      "downloads_year": 0,
+      "unique_week": 0
+    },
+    "builds": [
+      {
+        "target": "f7",
+        "api": "88.16",
+        "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+        "size": 14,
+        "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
+        "built_at": 1793360006,
+        "cached": true
+      }
+    ],
+    "availability": {
+      "status": "ready",
+      "last_ok_api": "88.16",
+      "failed_at": null
+    },
+    "app": "pair",
+    "apps": [
+      {
+        "id": "pair",
+        "appid": "pair",
+        "main": true,
+        "default": true,
+        "name": "Pair",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+        "version": "1.0",
+        "version_id": "pair@1.0",
+        "install_path": "GPIO/ESP32",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+        "status": "ready",
+        "build": {
+          "api": "88.16",
+          "size": 14
+        }
+      },
+      {
+        "id": "pair_extra",
+        "appid": "pair_extra",
+        "main": false,
+        "default": false,
+        "name": "Pair_Extra",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+        "version": "1.0",
+        "version_id": "pair_extra@1.0",
+        "install_path": "GPIO/ESP32",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+        "status": "ready",
+        "build": {
+          "api": "88.16",
+          "size": 20
+        }
+      }
+    ]
+  },
+  "extra": {
+    "_id": "pair",
+    "id": "pair",
+    "alias": "pair_extra",
+    "category_id": "GPIO/ESP32",
+    "author": "@Ann & @Bob",
+    "created_at": 1793360006,
+    "updated_at": 1793360006,
+    "current_version": {
+      "_id": "pair_extra@1.0",
+      "id": "pair_extra@1.0",
+      "name": "Pair_Extra",
+      "version": "1.0",
+      "short_description": "s",
+      "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+      "screenshots": [
+        "https://catalog.test/api/v0/application/version/assets/5da2179c8dfbbd9d765ea311"
+      ],
+      "status": "READY",
+      "current_build": {
+        "id": "pair@1.0:f7:88",
+        "_id": "pair@1.0:f7:88",
+        "sdk": {
+          "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "name": "851c6bf870f7",
+          "target": "f7",
+          "api": "88.16",
+          "is_latest_release": true
+        },
+        "metadata": {
+          "length": 20
+        }
+      },
+      "application_id": "pair",
+      "bundle_id": "pair@1.0",
+      "description": "d",
+      "changelog": "c",
+      "links": {
+        "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+        "manifest_uri": null,
+        "source_code": {
+          "uri": "https://git.example.org/pair"
+        }
+      }
+    },
+    "family": "application",
+    "install_path": "GPIO/ESP32",
+    "category_path": "GPIO/ESP32",
+    "top_category_id": "64971d106617ba37a4bc79b9",
+    "authors": [
+      {
+        "id": "ann",
+        "name": "Ann"
+      },
+      {
+        "id": "bob",
+        "name": "Bob"
+      }
+    ],
+    "app_count": 2,
+    "stats": {
+      "downloads": 0,
+      "downloads_week": 0,
+      "downloads_month": 0,
+      "downloads_season": 0,
+      "downloads_year": 0,
+      "unique_week": 0
+    },
+    "builds": [
+      {
+        "target": "f7",
+        "api": "88.16",
+        "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+        "size": 14,
+        "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
+        "built_at": 1793360006,
+        "cached": true
+      }
+    ],
+    "availability": {
+      "status": "ready",
+      "last_ok_api": "88.16",
+      "failed_at": null
+    },
+    "app": "pair_extra",
+    "apps": [
+      {
+        "id": "pair",
+        "appid": "pair",
+        "main": true,
+        "default": false,
+        "name": "Pair",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+        "version": "1.0",
+        "version_id": "pair@1.0",
+        "install_path": "GPIO/ESP32",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+        "status": "ready",
+        "build": {
+          "api": "88.16",
+          "size": 14
+        }
+      },
+      {
+        "id": "pair_extra",
+        "appid": "pair_extra",
+        "main": false,
+        "default": true,
+        "name": "Pair_Extra",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+        "version": "1.0",
+        "version_id": "pair_extra@1.0",
+        "install_path": "GPIO/ESP32",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+        "status": "ready",
+        "build": {
+          "api": "88.16",
+          "size": 20
+        }
+      }
+    ]
+  },
+  "style": {
+    "_id": "style:menu_style_wave",
+    "id": "style:menu_style_wave",
+    "alias": "menu_style_wave",
+    "category_id": "animated",
+    "author": "@me",
+    "created_at": 1793360006,
+    "updated_at": 1793360006,
+    "current_version": {
+      "_id": "style:menu_style_wave@1.0",
+      "id": "style:menu_style_wave@1.0",
+      "name": "Menu_Style_Wave",
+      "version": "1.0",
+      "short_description": "s",
+      "icon_uri": "https://catalog.test/api/v0/application/version/assets/b4ebee2db7db736e99981640",
+      "screenshots": [
+        "https://catalog.test/api/v0/application/version/assets/5da2179c8dfbbd9d765ea311"
+      ],
+      "status": "READY",
+      "current_build": {
+        "id": "style:menu_style_wave@1.0:f7:88",
+        "_id": "style:menu_style_wave@1.0:f7:88",
+        "sdk": {
+          "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "name": "851c6bf870f7",
+          "target": "f7",
+          "api": "88.16",
+          "is_latest_release": true
+        },
+        "metadata": {
+          "length": 25
+        }
+      },
+      "application_id": "style:menu_style_wave",
+      "bundle_id": "style:menu_style_wave@1.0",
+      "description": "d",
+      "changelog": "c",
+      "links": {
+        "bundle_uri": "https://catalog.test/api/v1/menustyles/version/style:menu_style_wave@1.0/bundle",
+        "manifest_uri": null,
+        "source_code": {
+          "uri": ""
+        }
+      }
+    },
+    "family": "menustyle",
+    "install_path": "/ext/apps_data/loader/plugins",
+    "category_path": "animated",
+    "top_category_id": "animated",
+    "authors": [
+      {
+        "id": "me",
+        "name": "me"
+      }
+    ],
+    "app_count": 1,
+    "stats": {
+      "downloads": 0,
+      "downloads_week": 0,
+      "downloads_month": 0,
+      "downloads_season": 0,
+      "downloads_year": 0,
+      "unique_week": 0
+    },
+    "builds": [
+      {
+        "target": "f7",
+        "api": "88.16",
+        "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+        "size": 25,
+        "sha256": "0a592969eda4aba965a7d99252c9d8c2205bef81e6e4b10b8d914c31edc0c9dc",
+        "built_at": 1793360006,
+        "cached": true
+      }
+    ],
+    "availability": {
+      "status": "ready",
+      "last_ok_api": "88.16",
+      "failed_at": null
+    },
+    "app": "style:menu_style_wave",
+    "apps": [
+      {
+        "id": "style:menu_style_wave",
+        "appid": "menu_style_wave",
+        "main": true,
+        "default": true,
+        "name": "Menu_Style_Wave",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/b4ebee2db7db736e99981640",
+        "version": "1.0",
+        "version_id": "style:menu_style_wave@1.0",
+        "install_path": "/ext/apps_data/loader/plugins",
+        "bundle_uri": "https://catalog.test/api/v1/menustyles/version/style:menu_style_wave@1.0/bundle",
+        "status": "ready",
+        "build": {
+          "api": "88.16",
+          "size": 25
+        }
+      }
+    ]
+  },
+  "animation": {
+    "_id": "anim:dance",
+    "id": "anim:dance",
+    "alias": "dance",
+    "category_id": "unleashed",
+    "author": "@me",
+    "created_at": 1793360006,
+    "updated_at": 1793360006,
+    "current_version": {
+      "_id": "anim:dance@1.0",
+      "id": "anim:dance@1.0",
+      "name": "Dance",
+      "version": "1.0",
+      "short_description": "s",
+      "icon_uri": "",
+      "screenshots": [],
+      "status": "READY",
+      "current_build": null,
+      "application_id": "anim:dance",
+      "bundle_id": "anim:dance@1.0",
+      "description": "d",
+      "changelog": "c",
+      "links": {
+        "bundle_uri": null,
+        "manifest_uri": null,
+        "source_code": {
+          "uri": ""
+        }
+      }
+    },
+    "family": "animation",
+    "install_path": "/ext/dolphin/dance",
+    "category_path": "unleashed",
+    "top_category_id": "unleashed",
+    "authors": [
+      {
+        "id": "me",
+        "name": "me"
+      }
+    ],
+    "app_count": 1,
+    "stats": {
+      "downloads": 0,
+      "downloads_week": 0,
+      "downloads_month": 0,
+      "downloads_season": 0,
+      "downloads_year": 0,
+      "unique_week": 0
+    },
+    "app": "anim:dance",
+    "apps": [
+      {
+        "id": "anim:dance",
+        "appid": "dance",
+        "main": true,
+        "default": true,
+        "name": "Dance",
+        "icon_uri": "",
+        "version": "1.0",
+        "version_id": "anim:dance@1.0",
+        "install_path": "/ext/dolphin/dance",
+        "bundle_uri": null,
+        "status": "ready",
+        "build": null
+      }
+    ]
+  },
+  "plan": {
+    "files": [
+      {
+        "device_path": "/ext/dolphin/dance/meta.txt",
+        "uri": "https://catalog.test/api/v1/animations/version/anim:dance@1.0/file/meta.txt",
+        "size": 28,
+        "sha256": "7cd6375c2e7560ed8e4113599d76b8dfe310e727d9347c063ddafe4d1446d320"
+      },
+      {
+        "device_path": "/ext/dolphin/dance/frame_0.bm",
+        "uri": "https://catalog.test/api/v1/animations/version/anim:dance@1.0/file/frame_0.bm",
+        "size": 1,
+        "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+      }
+    ],
+    "manifest_merge": {
+      "path": "/ext/dolphin/manifest.txt",
+      "format": "dolphin",
+      "entry": {
+        "name": "dance",
+        "weight": 3
+      }
+    }
+  },
+  "search": {
+    "items": [
+      {
+        "_id": "pair",
+        "id": "pair",
+        "alias": "pair",
+        "category_id": "GPIO/ESP32",
+        "author": "@Ann & @Bob",
+        "created_at": 1793360006,
+        "updated_at": 1793360006,
+        "current_version": {
+          "_id": "pair@1.0",
+          "id": "pair@1.0",
+          "name": "Pair",
+          "version": "1.0",
+          "short_description": "s",
+          "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+          "screenshots": [
+            "https://catalog.test/api/v0/application/version/assets/5da2179c8dfbbd9d765ea311"
+          ],
+          "status": "READY",
+          "current_build": {
+            "id": "pair@1.0:f7:88",
+            "_id": "pair@1.0:f7:88",
+            "sdk": {
+              "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+              "name": "851c6bf870f7",
+              "target": "f7",
+              "api": "88.16",
+              "is_latest_release": true
+            },
+            "metadata": {
+              "length": 14
+            }
+          },
+          "application_id": "pair",
+          "bundle_id": "pair@1.0"
+        },
+        "family": "application",
+        "install_path": "GPIO/ESP32",
+        "category_path": "GPIO/ESP32",
+        "top_category_id": "64971d106617ba37a4bc79b9",
+        "authors": [
+          {
+            "id": "ann",
+            "name": "Ann"
+          },
+          {
+            "id": "bob",
+            "name": "Bob"
+          }
+        ],
+        "app_count": 2,
+        "stats": {
+          "downloads": 0,
+          "downloads_week": 0,
+          "downloads_month": 0,
+          "downloads_season": 0,
+          "downloads_year": 0,
+          "unique_week": 0
+        },
+        "builds": [
+          {
+            "target": "f7",
+            "api": "88.16",
+            "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+            "size": 14,
+            "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
+            "built_at": 1793360006,
+            "cached": true
+          }
+        ],
+        "availability": {
+          "status": "ready",
+          "last_ok_api": "88.16",
+          "failed_at": null
+        }
+      }
+    ],
+    "totals": {
+      "application": 1,
+      "menustyle": 0,
+      "animation": 0
+    },
+    "authors": []
+  },
+  "authors": [
+    {
+      "id": "ann",
+      "name": "Ann",
+      "counts": {
+        "application": 1
+      },
+      "downloads_week": 0
+    },
+    {
+      "id": "bob",
+      "name": "Bob",
+      "counts": {
+        "application": 1
+      },
+      "downloads_week": 0
+    },
+    {
+      "id": "me",
+      "name": "me",
+      "counts": {
+        "menustyle": 1,
+        "animation": 1
+      },
+      "downloads_week": 1
+    }
+  ],
+  "lookup": [
+    {
+      "_id": "pair",
+      "id": "pair",
+      "alias": "pair",
+      "category_id": "GPIO/ESP32",
+      "author": "@Ann & @Bob",
+      "created_at": 1793360006,
+      "updated_at": 1793360006,
+      "current_version": {
+        "_id": "pair@1.0",
+        "id": "pair@1.0",
+        "name": "Pair",
+        "version": "1.0",
+        "short_description": "s",
+        "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+        "screenshots": [
+          "https://catalog.test/api/v0/application/version/assets/5da2179c8dfbbd9d765ea311"
+        ],
+        "status": "READY",
+        "current_build": {
+          "id": "pair@1.0:f7:88",
+          "_id": "pair@1.0:f7:88",
+          "sdk": {
+            "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+            "name": "851c6bf870f7",
+            "target": "f7",
+            "api": "88.16",
+            "is_latest_release": true
+          },
+          "metadata": {
+            "length": 14
+          }
+        },
+        "application_id": "pair",
+        "bundle_id": "pair@1.0"
+      },
+      "family": "application",
+      "install_path": "GPIO/ESP32",
+      "category_path": "GPIO/ESP32",
+      "top_category_id": "64971d106617ba37a4bc79b9",
+      "authors": [
+        {
+          "id": "ann",
+          "name": "Ann"
+        },
+        {
+          "id": "bob",
+          "name": "Bob"
+        }
+      ],
+      "app_count": 2,
+      "stats": {
+        "downloads": 0,
+        "downloads_week": 0,
+        "downloads_month": 0,
+        "downloads_season": 0,
+        "downloads_year": 0,
+        "unique_week": 0
+      },
+      "builds": [
+        {
+          "target": "f7",
+          "api": "88.16",
+          "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "size": 14,
+          "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
+          "built_at": 1793360006,
+          "cached": true
+        }
+      ],
+      "availability": {
+        "status": "ready",
+        "last_ok_api": "88.16",
+        "failed_at": null
+      },
+      "app": "pair",
+      "apps": [
+        {
+          "id": "pair",
+          "appid": "pair",
+          "main": true,
+          "default": true,
+          "name": "Pair",
+          "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+          "version": "1.0",
+          "version_id": "pair@1.0",
+          "install_path": "GPIO/ESP32",
+          "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+          "status": "ready",
+          "build": {
+            "api": "88.16",
+            "size": 14
+          }
+        },
+        {
+          "id": "pair_extra",
+          "appid": "pair_extra",
+          "main": false,
+          "default": false,
+          "name": "Pair_Extra",
+          "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
+          "version": "1.0",
+          "version_id": "pair_extra@1.0",
+          "install_path": "GPIO/ESP32",
+          "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+          "status": "ready",
+          "build": {
+            "api": "88.16",
+            "size": 20
+          }
+        }
+      ]
+    }
+  ]
+}

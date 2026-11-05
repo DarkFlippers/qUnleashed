@@ -26,6 +26,9 @@ List<AppCard> sortAppCards(List<AppCard> cards, AppsSort sort) {
     case AppsSort.newReleases:
     case AppsSort.oldReleases:
       out.sort((a, b) => byStamp(a.createdAt, b.createdAt, sort.order));
+    case AppsSort.popular:
+    case AppsSort.popularWeek:
+      break;
   }
   return out;
 }

@@ -1,22 +1,53 @@
 import 'dart:io' as io;
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import '../../../services/http/app_http.dart';
 import '../../../services/logging.dart';
+import 'models/author.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
+import 'models/plan.dart';
+import 'artifact_signature.dart';
+import 'catalog_server.dart';
+
+part 'api/catalog_v0_api.dart';
+part 'api/catalog_v1_api.dart';
 
 enum AppsSort {
   newUpdates(field: 'updated_at', order: -1),
   oldUpdates(field: 'updated_at', order: 1),
   newReleases(field: 'created_at', order: -1),
   oldReleases(field: 'created_at', order: 1),
-  alphabetical(field: 'updated_at', order: -1);
+  alphabetical(field: 'updated_at', order: -1, v1Field: 'name', v1Order: 1),
+  popular(
+    field: 'updated_at',
+    order: -1,
+    v1Field: 'downloads',
+    v1Order: -1,
+    v1Only: true,
+  ),
+  popularWeek(
+    field: 'updated_at',
+    order: -1,
+    v1Field: 'downloads_week',
+    v1Order: -1,
+    v1Only: true,
+  );
 
   final String field;
   final int order;
-  const AppsSort({required this.field, required this.order});
+  final String? v1Field;
+  final int v1Order;
+  final bool v1Only;
+  const AppsSort({
+    required this.field,
+    required this.order,
+    this.v1Field,
+    this.v1Order = -1,
+    this.v1Only = false,
+  });
 }
 
 class AppsPage {
@@ -32,6 +63,99 @@ class AppsPage {
 
   bool get hasMore => items.length >= limit;
   int get nextOffset => offset + items.length;
+}
+
+enum CatalogFamily {
+  apps(
+    v1Root: 'application',
+    serverName: 'application',
+    usesDevice: true,
+    installsAsApp: true,
+    listScreenshots: true,
+  ),
+  animations(
+    v1Root: 'animations',
+    serverName: 'animation',
+    usesDevice: false,
+    previewCards: true,
+  ),
+  menuStyles(
+    v1Root: 'menustyles',
+    serverName: 'menustyle',
+    usesDevice: true,
+    previewCards: true,
+  ),
+
+  /// Command-line apps: built and installed like any other app, but what they
+  /// draw is a terminal, so no two screenshots would ever line up in a list.
+  cli(v1Root: 'cli', serverName: 'cli', usesDevice: true, installsAsApp: true);
+
+  final String v1Root;
+  final String serverName;
+  final bool usesDevice;
+
+  /// A .fap the install engine writes and the manifests track.
+  final bool installsAsApp;
+
+  /// Cards are the item's screen: an animation frame or a menu style preview.
+  final bool previewCards;
+
+  /// List cards carry the screenshot strip.
+  final bool listScreenshots;
+
+  const CatalogFamily({
+    required this.v1Root,
+    required this.serverName,
+    required this.usesDevice,
+    this.installsAsApp = false,
+    this.previewCards = false,
+    this.listScreenshots = false,
+  });
+
+  static CatalogFamily? byServerName(String? name) {
+    for (final family in values) {
+      if (family.serverName == name) return family;
+    }
+    return null;
+  }
+}
+
+class CatalogNeedsV1Exception implements Exception {
+  CatalogNeedsV1Exception(
+    this.server, {
+    this.sort,
+    this.family,
+    this.search = false,
+  });
+
+  final String server;
+  final AppsSort? sort;
+  final CatalogFamily? family;
+  final bool search;
+
+  @override
+  String toString() =>
+      'CatalogNeedsV1Exception(${search ? 'search' : family?.name ?? sort?.name} '
+      'needs /api/v1, $server)';
+}
+
+class CatalogSearch {
+  final String query;
+  final List<AppCard> items;
+  final Map<CatalogFamily, int> totals;
+  final List<AuthorSummary> authors;
+
+  const CatalogSearch({
+    required this.query,
+    required this.items,
+    required this.totals,
+    required this.authors,
+  });
+
+  List<AppCard> itemsOf(CatalogFamily family) => [
+    for (final item in items)
+      if (CatalogFamily.byServerName(item.family) == family) item,
+  ];
 }
 
 class AppsCatalogException implements Exception {
@@ -84,66 +208,125 @@ List<T> readEach<T>(
   return List<T>.unmodifiable(out);
 }
 
-class AppsCatalogApi {
-  static const String defaultBaseUrl = 'https://catalog.flipperzero.one/api/v0';
-
-  final String baseUrl;
+/// Captures the server and device filters for a request, so a settings change
+/// cannot redirect a retry or the next chunk of an in-flight lookup.
+abstract class _CatalogProtocol {
+  _CatalogProtocol({
+    required this.server,
+    required this.userAgent,
+    this.api,
+    this.target,
+    this.unfiltered = false,
+  });
+  final String server;
   final String userAgent;
+  final String? api;
+  final String? target;
+  bool unfiltered;
+  String get version;
 
-  String? api;
-  String? target;
+  Map<String, String> _apiParams() =>
+      !unfiltered && api != null && target != null
+      ? {'api': api!, 'target': target!}
+      : const {};
+
+  Uri _uri(String path, Map<String, String> query) =>
+      Uri.parse('$server/api/$version$path')
+          .replace(queryParameters: query.isEmpty ? null : query);
+
+  Future<dynamic> _getJson(Uri uri, {Duration? ttl}) {
+    final headers = {io.HttpHeaders.userAgentHeader: userAgent};
+    return ttl == null
+        ? AppHttp.getJson(uri, headers: headers)
+        : AppHttp.getJsonCached(uri, ttl: ttl, headers: headers);
+  }
+
+  Future<Uint8List> _signedBytes(
+    Uri uri, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async => verifySignedArtifact(
+    uri,
+    await AppHttp.getBytesWithHeaders(
+      uri,
+      headers: {io.HttpHeaders.userAgentHeader: userAgent},
+      onProgress: onProgress,
+    ),
+  );
+}
+
+/// One stable API reference for the backend's registries and install queue.
+/// Official speaks v0; every community/custom origin speaks v1.
+class AppsCatalogApi {
+  static const officialServer = CatalogServer.official;
+  static const defaultServer = CatalogServer.defaultServer;
+  static const defaultBaseUrl = '$defaultServer/api/v0';
 
   AppsCatalogApi({
-    this.baseUrl = defaultBaseUrl,
+    String server = defaultServer,
+    String? baseUrl,
     this.userAgent = AppHttp.userAgent,
     this.api,
     this.target,
-  });
+  }) : _server = CatalogServer.normalize(
+         baseUrl == null
+             ? server
+             : baseUrl.replaceFirst(RegExp(r'/api/v0/?$'), ''),
+       );
 
+  String _server;
+  String get server => _server;
+  set server(String value) {
+    final next = CatalogServer.normalize(value);
+    if (next == _server) return;
+    _server = next;
+    unfiltered = false;
+  }
+
+  final String userAgent;
+  String? api;
+  String? target;
   bool unfiltered = false;
+  String get baseUrl => '$server/api/v0';
+  bool get hasV1 => server != officialServer;
+  bool ranksOnServer(AppsSort sort, CatalogFamily family) => hasV1;
 
-  Map<String, String> _apiParams() {
-    if (unfiltered) return const {};
-    final a = api, t = target;
-    if (a != null && a.isNotEmpty && t != null && t.isNotEmpty) {
-      return {'api': a, 'target': t};
-    }
-    return const {};
+  CatalogV0Api get _v0 => CatalogV0Api(
+    server: server,
+    userAgent: userAgent,
+    api: api,
+    target: target,
+    unfiltered: unfiltered,
+  );
+  CatalogV1Api get _v1 {
+    if (!hasV1) throw CatalogNeedsV1Exception(server);
+    return CatalogV1Api(
+      server: server,
+      userAgent: userAgent,
+      api: api,
+      target: target,
+      unfiltered: unfiltered,
+    );
   }
 
-  bool _isSdkNotExists(AppHttpException e) =>
-      e.statusCode == 400 && (e.body?.contains('is not exists') ?? false);
-
-  Future<T> _withApiFallback<T>(Future<T> Function() run) async {
-    try {
-      return await run();
-    } on AppHttpException catch (e) {
-      if (!unfiltered && _isSdkNotExists(e)) {
-        unfiltered = true;
-        return run();
-      }
-      rethrow;
-    }
+  Future<T> _official<T>(Future<T> Function(CatalogV0Api api) request) async {
+    final client = _v0;
+    final result = await request(client);
+    if (client.server == server) unfiltered = client.unfiltered;
+    return result;
   }
 
-  Future<List<AppSdk>> fetchSdks() async {
-    final uri = _uri('/sdk', const {});
-    final body = await _getJson(uri, ttl: const Duration(hours: 6));
-    if (body is! List) {
-      throw AppsCatalogException(0, uri.toString(), 'expected list');
-    }
-    return readEach(body, AppSdk.fromJson, 'SDKs');
-  }
+  Future<List<AppSdk>> fetchSdks() =>
+      hasV1 ? _v1.fetchSdks() : _official((api) => api.fetchSdks());
 
-  Future<List<AppCategory>> fetchCategories({int limit = 500}) {
-    return _withApiFallback(() async {
-      final uri = _uri('/category', {'limit': '$limit', ..._apiParams()});
-      final body = await _getJson(uri, ttl: const Duration(hours: 1));
-      if (body is! List) {
-        throw AppsCatalogException(0, uri.toString(), 'expected list');
-      }
-      return readEach(body, AppCategory.fromJson, 'categories');
-    });
+  Future<List<AppCategory>> fetchCategories({
+    int limit = 500,
+    CatalogFamily family = CatalogFamily.apps,
+  }) async {
+    if (hasV1) return _v1.fetchCategories(family: family);
+    if (family != CatalogFamily.apps) {
+      throw CatalogNeedsV1Exception(server, family: family);
+    }
+    return _official((api) => api.fetchCategories(limit: limit));
   }
 
   Future<AppsPage> fetchApps({
@@ -154,136 +337,142 @@ class AppsCatalogApi {
     String? query,
     bool? isLatestReleaseVersion,
     bool? hasVersion,
-  }) {
-    return _withApiFallback(() async {
-      final uri = _uri('/0/application', {
-        'limit': '$limit',
-        'offset': '$offset',
-        'sort_by': sortBy.field,
-        'sort_order': '${sortBy.order}',
-        if (categoryId != null && categoryId.isNotEmpty)
-          'category_id': categoryId,
-        if (query != null && query.isNotEmpty) 'query': query,
-        if (isLatestReleaseVersion != null)
-          'is_latest_release_version': '$isLatestReleaseVersion',
-        if (hasVersion != null) 'has_version': '$hasVersion',
-        ..._apiParams(),
-      });
-      final body = await _getJson(
-        uri,
-        ttl: query != null && query.isNotEmpty
-            ? null
-            : const Duration(minutes: 5),
+    CatalogFamily family = CatalogFamily.apps,
+    String? authorId,
+  }) async {
+    if (hasV1) {
+      return _v1.fetchApps(
+        offset: offset,
+        limit: limit,
+        sortBy: sortBy,
+        categoryId: categoryId,
+        query: query,
+        family: family,
+        authorId: authorId,
       );
-      if (body is! List) {
-        throw AppsCatalogException(0, uri.toString(), 'expected list');
-      }
-      final items = readEach(body, AppCard.fromJson, 'apps');
-      return AppsPage(items: items, offset: offset, limit: limit);
-    });
+    }
+    if (family != CatalogFamily.apps || sortBy.v1Only || authorId != null) {
+      throw CatalogNeedsV1Exception(server, family: family, sort: sortBy);
+    }
+    return _official(
+      (api) => api.fetchApps(
+        offset: offset,
+        limit: limit,
+        sortBy: sortBy,
+        categoryId: categoryId,
+        query: query,
+        isLatestReleaseVersion: isLatestReleaseVersion,
+        hasVersion: hasVersion,
+      ),
+    );
   }
-
-  static const int _maxUidBatch = 500;
 
   Future<List<AppCard>> fetchAppsByUids(
     List<String> uids, {
     AppsSort sortBy = AppsSort.newUpdates,
-  }) {
-    return _withApiFallback(() async {
-      final clean = uids.where((e) => e.isNotEmpty).toList(growable: false);
-      if (clean.isEmpty) return const <AppCard>[];
-      final out = <AppCard>[];
-      for (var i = 0; i < clean.length; i += _maxUidBatch) {
-        final chunk = clean.sublist(
-          i,
-          math.min(i + _maxUidBatch, clean.length),
-        );
-        final uri = _uri('/1/application', const {});
-        final body = await AppHttp.postJson(
-          uri,
-          <String, dynamic>{
-            'limit': chunk.length,
-            'offset': 0,
-            'sort_by': sortBy.field,
-            'sort_order': sortBy.order,
-            'applications': chunk,
-            ..._apiParams(),
-          },
-          headers: {io.HttpHeaders.userAgentHeader: userAgent},
-        );
-        if (body is! List) {
-          throw AppsCatalogException(0, uri.toString(), 'expected list');
-        }
-        out.addAll(readEach(body, AppCard.fromJson, 'apps'));
-      }
-      return out;
-    });
+  }) => hasV1
+      ? _v1.fetchAppsByUids(uids)
+      : _official((api) => api.fetchAppsByUids(uids, sortBy: sortBy));
+
+  Future<AppDetail> fetchApp(
+    String idOrAlias, {
+    bool? isLatestReleaseVersion,
+    CatalogFamily family = CatalogFamily.apps,
+    String? app,
+  }) async {
+    if (hasV1) return _v1.fetchApp(idOrAlias, family: family, app: app);
+    if (family != CatalogFamily.apps) {
+      throw CatalogNeedsV1Exception(server, family: family);
+    }
+    return _official(
+      (api) => api.fetchApp(
+        idOrAlias,
+        isLatestReleaseVersion: isLatestReleaseVersion,
+      ),
+    );
   }
 
-  Future<AppDetail> fetchApp(String idOrAlias, {bool? isLatestReleaseVersion}) {
-    return _withApiFallback(() async {
-      final uri = _uri('/application/$idOrAlias', {
-        if (isLatestReleaseVersion != null)
-          'is_latest_release_version': '$isLatestReleaseVersion',
-        ..._apiParams(),
-      });
-      final body = await _getJson(uri, ttl: const Duration(minutes: 5));
-      if (body is! Map<String, dynamic>) {
-        throw AppsCatalogException(0, uri.toString(), 'expected object');
-      }
-      return AppDetail.fromJson(body);
-    });
+  Future<CatalogSearch> search(String query, {int limit = 36}) async =>
+      _v1.search(query, limit: limit);
+  Future<CatalogSearch> fetchNewFeed({int limit = 36}) async =>
+      _v1.fetchNewFeed(limit: limit);
+  Future<List<AuthorSummary>> fetchAuthors({
+    String? query,
+    int offset = 0,
+    int limit = 48,
+  }) async => _v1.fetchAuthors(query: query, offset: offset, limit: limit);
+  Future<AuthorSummary> fetchAuthor(String id) async => _v1.fetchAuthor(id);
+
+  Uri buildDownloadUri(
+    String versionId, {
+    required String api,
+    String target = 'f7',
+    CatalogFamily family = CatalogFamily.apps,
+  }) {
+    if (hasV1) {
+      return _v1.buildDownloadUri(
+        versionId,
+        api: api,
+        target: target,
+        family: family,
+      );
+    }
+    return _v0._uri(
+      '/application/version/${Uri.encodeComponent(versionId)}/build/compatible',
+      {'target': target, 'api': api},
+    );
   }
 
   Future<List<int>> fetchFapBuild(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
-  }) async {
-    final t = target;
-    final a = apiOverride ?? api;
-    if (t == null || a == null) {
-      throw StateError(
-        'AppsCatalogApi.target / .api must be set before fetching builds',
-      );
-    }
-    final uri = _uri('/application/version/$versionId/build/compatible', {
-      'target': t,
-      'api': a,
-    });
-    return AppHttp.getBytes(
-      uri,
-      headers: {io.HttpHeaders.userAgentHeader: userAgent},
-      onProgress: onProgress,
-    );
-  }
+    CatalogFamily family = CatalogFamily.apps,
+  }) => hasV1
+      ? _v1.fetchBuild(
+          versionId,
+          family: family,
+          onProgress: onProgress,
+          apiOverride: apiOverride,
+        )
+      : _v0.fetchFapBuild(
+          versionId,
+          onProgress: onProgress,
+          apiOverride: apiOverride,
+        );
 
-  Uri sourceBundleUri(String versionId) =>
-      _uri('/application/version/$versionId/bundle', const {});
+  Future<List<int>> fetchMenuStyleBuild(
+    String versionId, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+    String? apiOverride,
+  }) async => _v1.fetchBuild(
+    versionId,
+    family: CatalogFamily.menuStyles,
+    onProgress: onProgress,
+    apiOverride: apiOverride,
+  );
 
+  Future<InstallPlan> fetchAnimationPlan(String versionId) async =>
+      _v1.fetchAnimationPlan(versionId);
+  Future<Uint8List> fetchPlanFile(String uri) async =>
+      _v1._signedBytes(Uri.parse(uri));
+  Future<Uint8List> fetchAnimationFile(String versionId, String name) async =>
+      _v1.fetchAnimationFile(versionId, name);
+
+  Uri sourceBundleUri(
+    String versionId, {
+    CatalogFamily family = CatalogFamily.apps,
+  }) => hasV1
+      ? _v1.sourceBundleUri(versionId, family: family)
+      : _v0.sourceBundleUri(versionId);
   Future<List<int>> fetchSourceBundle(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
-  }) async {
-    final uri = sourceBundleUri(versionId);
-    return AppHttp.getBytes(
-      uri,
-      headers: {io.HttpHeaders.userAgentHeader: userAgent},
-      onProgress: onProgress,
-    );
-  }
-
-  Uri _uri(String path, Map<String, String> query) {
-    final base = Uri.parse(baseUrl);
-    return base.replace(
-      path: '${base.path}$path',
-      queryParameters: query.isEmpty ? null : query,
-    );
-  }
-
-  Future<dynamic> _getJson(Uri uri, {Duration? ttl}) async {
-    final headers = {io.HttpHeaders.userAgentHeader: userAgent};
-    if (ttl == null) return AppHttp.getJson(uri, headers: headers);
-    return AppHttp.getJsonCached(uri, ttl: ttl, headers: headers);
-  }
+    CatalogFamily family = CatalogFamily.apps,
+  }) => hasV1
+      ? _v1._signedBytes(
+          _v1.sourceBundleUri(versionId, family: family),
+          onProgress: onProgress,
+        )
+      : _v0.fetchSourceBundle(versionId, onProgress: onProgress);
 }

@@ -1,14 +1,22 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../data/catalog_api.dart';
 
 class SortDropdown extends StatelessWidget {
-  const SortDropdown({super.key, required this.value, required this.onChanged});
+  const SortDropdown({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.compact = false,
+    this.v1 = true,
+  });
 
   final AppsSort value;
   final ValueChanged<AppsSort> onChanged;
+  final bool compact;
+  final bool v1;
 
   static String _label(L10n s, AppsSort sort) => switch (sort) {
     AppsSort.newUpdates => s.sortNewUpdates,
@@ -16,6 +24,8 @@ class SortDropdown extends StatelessWidget {
     AppsSort.oldUpdates => s.sortOldUpdates,
     AppsSort.oldReleases => s.sortOldReleases,
     AppsSort.alphabetical => s.sortAlphabetical,
+    AppsSort.popular => s.sortPopular,
+    AppsSort.popularWeek => s.sortPopularWeek,
   };
 
   @override
@@ -32,7 +42,9 @@ class SortDropdown extends StatelessWidget {
         color: colors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         itemBuilder: (context) => [
-          for (final sort in AppsSort.values)
+          for (final sort in AppsSort.values.where(
+            (sort) => v1 || !sort.v1Only,
+          ))
             PopupMenuItem<AppsSort>(
               value: sort,
               child: Text(
@@ -44,24 +56,37 @@ class SortDropdown extends StatelessWidget {
               ),
             ),
         ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _label(context.l10n, value),
-                style: TextStyle(
-                  color: colors.onAccent,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+        tooltip: compact ? _label(context.l10n, value) : null,
+        child: compact
+            ? Padding(
+                padding: const EdgeInsets.all(9),
+                child: Icon(Icons.sort, color: colors.onAccent, size: 22),
+              )
+            : Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _label(context.l10n, value),
+                      style: TextStyle(
+                        color: colors.onAccent,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.arrow_drop_down,
+                      color: colors.onAccent,
+                      size: 22,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-              Icon(Icons.arrow_drop_down, color: colors.onAccent, size: 22),
-            ],
-          ),
-        ),
       ),
     );
   }

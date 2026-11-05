@@ -24,10 +24,9 @@ import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
 
 class AppsManagerPage extends StatefulWidget {
-  const AppsManagerPage({super.key, this.onOpenCatalog, this.onOpenPlugins});
+  const AppsManagerPage({super.key, this.onOpenCatalog});
 
   final VoidCallback? onOpenCatalog;
-  final VoidCallback? onOpenPlugins;
 
   @override
   State<AppsManagerPage> createState() => _AppsManagerPageState();
@@ -61,7 +60,6 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   Future<void> _primeAll() async {
-    unawaited(guarded('[AppsManager] ensure index', _backend.ensureIndex));
     await _device.prime();
     await _updates.ensureFresh();
   }
@@ -345,11 +343,6 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                         )
                       : _updateAll,
                 ),
-              IconButton(
-                icon: const Icon(Icons.extension, color: Colors.white),
-                tooltip: context.l10n.managerPluginsTooltip,
-                onPressed: widget.onOpenPlugins,
-              ),
               IconButton(
                 icon: const Icon(
                   Icons.storefront_outlined,

@@ -8,6 +8,7 @@ import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../apps/data/apps_backend.dart';
 import '../../apps/data/catalog_mode.dart';
+import '../../apps/data/catalog_server.dart';
 
 class AppsSettingsPage extends StatefulWidget {
   const AppsSettingsPage({super.key});
@@ -55,6 +56,41 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
     await _backend.resolveMode(force: true);
     if (mounted) setState(() {});
   }
+
+  Future<void> _selectServer(String server) async {
+    final pending = _backend.setServer(server);
+    if (mounted) setState(() {});
+    await pending;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _customServer() async {
+    final value = await showDialog<String>(
+      context: context,
+      builder: (_) => _CatalogDomainDialog(initial: _backend.api.server),
+    );
+    if (value != null) await _selectServer(value);
+  }
+
+  Widget _serverTile(BuildContext context, String server) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(
+      server == CatalogServer.official
+          ? context.l10n.appsCatalogOfficial
+          : Uri.parse(server).authority,
+    ),
+    subtitle: server == CatalogServer.official
+        ? Text(Uri.parse(server).host)
+        : null,
+    trailing: Icon(
+      _backend.api.server == server
+          ? Icons.check_circle
+          : Icons.circle_outlined,
+      color: _backend.api.server == server
+          ? context.appColors.accent
+          : context.appColors.textMuted,
+    ),
+  );
 
   Widget _modeTile(BuildContext context, CatalogModePreference value) {
     final colors = context.appColors;
@@ -195,6 +231,32 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
+              GroupedCardList<String>(
+                title: context.l10n.appsCatalogServer,
+                items: [CatalogServer.official, ...CatalogServer.community],
+                itemBuilder: _serverTile,
+                onTap: (server) =>
+                    () => unawaited(
+                      guarded(
+                        '[Settings/Apps] select catalog',
+                        () => _selectServer(server),
+                      ),
+                    ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: kGroupedHorizontalPadding,
+                ),
+                child: ListTile(
+                  title: Text(context.l10n.appsCatalogCustom),
+                  subtitle: Text(_backend.api.server),
+                  trailing: const Icon(Icons.edit_outlined),
+                  onTap: () => unawaited(
+                    guarded('[Settings/Apps] custom catalog', _customServer),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
               GroupedCardList<CatalogModePreference>(
                 title: context.l10n.appsGroupCatalogMode,
                 items: CatalogModePreference.values,
@@ -293,4 +355,54 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
       },
     );
   }
+}
+
+class _CatalogDomainDialog extends StatefulWidget {
+  const _CatalogDomainDialog({required this.initial});
+  final String initial;
+
+  @override
+  State<_CatalogDomainDialog> createState() => _CatalogDomainDialogState();
+}
+
+class _CatalogDomainDialogState extends State<_CatalogDomainDialog> {
+  late final _text = TextEditingController(text: widget.initial);
+  String? _error;
+
+  void _save() {
+    try {
+      Navigator.of(context).pop(CatalogServer.normalize(_text.text));
+    } on FormatException {
+      setState(() => _error = context.l10n.appsCatalogInvalidDomain);
+    }
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(context.l10n.appsCatalogCustom),
+    content: TextField(
+      controller: _text,
+      autofocus: true,
+      keyboardType: TextInputType.url,
+      autocorrect: false,
+      decoration: InputDecoration(
+        hintText: 'catalog.example.org',
+        errorText: _error,
+      ),
+      onSubmitted: (_) => _save(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: Text(context.l10n.commonCancel),
+      ),
+      TextButton(onPressed: _save, child: Text(context.l10n.commonSave)),
+    ],
+  );
 }

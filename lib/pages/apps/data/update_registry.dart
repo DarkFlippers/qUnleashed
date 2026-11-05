@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import 'atp/atp_source.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'catalog_mode.dart';
@@ -103,6 +102,7 @@ class UpdateRegistry extends ChangeNotifier {
 
   Future<void> _refresh({required bool force}) async {
     final token = client.deviceToken;
+    final server = api.server;
     _loading = true;
     _failed = false;
     notifyListeners();
@@ -112,12 +112,9 @@ class UpdateRegistry extends ChangeNotifier {
         await manifests.refresh(force: true);
       }
       await _awaitManifests();
-      if (token.isStale) return;
+      if (token.isStale || server != api.server) return;
 
-      final installed = <String, AppManifest>{};
-      for (final m in manifests.all) {
-        if (m.uid.isNotEmpty) installed[m.uid] = m;
-      }
+      final installed = _installedWithUid();
 
       if (installed.isEmpty) {
         _cardsByUid.clear();
@@ -127,24 +124,18 @@ class UpdateRegistry extends ChangeNotifier {
         return;
       }
 
-      final catalogUids = installed.keys
-          .where((uid) => !uid.startsWith(kAtpUidPrefix))
-          .toList();
-      final cards = catalogUids.isEmpty
-          ? const <AppCard>[]
-          : await api.fetchAppsByUids(catalogUids);
-      if (token.isStale) return;
+      final cards = await api.fetchAppsByUids(
+        installed.map((m) => m.uid).toSet().toList(),
+      );
+      if (token.isStale || server != api.server) return;
       _cardsByUid
         ..clear()
         ..addEntries(
           cards.where((c) => c.id.isNotEmpty).map((c) => MapEntry(c.id, c)),
-        )
-        ..addEntries(_atpCards(installed.keys));
+        );
       _rebuild(installed);
       _loaded = true;
-      final withVer = installed.values
-          .where((m) => m.versionUid.isNotEmpty)
-          .length;
+      final withVer = installed.where((m) => m.versionUid.isNotEmpty).length;
       LogService.info(
         '[Updates] installed=${installed.length} withVersionUid=$withVer '
         'cards=${cards.length} updates=${_updates.length}',
@@ -184,33 +175,28 @@ class UpdateRegistry extends ChangeNotifier {
     }
   }
 
-  Iterable<MapEntry<String, AppCard>> _atpCards(Iterable<String> uids) sync* {
-    final source = AtpSource.instance;
-    final api = source.block?.api ?? '';
-    for (final uid in uids) {
-      if (!uid.startsWith(kAtpUidPrefix)) continue;
-      final entry = source.entryFor(uid.substring(kAtpUidPrefix.length));
-      if (entry == null) continue;
-      yield MapEntry(uid, AppCard.fromAtp(entry, api: api));
-    }
-  }
+  /// Every installed app the catalogue knows by uid. Two entries of one item
+  /// (ProtoPirate and ProtoPirate Extra) share the uid, so this is a list.
+  List<AppManifest> _installedWithUid() => [
+    for (final m in manifests.all)
+      if (m.uid.isNotEmpty) m,
+  ];
 
   void _recompute() {
     if (_cardsByUid.isEmpty) return;
-    final installed = <String, AppManifest>{};
-    for (final m in manifests.all) {
-      if (m.uid.isNotEmpty) installed[m.uid] = m;
-    }
-    _rebuild(installed);
+    _rebuild(_installedWithUid());
     notifyListeners();
   }
 
-  void _rebuild(Map<String, AppManifest> installed) {
+  void _rebuild(List<AppManifest> installed) {
     final out = <AppUpdate>[];
-    for (final entry in installed.entries) {
-      final card = _cardsByUid[entry.key];
-      if (card == null) continue;
-      final manifest = entry.value;
+    for (final manifest in installed) {
+      final listed = _cardsByUid[manifest.uid];
+      if (listed == null) continue;
+      // The update is the installed entry's newer version, never a switch
+      // to the entry the card happens to lead with.
+      final entry = installedApp(listed, manifest);
+      final card = entry == null ? listed : listed.forApp(entry);
       final state = catalogAppState(
         card: card,
         manifest: manifest,

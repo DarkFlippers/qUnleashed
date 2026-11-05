@@ -2,7 +2,6 @@ import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/apps/data/atp/atp_source.dart';
 import 'package:qunleashed/pages/apps/data/binary_sources.dart';
 import 'package:qunleashed/pages/apps/data/catalog_api.dart';
 import 'package:qunleashed/pages/apps/data/catalog_context.dart';
@@ -120,10 +119,7 @@ void main() {
       api: api,
       manifests: ManifestRegistry(client: client),
       catalog: catalog,
-      sources: AppSourceRegistry(
-        catalog: CatalogBinarySource(api: api, catalog: catalog),
-        atp: AtpBinarySource(AtpSource.instance),
-      ),
+      source: CatalogBinarySource(api: api, catalog: catalog),
       onInstalled: ({
         required String alias,
         required String devicePath,

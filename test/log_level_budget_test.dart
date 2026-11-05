@@ -82,7 +82,9 @@ const Map<String, int> kBudget = {
   // whole-SD walk and the per-file `md5 check`; §5 excludes both by name.
   'services': 9,
   'pages/archive': 2,
-  'pages/apps': 6,
+  // Was 6. Catalog v1 gives menu styles and animations an install of
+  // their own, and each has the same user-asked cancel as an app's install.
+  'pages/apps': 7,
   'pages/tools': 2,
 };
 

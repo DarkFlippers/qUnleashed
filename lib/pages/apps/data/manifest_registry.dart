@@ -11,9 +11,15 @@ import 'models/manifest.dart';
 import '../../../services/logging.dart';
 
 class ManifestRegistry extends ChangeNotifier {
-  ManifestRegistry({required this.client});
+  ManifestRegistry({
+    required this.client,
+    this.root = kManifestsRoot,
+    this.cached = true,
+  });
 
   final FlipperClient client;
+  final String root;
+  final bool cached;
 
   final Map<String, AppManifest> _byUid = {};
   final Map<String, AppManifest> _byAlias = {};
@@ -63,11 +69,16 @@ class ManifestRegistry extends ChangeNotifier {
       if (_byAlias.isEmpty) await _loadCache();
       if (token.isStale) return;
 
-      final list = await client.storageList(
-        ListRequest(path: kManifestsRoot, includeMd5: true),
-        timeout: const Duration(seconds: 20),
-        priority: FlipperRequestPriority.background,
-      );
+      FlipperRpcBatch<ListResponse>? list;
+      try {
+        list = await client.storageList(
+          ListRequest(path: root, includeMd5: true),
+          timeout: const Duration(seconds: 20),
+          priority: FlipperRequestPriority.background,
+        );
+      } on FlipperRpcStorageNotExistException {
+        list = null;
+      }
       if (token.isStale) return;
 
       final prevManifests = Map<String, AppManifest>.from(_byAlias);
@@ -78,7 +89,7 @@ class ManifestRegistry extends ChangeNotifier {
 
       var reused = 0;
       var read = 0;
-      for (final item in list.items) {
+      for (final item in list?.items ?? const <ListResponse>[]) {
         for (final f in item.file) {
           if (f.type != File_FileType.FILE) continue;
           if (!f.name.endsWith('.fim')) continue;
@@ -94,7 +105,7 @@ class ManifestRegistry extends ChangeNotifier {
             manifest = prevManifests[alias];
             reused++;
           } else {
-            manifest = await _readManifest('$kManifestsRoot/${f.name}');
+            manifest = await _readManifest('$root/${f.name}');
             if (token.isStale) return;
             read++;
           }
@@ -187,6 +198,7 @@ class ManifestRegistry extends ChangeNotifier {
   /// loop, which meant a throw on the fifth of fifty left four apps indexed,
   /// the rest missing, and nothing said anywhere - #138.
   Future<void> _loadCache() async {
+    if (!cached) return;
     final String body;
     try {
       final name = await client.awaitName().timeout(const Duration(seconds: 5));
@@ -261,6 +273,7 @@ class ManifestRegistry extends ChangeNotifier {
   }
 
   Future<void> _saveCache() async {
+    if (!cached) return;
     final token = client.deviceToken;
     try {
       final name = await client.awaitName().timeout(const Duration(seconds: 5));

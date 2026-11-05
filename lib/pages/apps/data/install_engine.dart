@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../../services/http/app_http.dart' show AppHttpException;
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../components/codec/fap/icon.dart';
@@ -15,13 +16,18 @@ import 'binary_sources.dart';
 import 'categories.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
+import 'dolphin_registry.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
 import 'models/manifest.dart';
+import 'models/plan.dart';
 import '../../../services/logging.dart';
 import '../../../services/telemetry/traced.dart';
+import '../../../services/dolphin/library.dart';
+import '../../../services/dolphin/manifest_editor.dart';
+import '../../../components/codec/dolphin/manifest.dart';
 
 enum AppActionType { install, update, delete }
 
@@ -55,15 +61,30 @@ class InstallEngine extends ChangeNotifier {
     required this.api,
     required this.manifests,
     required this.catalog,
-    required this.sources,
+    required this.source,
     required this.onInstalled,
-  });
+    DolphinRegistry? dolphin,
+    DolphinManifestEditor? dolphinManifest,
+    ManifestRegistry? styleManifests,
+  }) : dolphin = dolphin ?? DolphinRegistry(client: client),
+       dolphinManifest =
+           dolphinManifest ?? DolphinManifestEditor(client: client),
+       styleManifests =
+           styleManifests ??
+           ManifestRegistry(
+             client: client,
+             root: kMenuStyleManifestsRoot,
+             cached: false,
+           );
 
   final FlipperClient client;
   final AppsCatalogApi api;
   final ManifestRegistry manifests;
   final CatalogContext catalog;
-  final AppSourceRegistry sources;
+  final AppBinarySource source;
+  final DolphinRegistry dolphin;
+  final DolphinManifestEditor dolphinManifest;
+  final ManifestRegistry styleManifests;
 
   /// Called after a successful install so the device list can adopt the app
   /// without the engine reaching into its sibling registry.
@@ -83,12 +104,18 @@ class InstallEngine extends ChangeNotifier {
       app.alias.isEmpty ? null : _actions[app.alias];
 
   bool isInstalled(AppCard app) {
-    if (app.id.isNotEmpty && manifests.byUid(app.id) != null) return true;
+    // A card made for one entry is installed when that app's file is.
+    if (app.selectedAppId == null &&
+        app.id.isNotEmpty &&
+        manifests.byUid(app.id) != null) {
+      return true;
+    }
     return app.alias.isNotEmpty && manifests.byAlias(app.alias) != null;
   }
 
   final List<_AppTask> _taskQueue = [];
   final Map<String, _PreparedInstall> _preparedInstalls = {};
+  final Map<String, _PreparedAnimation> _preparedAnimations = {};
   final Set<String> _cancelling = {};
   bool _taskWorkerRunning = false;
   final Stopwatch _sinceLastTask = Stopwatch();
@@ -144,18 +171,18 @@ class InstallEngine extends ChangeNotifier {
           if (requeued) {
             _taskQueue.insert(0, task);
           } else {
-            _preparedInstalls.remove(task.alias);
+            _forgetPrepared(task.alias);
             if (_clearAction(task.alias)) notifyListeners();
           }
         } on FlipperWriteCancelledException {
-          _preparedInstalls.remove(task.alias);
+          _forgetPrepared(task.alias);
           if (_clearAction(task.alias)) notifyListeners();
         } on _DeviceChangedException {
           // Not a failure: the task reached the device it was for, and the
           // registries describe a different one now. handleReset has already
           // emptied the queue and the action map; this only keeps the task from
           // reporting itself into a Flipper that never asked for it.
-          _preparedInstalls.remove(task.alias);
+          _forgetPrepared(task.alias);
           // LogService.info(
           //   '[InstallEngine] task "${task.alias}" dropped: device changed',
           // );
@@ -185,6 +212,11 @@ class InstallEngine extends ChangeNotifier {
     return _actions.remove(alias) != null;
   }
 
+  void _forgetPrepared(String alias) {
+    _preparedInstalls.remove(alias);
+    _preparedAnimations.remove(alias);
+  }
+
   bool isCancelling(String alias) => _cancelling.contains(alias);
 
   /// A task that has not started yet simply leaves the queue. The running one
@@ -197,7 +229,7 @@ class InstallEngine extends ChangeNotifier {
     if (index >= 0) {
       final task = _taskQueue.removeAt(index);
       if (!task.done.isCompleted) task.done.complete(false);
-      _preparedInstalls.remove(alias);
+      _forgetPrepared(alias);
       _clearAction(alias);
       notifyListeners();
       return;
@@ -242,6 +274,7 @@ class InstallEngine extends ChangeNotifier {
   }) {
     if (!isReady || app.alias.isEmpty) return Future.value(false);
     if (_actions.containsKey(app.alias)) return Future.value(false);
+    _failures.remove(app.alias);
 
     final wasInstalled = isInstalled(app);
     _actions[app.alias] = AppAction(
@@ -281,11 +314,9 @@ class InstallEngine extends ChangeNotifier {
         await catalog.ensureDeviceFilters(required: true);
         _throwIfCancelled(app.alias);
 
-        final source = sources.forCard(app);
-
         var cv = detail?.card.currentVersion ?? app.currentVersion;
         if (cv == null || cv.id.isEmpty || cv.currentBuild == null) {
-          final fetched = await api.fetchApp(app.alias);
+          final fetched = await api.fetchApp(app.alias, family: _familyOf(app));
           cv = fetched.card.currentVersion;
         }
         if (cv == null || cv.id.isEmpty || cv.currentBuild == null) {
@@ -293,12 +324,11 @@ class InstallEngine extends ChangeNotifier {
         }
 
         final existingManifest = manifests.byAlias(app.alias);
-        final installDir = await _resolveInstallDir(
+        final fapPath = await _binaryPath(
           app,
           category: category,
           manifest: existingManifest,
         );
-        final fapPath = '$installDir/${app.alias}.fap';
         final previousPath = existingManifest?.path ?? '';
         if (previousPath.isNotEmpty && previousPath != fapPath) {
           LogService.info(
@@ -366,7 +396,7 @@ class InstallEngine extends ChangeNotifier {
           : kAppsRoot;
 
       await _ensureDir(kAppsRoot);
-      await _ensureDir(installDir);
+      await _ensureDirs(installDir);
       await _ensureDir(kManifestsRoot);
 
       await client.storageWriteChunked(
@@ -391,11 +421,15 @@ class InstallEngine extends ChangeNotifier {
       }
       _throwIfStale(token);
       manifests.put(app.alias, manifest);
-      await onInstalled(
-        alias: app.alias,
-        devicePath: fapPath,
-        fapBytes: prepared.fapBytes,
-      );
+      // The installed-apps mirror walks the apps root and keeps .fap copies;
+      // a terminal plugin is neither, and is tracked by its manifest alone.
+      if (fapPath.startsWith('$kAppsRoot/')) {
+        await onInstalled(
+          alias: app.alias,
+          devicePath: fapPath,
+          fapBytes: prepared.fapBytes,
+        );
+      }
       _preparedInstalls.remove(app.alias);
       _clearAction(app.alias);
       notifyListeners();
@@ -419,27 +453,327 @@ class InstallEngine extends ChangeNotifier {
     }
   }
 
+  Future<bool> installMenuStyle(AppCard app) {
+    if (!isReady || app.alias.isEmpty) return Future.value(false);
+    if (_actions.containsKey(app.alias)) return Future.value(false);
+    _failures.remove(app.alias);
+    final wasInstalled =
+        styleManifests.byUid(app.id) != null ||
+        styleManifests.byAlias(app.alias) != null;
+    _actions[app.alias] = AppAction(
+      alias: app.alias,
+      type: wasInstalled ? AppActionType.update : AppActionType.install,
+      stage: AppActionStage.queued,
+    );
+    notifyListeners();
+    return _enqueueTask(app.alias, () => _performMenuStyleInstall(app));
+  }
+
+  Future<bool> _performMenuStyleInstall(AppCard app) async {
+    if (!_actions.containsKey(app.alias)) return false;
+    final token = client.deviceToken;
+    try {
+      _setActionState(app.alias, stage: AppActionStage.download, progress: 0);
+      if ((api.target == null || api.api == null) && !isReady) {
+        throw const _LinkDroppedException();
+      }
+      await catalog.ensureDeviceFilters(required: true);
+      _throwIfCancelled(app.alias);
+      final cv = app.currentVersion;
+      if (cv == null || cv.id.isEmpty) {
+        throw StateError(l10n.appsErrorNoVersion);
+      }
+      final fileName = '${app.alias}.fal';
+      if (!fileName.startsWith(kMenuStylePrefix) ||
+          fileName.length >= kMenuStyleNameLimit) {
+        throw StateError(
+          '"$fileName" is not a name the firmware lists as a menu style',
+        );
+      }
+
+      void report(int received, int? total) {
+        _throwIfCancelled(app.alias);
+        if (total == null || total <= 0) return;
+        _setActionState(
+          app.alias,
+          stage: AppActionStage.download,
+          progress: received / total,
+        );
+      }
+
+      final List<int> fal;
+      try {
+        fal = await api.fetchMenuStyleBuild(cv.id, onProgress: report);
+      } on AppHttpException catch (e) {
+        if (e.statusCode != 404) rethrow;
+        final styleApi = cv.currentBuild?.sdk?.api ?? '';
+        final canFallback = styleApi.isNotEmpty && styleApi != api.api;
+        if (!canFallback || !catalog.apiFallbackEnabled) {
+          throw StateError(
+            canFallback
+                ? l10n.appsErrorApiMismatch(styleApi, api.api ?? '?')
+                : l10n.appsErrorNoBuild(api.api ?? '?'),
+          );
+        }
+        return await _writeMenuStyle(
+          app,
+          cv,
+          await api.fetchMenuStyleBuild(
+            cv.id,
+            onProgress: report,
+            apiOverride: styleApi,
+          ),
+          styleApi,
+          token,
+        );
+      }
+      return await _writeMenuStyle(
+        app,
+        cv,
+        fal,
+        cv.currentBuild?.sdk?.api ?? api.api ?? '',
+        token,
+      );
+    } catch (e) {
+      if (e is _DeviceChangedException) rethrow;
+      if (_cancelling.contains(app.alias)) {
+        // Not a failure: the user asked for this.
+        LogService.info('[InstallEngine] menu style ${app.alias} cancelled');
+        _clearAction(app.alias);
+        notifyListeners();
+        return false;
+      }
+      if (e is _LinkDroppedException || !isReady) {
+        _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
+        throw const _LinkDroppedException();
+      }
+      return _failAction(app.alias, e, 'install menu style');
+    }
+  }
+
+  Future<bool> _writeMenuStyle(
+    AppCard app,
+    AppCurrentVersion cv,
+    List<int> fal,
+    String buildApi,
+    DeviceToken token,
+  ) async {
+    _throwIfCancelled(app.alias);
+    if (!isReady) throw const _LinkDroppedException();
+    _throwIfStale(token);
+
+    final falPath = '$kMenuStylesRoot/${app.alias}.fal';
+    final fimPath = '$kMenuStyleManifestsRoot/${app.alias}.fim';
+    final manifest = AppManifest(
+      uid: app.id,
+      versionUid: cv.id,
+      fullName: cv.name.isNotEmpty ? cv.name : app.name,
+      path: falPath,
+      iconBase64: '',
+      sdkApi: buildApi,
+      devCatalog: false,
+    );
+    final manifestBytes = utf8.encode(manifest.encode());
+
+    final loader = kMenuStylesRoot.substring(
+      0,
+      kMenuStylesRoot.lastIndexOf('/'),
+    );
+    await _ensureDir(loader.substring(0, loader.lastIndexOf('/')));
+    await _ensureDir(loader);
+    await _ensureDir(kMenuStylesRoot);
+    await _ensureDir(kMenuStyleManifestsRoot);
+
+    await client.storageWriteChunked(
+      falPath,
+      fal,
+      onProgress: (p) =>
+          _setActionState(app.alias, stage: AppActionStage.upload, progress: p),
+      isCancelled: () => _cancelling.contains(app.alias),
+    );
+    _setActionState(app.alias, stage: AppActionStage.check, progress: 1);
+    await _verifyUpload(falPath, fal);
+    await client.storageWriteChunked(fimPath, manifestBytes);
+    await _verifyUpload(fimPath, manifestBytes);
+
+    _throwIfStale(token);
+    styleManifests.put(app.alias, manifest);
+    _clearAction(app.alias);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> installAnimation(AppCard app) {
+    if (app.alias.isEmpty) return Future.value(false);
+    if (_actions.containsKey(app.alias)) return Future.value(false);
+    _failures.remove(app.alias);
+    final toDevice = isReady;
+    _actions[app.alias] = AppAction(
+      alias: app.alias,
+      type: dolphin.contains(app.alias)
+          ? AppActionType.update
+          : AppActionType.install,
+      stage: AppActionStage.queued,
+    );
+    notifyListeners();
+    return _enqueueTask(
+      app.alias,
+      () => _performAnimationInstall(app, toDevice: toDevice),
+    );
+  }
+
+  Future<bool> _performAnimationInstall(
+    AppCard app, {
+    required bool toDevice,
+  }) async {
+    if (!_actions.containsKey(app.alias)) return false;
+    final token = client.deviceToken;
+    try {
+      var prepared = _preparedAnimations[app.alias];
+      if (prepared == null) {
+        _setActionState(app.alias, stage: AppActionStage.download, progress: 0);
+        final versionId = app.currentVersion?.id ?? '';
+        if (versionId.isEmpty) throw StateError(l10n.appsErrorNoVersion);
+        final plan = await api.fetchAnimationPlan(versionId);
+        final entry = plan.entry;
+        if (plan.files.isEmpty || entry == null || entry.name.isEmpty) {
+          throw StateError('Install plan of "${app.alias}" is empty');
+        }
+
+        final total = plan.files.fold<int>(0, (sum, f) => sum + f.size);
+        var received = 0;
+        final downloaded = <(PlanFile, List<int>)>[];
+        for (final file in plan.files) {
+          _throwIfCancelled(app.alias);
+          final bytes = await api.fetchPlanFile(file.uri);
+          final digest = sha256.convert(bytes).toString();
+          if (file.sha256.isNotEmpty && digest != file.sha256) {
+            throw StateError(
+              '"${file.devicePath}" sha256 $digest, expected ${file.sha256}',
+            );
+          }
+          downloaded.add((file, bytes));
+          received += bytes.length;
+          if (total > 0) {
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.download,
+              progress: received / total,
+            );
+          }
+        }
+
+        _throwIfCancelled(app.alias);
+        for (final (file, bytes) in downloaded) {
+          await saveToDolphinLibrary(file.devicePath, bytes);
+        }
+        prepared = _PreparedAnimation(
+          entry: ManifestEntry(
+            name: entry.name,
+            selected: true,
+            minButthurt: entry.minButthurt ?? ManifestEntry.kDefaultMinButthurt,
+            maxButthurt: entry.maxButthurt ?? ManifestEntry.kDefaultMaxButthurt,
+            minLevel: entry.minLevel ?? ManifestEntry.kDefaultMinLevel,
+            maxLevel: entry.maxLevel ?? ManifestEntry.kDefaultMaxLevel,
+            weight: entry.weight ?? ManifestEntry.kDefaultWeight,
+          ),
+          files: downloaded,
+        );
+        _preparedAnimations[app.alias] = prepared;
+      }
+
+      if (toDevice) {
+        _throwIfCancelled(app.alias);
+        if (!isReady) throw const _LinkDroppedException();
+        _throwIfStale(token);
+
+        final dirs = <String>{
+          for (final (file, _) in prepared.files)
+            file.devicePath.substring(0, file.devicePath.lastIndexOf('/')),
+        };
+        await _ensureDir(kDolphinRoot);
+        for (final dir in dirs) {
+          await _ensureDir(dir);
+        }
+
+        final total = prepared.files.fold<int>(
+          0,
+          (sum, f) => sum + f.$2.length,
+        );
+        var written = 0;
+        for (final (file, bytes) in prepared.files) {
+          final before = written;
+          await client.storageWriteChunked(
+            file.devicePath,
+            bytes,
+            onProgress: (p) => _setActionState(
+              app.alias,
+              stage: AppActionStage.upload,
+              progress: total > 0 ? (before + p * bytes.length) / total : p,
+            ),
+            isCancelled: () => _cancelling.contains(app.alias),
+          );
+          await _verifyUpload(file.devicePath, bytes);
+          written += bytes.length;
+        }
+
+        _setActionState(app.alias, stage: AppActionStage.check, progress: 1);
+        final manifest = prepared.manifest ??= await dolphinManifest.edit(
+          prepared.entry,
+        );
+        _throwIfStale(token);
+        await dolphinManifest.write(manifest);
+
+        _throwIfStale(token);
+        dolphin.put(prepared.entry.name);
+      }
+      _preparedAnimations.remove(app.alias);
+      _clearAction(app.alias);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      if (e is _DeviceChangedException) rethrow;
+      if (_cancelling.contains(app.alias)) {
+        _preparedAnimations.remove(app.alias);
+        // Not a failure: the user asked for this.
+        LogService.info('[InstallEngine] animation ${app.alias} cancelled');
+        _clearAction(app.alias);
+        notifyListeners();
+        return false;
+      }
+      if (e is _LinkDroppedException || (toDevice && !isReady)) {
+        _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
+        throw const _LinkDroppedException();
+      }
+      _preparedAnimations.remove(app.alias);
+      return _failAction(app.alias, e, 'install animation');
+    }
+  }
+
   Future<bool> _failAction(String alias, Object error, String what) async {
     // The fan-in for an install or uninstall that failed with the link up.
     // Link drops are rethrown past this to be requeued, and restore has no
     // catch of its own and fails through the queue worker instead. The cause
     // stops here.
     LogService.warn('[InstallEngine] $what $alias failed: $error');
+    _failures[alias] = error;
     await Future<void>.delayed(const Duration(seconds: 2));
     _clearAction(alias);
     notifyListeners();
     return false;
   }
 
-  Future<bool> uninstall(
-    AppCard app, {
-    AppCategory? category,
-  }) => _enqueueDelete(
-    app.alias,
-    () async =>
-        manifests.byAlias(app.alias)?.path ??
-        '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap',
-  );
+  final Map<String, Object> _failures = {};
+
+  Object? takeFailure(String alias) => _failures.remove(alias);
+
+  Future<bool> uninstall(AppCard app, {AppCategory? category}) =>
+      _enqueueDelete(
+        app.alias,
+        () async =>
+            manifests.byAlias(app.alias)?.path ??
+            await _binaryPath(app, category: category),
+      );
 
   Future<bool> deleteInstalled({
     required String alias,
@@ -496,7 +830,7 @@ class InstallEngine extends ChangeNotifier {
   Future<void> launch(AppCard app, {AppCategory? category}) async {
     await launchPath(
       manifests.byAlias(app.alias)?.path ??
-          '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap',
+          await _binaryPath(app, category: category),
     );
   }
 
@@ -621,13 +955,66 @@ class InstallEngine extends ChangeNotifier {
     }
   }
 
+  /// Creates [path] and every folder above it below `/ext`: storage mkdir
+  /// makes one level, and `/ext/apps_data/cli` is not there on a fresh card.
+  Future<void> _ensureDirs(String path) async {
+    final parts = path.split('/').where((p) => p.isNotEmpty).toList();
+    for (var i = 2; i <= parts.length; i++) {
+      await _ensureDir('/${parts.sublist(0, i).join('/')}');
+    }
+  }
+
+  static CatalogFamily _familyOf(AppCard app) =>
+      CatalogFamily.byServerName(app.family) ?? CatalogFamily.apps;
+
+  /// Where an app's binary lives on the SD card: a terminal plugin as a
+  /// `.fal` under [kCliPluginsRoot], everything else as a `.fap` under the
+  /// apps root.
+  Future<String> _binaryPath(
+    AppCard app, {
+    AppCategory? category,
+    AppManifest? manifest,
+  }) async {
+    if (_familyOf(app) == CatalogFamily.cli) {
+      return '${_cliInstallDir(app)}/${app.alias}.fal';
+    }
+    final dir = await _resolveInstallDir(
+      app,
+      category: category,
+      manifest: manifest,
+    );
+    return '$dir/${app.alias}.fap';
+  }
+
+  /// The catalogue's `install_path` for a CLI app, held to the plugin root:
+  /// the terminal looks nowhere else, and a path out of it is not ours to
+  /// write.
+  String _cliInstallDir(AppCard app) {
+    final raw = app.installPath?.trim() ?? '';
+    if (raw.isEmpty || raw == kCliPluginsRoot) return kCliPluginsRoot;
+    final relative = raw.startsWith('$kCliPluginsRoot/')
+        ? raw.substring(kCliPluginsRoot.length + 1)
+        : null;
+    final valid =
+        relative != null &&
+        relative.split('/').every((s) => s.isNotEmpty && s != '.' && s != '..');
+    if (!valid) {
+      LogService.warn(
+        '[InstallEngine] ${app.alias}: install_path "$raw" is outside '
+        '$kCliPluginsRoot, ignored',
+      );
+      return kCliPluginsRoot;
+    }
+    return '$kCliPluginsRoot/$relative';
+  }
+
   Future<String> _resolveInstallDir(
     AppCard app, {
     AppCategory? category,
     AppManifest? manifest,
   }) async {
-    final fromIndex = sources.installDir(app.alias);
-    if (fromIndex != null) return fromIndex;
+    final fromCatalog = _catalogInstallDir(app);
+    if (fromCatalog != null) return fromCatalog;
     final manifestPath = manifest?.path ?? manifests.byAlias(app.alias)?.path;
     if (manifestPath != null && manifestPath.isNotEmpty) {
       final lastSlash = manifestPath.lastIndexOf('/');
@@ -635,6 +1022,26 @@ class InstallEngine extends ChangeNotifier {
     }
     final categoryAlias = await _resolveCategoryAlias(category, app.categoryId);
     return '$kAppsRoot/$categoryAlias';
+  }
+
+  String? _catalogInstallDir(AppCard app) {
+    final raw = app.installPath?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    final relative = raw.startsWith('$kAppsRoot/')
+        ? raw.substring(kAppsRoot.length + 1)
+        : raw;
+    final segments = relative.split('/');
+    final valid =
+        !relative.startsWith('/') &&
+        segments.every((s) => s.isNotEmpty && s != '.' && s != '..');
+    if (!valid) {
+      LogService.warn(
+        '[InstallEngine] ${app.alias}: install_path "$raw" is outside '
+        '$kAppsRoot, ignored',
+      );
+      return null;
+    }
+    return '$kAppsRoot/$relative';
   }
 
   Future<String> _resolveCategoryAlias(
@@ -674,6 +1081,7 @@ class InstallEngine extends ChangeNotifier {
     _taskQueue.clear();
     _actions.clear();
     _preparedInstalls.clear();
+    _preparedAnimations.clear();
     _cancelling.clear();
     notifyListeners();
   }
@@ -720,6 +1128,14 @@ class _PreparedInstall {
 
   /// Where the app used to sit when the index moved it to another folder.
   final String previousPath;
+}
+
+class _PreparedAnimation {
+  _PreparedAnimation({required this.entry, required this.files});
+
+  final ManifestEntry entry;
+  final List<(PlanFile, List<int>)> files;
+  String? manifest;
 }
 
 class _LinkDroppedException implements Exception {

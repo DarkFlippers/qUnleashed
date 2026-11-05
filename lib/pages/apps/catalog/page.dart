@@ -10,7 +10,6 @@ import '../../../theme/theme.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../components/notification.dart';
 import '../data/apps_backend.dart';
-import '../manager/install_page.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
@@ -28,7 +27,7 @@ class AppsCatalogPage extends StatefulWidget {
   State<AppsCatalogPage> createState() => _AppsCatalogPageState();
 }
 
-enum AppsView { catalog, manager, plugins }
+enum AppsView { catalog, manager }
 
 class _AppsCatalogPageState extends State<AppsCatalogPage>
     with SingleTickerProviderStateMixin {
@@ -74,13 +73,6 @@ class _AppsCatalogPageState extends State<AppsCatalogPage>
                   onOpenCatalog: hasCatalog
                       ? () => _show(AppsView.catalog)
                       : null,
-                  onOpenPlugins: () => _show(AppsView.plugins),
-                ),
-                AtpInstallPage(
-                  onOpenCatalog: hasCatalog
-                      ? () => _show(AppsView.catalog)
-                      : null,
-                  onOpenManager: () => _show(AppsView.manager),
                 ),
               ],
             ),
