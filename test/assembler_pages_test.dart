@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qunleashed/services/assembler/controller.dart';
 import 'package:qunleashed/pages/flibler/page.dart';
 import 'package:qunleashed/services/assembler/remote_build_service.dart';
-import 'package:qunleashed/pages/option/pages/flibler.dart';
+import 'package:qunleashed/pages/option/pages/apps.dart';
 import 'package:qunleashed/pages/tools/overview/page.dart';
 import 'package:qunleashed/pages/flibler/widgets/progress_panel.dart';
 import 'package:qunleashed/theme/theme.dart';
@@ -52,76 +52,138 @@ UfbtStatus _ufbtStatus({required bool ready}) => UfbtStatus(
   ),
 );
 
-void _expectOneOf(List<String> labels) {
+Finder _inDialog(String text) =>
+    find.descendant(of: find.byType(AlertDialog), matching: find.text(text));
+
+/// The apps settings page also asks the catalog, whose request times out
+/// after 15 s; fake time is moved past it so no timer outlives the test.
+Future<void> _drainCatalog(WidgetTester tester) =>
+    tester.pump(const Duration(seconds: 16));
+
+Future<void> _tapRow(WidgetTester tester, String title) async {
+  await tester.ensureVisible(find.text(title));
+  await tester.tap(find.text(title));
+  await tester.pumpAndSettle();
+}
+
+/// The download actions are icon buttons named by their tooltip, which is
+/// the action followed by its details, such as the size.
+void _expectOneAction(List<String> labels) {
   final shown = labels
-      .where((label) => find.text(label).evaluate().isNotEmpty)
+      .where(
+        (label) => find
+            .byWidgetPredicate(
+              (w) =>
+                  w is IconButton &&
+                  (w.tooltip == label ||
+                      (w.tooltip?.startsWith('$label · ') ?? false)),
+            )
+            .evaluate()
+            .isNotEmpty,
+      )
       .toList();
   expect(shown, hasLength(1), reason: 'expected one of $labels, got $shown');
 }
 
 void main() {
-  testWidgets('settings page renders and switches SDK channel', (tester) async {
+  testWidgets('Flibler settings show the SDK and change it in dialogs', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
+    await controller.loadSettings();
     controller.setChannel(UfbtUpdateChannel.release);
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
+    addTearDown(() async {
+      controller.setChannel(UfbtUpdateChannel.release);
+      await controller.setSdkSource(AssemblerSdkSource.unleashed);
+      await controller.setCustomIndexUrl('');
+    });
+    await tester.binding.setSurfaceSize(const Size(420, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(const AssemblerSettingsPage()));
+    await tester.pumpWidget(
+      _wrap(AppsSettingsPage(buildRemote: _StubRemote())),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('Assembler settings'), findsOneWidget);
+    expect(find.text('Flibler'), findsOneWidget);
+    expect(find.text('SDK channel'), findsOneWidget);
     expect(find.text('Release'), findsOneWidget);
-    expect(find.text('Development'), findsOneWidget);
+    expect(find.text('SDK index'), findsOneWidget);
     expect(find.text('Unleashed'), findsOneWidget);
-    expect(find.text('Official'), findsOneWidget);
-    expect(find.text('Custom'), findsOneWidget);
-    expect(find.text(kUnleashedIndexUrl), findsOneWidget);
-    expect(find.text(kOfficialIndexUrl), findsOneWidget);
     // The labels follow the local ufbt state, so only one of each set shows.
-    _expectOneOf(const ['Download SDK', 'Update SDK', 'Downloading SDK…']);
-    _expectOneOf(const [
+    _expectOneAction(const ['Download SDK', 'Update SDK', 'Console']);
+    _expectOneAction(const [
       'Download toolchain',
       'Update toolchain',
       'Reinstall toolchain',
-      'Downloading toolchain…',
+      'Console',
     ]);
     expect(find.text('SDK'), findsOneWidget);
     expect(find.text('Toolchain'), findsOneWidget);
     expect(find.byType(AssemblerProgressPanel), findsNothing);
 
-    await tester.tap(find.text('Development'));
+    await _tapRow(tester, 'SDK channel');
+    expect(_inDialog('Release'), findsOneWidget);
+    await tester.tap(_inDialog('Development'));
     await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
     expect(controller.channel, UfbtUpdateChannel.dev);
+    expect(find.text('Development'), findsOneWidget);
 
-    controller.setChannel(UfbtUpdateChannel.release);
+    // The index dialog is the Private DNS shape: known indexes, then a field
+    // that only saves an http(s) link.
+    await _tapRow(tester, 'SDK index');
+    expect(_inDialog(kUnleashedIndexUrl), findsOneWidget);
+    expect(_inDialog(kOfficialIndexUrl), findsOneWidget);
+    expect(_inDialog('Custom SDK index'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'ftp://index.test/x.json');
+    await tester.tap(_inDialog('Save'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Enter an http:// or https:// link to a directory.json'),
+      findsOneWidget,
+    );
+    expect(controller.sdkSource, AssemblerSdkSource.unleashed);
+    await tester.enterText(
+      find.byType(TextField),
+      'https://index.test/directory.json',
+    );
+    await tester.tap(_inDialog('Save'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(controller.sdkSource, AssemblerSdkSource.custom);
+    expect(controller.customIndexUrl, 'https://index.test/directory.json');
+    expect(find.text('https://index.test/directory.json'), findsOneWidget);
+    await _drainCatalog(tester);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('settings page offers a build backend choice', (tester) async {
+  testWidgets('Flibler settings offer a build backend choice', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
     await controller.loadSettings();
     addTearDown(
       () => controller.setPreference(AssemblerBackendPreference.auto),
     );
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
+    await tester.binding.setSurfaceSize(const Size(420, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      _wrap(AssemblerSettingsPage(remote: _StubRemote())),
+      _wrap(AppsSettingsPage(buildRemote: _StubRemote())),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Build with'), findsOneWidget);
-    expect(find.text('Automatic'), findsOneWidget);
-    expect(find.text('Build server'), findsOneWidget);
     expect(controller.preference, AssemblerBackendPreference.auto);
 
     // Pinning the server is the only sticky choice; the local controls stay
     // where they are, because that is where the SDK is downloaded.
-    await tester.tap(find.text('Build server'));
+    await _tapRow(tester, 'Build with');
+    expect(_inDialog('Automatic'), findsOneWidget);
+    await tester.tap(_inDialog('Build server'));
     await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
     expect(controller.preference, AssemblerBackendPreference.server);
     expect(controller.backend, AssemblerBackend.server);
     expect(controller.usesServerBuild, isTrue);
@@ -130,6 +192,7 @@ void main() {
       AssemblerController.isSupported ? findsOneWidget : findsNothing,
     );
     expect(find.text('Online · v9.9.9'), findsOneWidget);
+    await _drainCatalog(tester);
     expect(tester.takeException(), isNull);
   });
 
@@ -142,23 +205,38 @@ void main() {
     addTearDown(
       () => controller.setPreference(AssemblerBackendPreference.auto),
     );
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
+    await tester.binding.setSurfaceSize(const Size(420, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      _wrap(AssemblerSettingsPage(remote: _StubRemote())),
+      _wrap(AppsSettingsPage(buildRemote: _StubRemote())),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Online · v9.9.9'), findsOneWidget);
     expect(find.text('unlshd-090 · f7'), findsOneWidget);
     expect(find.text('2 in line'), findsOneWidget);
-    expect(find.text('Check server'), findsOneWidget);
-    expect(
-      find.textContaining('Now: build server'),
-      findsOneWidget,
-      reason: 'the page says where the next build goes',
+    expect(find.byTooltip('Check server'), findsOneWidget);
+    await _drainCatalog(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the build settings route scrolls to the Flibler groups', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    await AssemblerController.instance.loadSettings();
+    await tester.binding.setSurfaceSize(const Size(400, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _wrap(AppsSettingsPage(focusBuild: true, buildRemote: _StubRemote())),
     );
+    await tester.pumpAndSettle();
+
+    final top = tester.getTopLeft(find.text('Flibler')).dy;
+    expect(top, lessThan(200), reason: 'Flibler is scrolled to the top');
+    await _drainCatalog(tester);
     expect(tester.takeException(), isNull);
   });
 

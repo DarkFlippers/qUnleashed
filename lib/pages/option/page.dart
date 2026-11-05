@@ -9,7 +9,6 @@ import '../../theme/theme.dart';
 import 'pages/apps.dart';
 import 'pages/device.dart';
 import 'pages/diagnostics.dart';
-import 'pages/flibler.dart';
 import 'pages/language.dart';
 import 'pages/map.dart';
 import 'pages/push.dart';
@@ -181,13 +180,6 @@ class SettingsPage extends StatelessWidget {
                 asset: 'assets/ic/app/apps.svg',
                 color: const Color(0xFF5C9BE8),
                 page: (_) => const AppsSettingsPage(),
-              ),
-              _Category(
-                title: 'Flibler',
-                subtitle: context.l10n.settingsFliblerSubtitle,
-                asset: 'assets/ic/fileformat/settings.svg',
-                color: const Color(0xFF4DB6AC),
-                page: (_) => const AssemblerSettingsPage(),
               ),
               _Category(
                 title: context.l10n.settingsDiagnosticsTitle,

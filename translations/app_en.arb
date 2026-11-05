@@ -331,7 +331,7 @@
     "description": "Title of the apps settings screen, and of its tile on the Settings screen."
   },
 
-  "settingsAppsSubtitle": "Catalog mode, firmware API compatibility",
+  "settingsAppsSubtitle": "Catalog, firmware API, building from source",
   "@settingsAppsSubtitle": {
     "description": "Subtitle under the Apps tile on the Settings screen."
   },
@@ -660,6 +660,15 @@
   "@appsCatalogApis": {
     "description": "Heading above the list of firmware API versions the catalog can serve."
   },
+  "appsApiInUse": "{api} (in use)",
+  "@appsApiInUse": {
+    "description": "Marks, in Settings -> Apps, the catalog API version the app actually requests apps for. {api} is a version such as 87.1.",
+    "placeholders": {
+      "api": {
+        "type": "String"
+      }
+    }
+  },
 
   "appsRecheck": "Re-check",
   "@appsRecheck": {
@@ -879,6 +888,10 @@
   "fliblerCustomIndexTitle": "Custom SDK index",
   "@fliblerCustomIndexTitle": {
     "description": "Title of the dialog asking for a custom SDK index URL."
+  },
+  "fliblerInvalidIndexUrl": "Enter an http:// or https:// link to a directory.json",
+  "@fliblerInvalidIndexUrl": {
+    "description": "Error under the custom SDK index field in Settings -> Apps when the text is not an http(s) link."
   },
 
   "fliblerDownloadingSdk": "Downloading SDK…",
