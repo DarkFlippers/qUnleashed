@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../components/notification.dart';
 import '../data/apps_backend.dart';
+import '../data/catalog_api.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
@@ -136,6 +137,7 @@ class _CatalogViewState extends State<CatalogView> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AppDetailPage(
+          family: CatalogFamily.apps,
           alias: app.alias,
           controller: _ctrl,
           knownCategory: _ctrl.categoryFor(app),

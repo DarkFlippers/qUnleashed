@@ -47,10 +47,13 @@ import 'ratchet.dart';
 /// pixel editor's load and send. The two Dolphin walks stayed — one entry per
 /// folder wants a tally at the caller, not a level here.
 ///
-/// `pages/apps` is absent on purpose. All six of its sites are one-per-app
-/// loops or a cancel the user asked for, so none of them moved.
+/// `pages/apps` is 1, and it is none of those six: their sites are
+/// one-per-app loops or a cancel the user asked for, so none of them moved.
+/// The one is the app page's author cards - a fetch the page makes for the
+/// user and then shows without, recorded once per page rather than per author.
 const Map<String, int> kBudget = {
   'services': 6,
+  'pages/apps': 1,
   'pages/archive': 16,
   'pages/tools': 5,
 };
