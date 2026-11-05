@@ -56,7 +56,7 @@ class LinkEntry {
 /// Auto-connect runs off a debounced timer with no gesture behind it, so
 /// there is nothing to hang a dialog on - and popping one for a cable event
 /// would be wrong even if there were. The condition also outlives the
-/// attempt: the device stays in `_autoTriedUsb` while it is present, so the
+/// attempt: the port stays in `_UsbCable.autoTried` while it is present, so the
 /// Flipper that just failed is not dialled again until something changes.
 /// From the user's side the cable does nothing, forever, with no explanation.
 ///
@@ -91,6 +91,128 @@ class AutoConnectFailure {
 /// search or a live link. It is never asked for on its own — a remembered
 /// device is dialled by its address, which is both the question and the
 /// answer.
+/// What is known about one USB cable, and when each answer stops being true.
+///
+/// The three per-cable questions `LinkService` used to keep as three sets
+/// keyed by the same USB device id. They are here as named members with their
+/// lifetimes as methods, because reading the wrong one is what shipped #460
+/// and #461 and a set named for one question cannot refuse the other. #469.
+///
+/// Two things deliberately not here. `_userDisconnectedKey` is one slot shared
+/// with BLE, so absorbing it would change behaviour - a second cable the user
+/// disconnected is forgotten the moment they disconnect another, and whether
+/// that is intended is a question of its own rather than part of a refactor.
+/// `_CliHold.tried` stays on the hold, which is where #461 put it: it is
+/// hold-scoped, not cable-scoped, and a new hold is meant to have tried
+/// nothing.
+class _UsbCable {
+  /// The app is meant to be holding this link.
+  ///
+  /// Connecting to the cable is that statement, and it outlives the link: a
+  /// Flipper that rebooted into the updater or had its cable knocked out is
+  /// taken back when it returns, because nobody asked for it to go. Only the
+  /// user letting it go clears it, so it survives absence - [forgetPresence]
+  /// leaves it alone.
+  ///
+  /// Whether `autoConnectUsb` gets a say in the take-back depends on
+  /// [appFormed], not on this.
+  bool held = false;
+
+  /// This hold is one the app dialled on its own, until somebody asks for it.
+  ///
+  /// [held] means *the app is meant to be holding this link*, and the hold
+  /// tier honours it ahead of `autoConnectUsb`: a link the user asked for is
+  /// not something a setting they flipped afterwards takes back. Since #458
+  /// turned that setting on by default the app's own dial became the main
+  /// thing setting this, so a cable dialled at launch kept being taken back
+  /// after the user turned the setting off - with `trigger: 'holding this
+  /// one'`, on behalf of nobody. #460.
+  ///
+  /// So the hold stays one tier and this records who formed it. One place
+  /// sets it - the dial in `_reconcileOnce` that takes a cable nobody asked
+  /// about - and three clear it again, each because the answer has stopped
+  /// being true rather than as a courtesy:
+  ///
+  /// - `connect` and `connectDevice`, the two by-hand paths. Pressing either
+  ///   is the statement the hold tier exists for, whoever dialled first.
+  /// - `awaitUsbReturn`, the install path, and the reason this is an
+  ///   endorsement rather than a condition on the setting. The hold has to
+  ///   survive a reboot into the updater and that wait has no deadline, so an
+  ///   app-formed hold standing down on the return would hang the install for
+  ///   good.
+  /// - `disconnectDevice`, which is not an endorsement at all: it lets the
+  ///   hold go and the origin goes with it, so nothing stale is left to answer
+  ///   for a link formed later by some path that sets neither.
+  ///
+  /// `_restoreCli` forms a link too and deliberately sets nothing. A user with
+  /// a terminal open on a Flipper has asked for that link about as plainly as
+  /// this app can be asked, so the hold a restore leaves behind is a
+  /// user-formed one. Taking a hold back is not a write either: the app is
+  /// acting on a statement that is already there, and recording it would turn
+  /// every user-formed hold into an app-formed one the first time a cable was
+  /// knocked out.
+  ///
+  /// Reachable with [held] false, which is why this is a field here rather
+  /// than a map keyed on holds: the origin is set before the dial, and a dial
+  /// that failed leaves it behind with no hold at all.
+  bool appFormed = false;
+
+  /// The ports of this cable auto-connect has dialled since they appeared.
+  ///
+  /// The only one of the three that does not survive absence, and that is the
+  /// whole of what makes the next appearance a fresh question rather than one
+  /// already answered. `_restoreCli` records a port too, so that a restore
+  /// which failed does not leave the USB branch free to dial the same cable
+  /// into RPC underneath a user who is asking for a terminal on it.
+  ///
+  /// Ports and not one flag for the cable, although [held] and [appFormed] are
+  /// per cable. Those two are statements about the Flipper; this is an attempt
+  /// against a port, and a Flipper that re-enumerates has a port nobody has
+  /// tried yet. As a flag it answered "already dialled" for the new port and
+  /// the take-back never happened - which is the hang #465 is about, rebuilt
+  /// out of its own fix. #465.
+  final Set<String> autoTried = {};
+
+  /// The ports this cable has been seen on, of those still present.
+  ///
+  /// A desktop USB id *is* the port - `DesktopUsbDiscoveredDevice.id` returns
+  /// `portName` - so one Flipper is several ids over its life: it reboots into
+  /// the updater and comes back as a different `COM` number. The record is
+  /// keyed by [LinkService._cableKey] so that it stays one record, and this is
+  /// what lets a question asked about a port still find it. #465.
+  ///
+  /// Pruned to what is present, in the same pass that calls [forgetPresence],
+  /// because the only thing that asks is `disconnectDevice` - and it is asked
+  /// about a link that is up.
+  final Set<String> ports = {};
+
+  /// Nothing left to say about this cable, so the entry can go.
+  ///
+  /// Read by the prune in `_reconcileOnce` after [forgetAbsentPorts], so that
+  /// the map does not keep an entry for every cable ever plugged into the
+  /// machine while the two answers that outlive absence still do.
+  bool get isSpent => !held && !appFormed && ports.isEmpty && autoTried.isEmpty;
+
+  /// Claims the one automatic dial [port] gets this appearance, or says it is
+  /// taken.
+  ///
+  /// One call because the caller is a `continue` in a loop: as a separate
+  /// check and record it is two statements that have to agree, which is the
+  /// shape the set's `add` return value was keeping honest.
+  bool claimAutoDial(String port) => autoTried.add(port);
+
+  /// The ports of this cable that are no longer there.
+  ///
+  /// [autoTried] is the only answer that stops being true, and a port going
+  /// away is what makes its next appearance a fresh question. [held] and
+  /// [appFormed] surviving this is the point of both of them - they are about
+  /// the Flipper, not about where it is plugged in.
+  void forgetAbsentPorts(Set<String> present) {
+    ports.removeWhere((port) => !present.contains(port));
+    autoTried.removeWhere((port) => !present.contains(port));
+  }
+}
+
 class LinkService extends ChangeNotifier {
   LinkService._();
 
@@ -118,67 +240,94 @@ class LinkService extends ChangeNotifier {
   final Set<String> _heardBle = {};
   final Map<String, LinkActivity> _activity = {};
   Set<String> _bleSessionIds = {};
-  // The USB Flippers the app is meant to be holding a link with. Connecting
-  // to one is that statement, and it outlives the link: a Flipper that
-  // rebooted into the updater or had its cable knocked out is taken back when
-  // it returns, because nobody asked for it to go. Only the user letting it go
-  // clears the entry.
-  //
-  // Whether the auto-connect setting gets a say in that depends on who formed
-  // the link, which is [_appFormedUsbIds] below: for a link the user asked for
-  // it does not, and for one the app dialled by itself it does.
-  final Set<String> _holdUsbIds = {};
 
-  /// The USB ids whose link the app dialled on its own, until somebody asks
-  /// for that link.
+  /// What the service knows about each USB cable, keyed by its device id.
   ///
-  /// [_holdUsbIds] means *the app is meant to be holding this link*, and the
-  /// hold tier in [_reconcileOnce] honours it ahead of `autoConnectUsb`:
-  /// a link the user asked for is not something a setting they flipped
-  /// afterwards takes back. Since #458 turned that setting on by default the
-  /// app's own dial became the main thing writing into the set, so a cable
-  /// dialled at launch kept being taken back after the user turned the
-  /// setting off - with `trigger: 'holding this one'`, on behalf of nobody.
-  /// #460.
+  /// Three questions that were three sets of the same key type, each with its
+  /// own rule for when an entry stops being true and each rule written only in
+  /// a paragraph of doc. Both of the previous batch's bugs were one of those
+  /// sets answering a question it was not asked - #461 read *auto-connect has
+  /// dialled this cable* as *the restore has tried it*, #460 read *the app is
+  /// meant to be holding this link* as *the user asked for this link* - so the
+  /// rules live on [_UsbCable] as named members and the prune is one pass.
+  /// #469.
   ///
-  /// So the hold stays one tier and this records who formed it. One place
-  /// writes it - the dial in [_reconcileOnce] that takes a cable nobody asked
-  /// about - and three let it go again, each because the answer has stopped
-  /// being true rather than as a courtesy:
+  /// Read through [_isHeld] and [_isAppFormed], which answer for a cable
+  /// nothing has been said about yet without putting an entry in the map;
+  /// [_cable] is the one that creates. An entry that has nothing left to say
+  /// is dropped by the prune in [_reconcileOnce], so this holds one entry per
+  /// cable with a live hold or a live origin plus the ones present right now.
+  final Map<String, _UsbCable> _usbCables = {};
+
+  /// How [device] is keyed in [_usbCables]: what makes two sightings the same
+  /// cable.
   ///
-  /// - [connect] and [connectDevice], the two by-hand paths. The connection
-  ///   list and the picker dialog; pressing either is the statement the hold
-  ///   tier exists for, whoever dialled the cable first.
-  /// - [awaitUsbReturn], which is the install path and the reason this is an
-  ///   endorsement set rather than a condition on the setting. The hold has to
-  ///   survive a reboot into the updater, and that wait has no deadline, so an
-  ///   app-formed hold standing down on the return would hang the install for
-  ///   good. It closes that hole for the port the Flipper left on and no
-  ///   further: an id that changes across the reboot is a separate hole, and
-  ///   one that was there before this.
-  /// - [disconnectDevice], which is not an endorsement at all - it lets the
-  ///   hold go, and the origin goes with it, so nothing stale is left to
-  ///   answer for a link formed later by some path that writes neither.
+  /// The serial when the cable reported a usable one, and the port otherwise.
+  /// The serial is what survives a re-enumeration and the port is not, so
+  /// keying on the port made one Flipper several records - which is #465, and
+  /// keying on the port *as well* made it several records that answered for
+  /// each other.
   ///
-  /// [_restoreCli] forms a link too and deliberately writes nothing here. A
-  /// user who has a terminal open on a Flipper has asked for that link about
-  /// as plainly as this app can be asked, so the hold the restore leaves
-  /// behind is a user-formed one.
+  /// It also decides when it says **no**. A port the Flipper vacated can be
+  /// handed straight to the next one plugged in - on Linux `/dev/ttyACM<n>`
+  /// takes the lowest free index, so it usually is - and two cables that both
+  /// report a serial are the same cable only if the serials agree. Widening on
+  /// the serial while still matching on the port is what let an install's wait
+  /// end on a different Flipper, and `installer.dart` reports `UpdateDone` the
+  /// line after.
   ///
-  /// Taking a hold back is not a write either. The app is acting on a
-  /// statement that is already there, and recording it would turn every
-  /// user-formed hold into an app-formed one the first time a cable was
-  /// knocked out.
+  /// Prefixed, so that a serial can never be mistaken for a port name.
   ///
-  /// Not persisted, like [_holdUsbIds], and not pruned on absence, unlike
-  /// [_autoTriedUsb]: the answer surviving the cable going away is the point.
-  /// So this is not a subset of [_holdUsbIds] - the write happens before the
-  /// dial, and a dial that failed leaves an id here with no hold at all. Both
-  /// tiers read the two together, so that costs nothing.
-  final Set<String> _appFormedUsbIds = {};
+  /// A cable with no usable serial keeps exactly the behaviour it had: matched
+  /// by port, and a re-enumeration loses it. `''` counts as none - Windows
+  /// reports that from `getParentSerialNumber`'s own fallback when its parent
+  /// walk finds nothing, and `ports_linux.dart` passes an empty sysfs read
+  /// through - and so does Android, which needs none because its id is
+  /// `vid:pid` and does not change across a reboot. One cable that reports a
+  /// serial on one enumeration and `''` on the next is two records, which
+  /// loses the hold rather than attaching it to the wrong device: the failure
+  /// this is allowed to have.
+  static String _cableKey(FlipperDevice device) {
+    final serial = device.serialNumber;
+    return (serial != null && serial.isNotEmpty)
+        ? 'serial:$serial'
+        : 'port:${device.id}';
+  }
+
+  /// The record for [device], created if this is the first thing to say about
+  /// it.
+  _UsbCable _cable(FlipperDevice device) =>
+      _usbCables.putIfAbsent(_cableKey(device), _UsbCable.new)
+        ..ports.add(device.id);
+
+  /// What is known about [device] without inventing an entry.
+  _UsbCable? _cableOf(FlipperDevice device) => _usbCables[_cableKey(device)];
+
+  /// The cable holding the port [id].
+  ///
+  /// A scan, over one entry per cable present plus those with a live hold.
+  _UsbCable? _cableOnPort(String id) =>
+      _usbCables.values.where((cable) => cable.ports.contains(id)).firstOrNull;
+
+  /// The cable [device] is, or the one holding port [id] when there is no
+  /// device to go on.
+  ///
+  /// `LinkEntry.device` and `disconnectDevice`'s argument are both nullable - a
+  /// remembered device the picker lists has no session behind it - and the id
+  /// is the one thing those callers always have. The device is preferred
+  /// because it carries the serial, which is the identity; the port is how the
+  /// record is found without one.
+  _UsbCable? _cableFor(String id, FlipperDevice? device) =>
+      device != null ? _cableOf(device) : _cableOnPort(id);
+
+  /// Whether the app is meant to be holding the USB link to [device].
+  bool _isHeld(FlipperDevice device) => _cableOf(device)?.held ?? false;
+
+  /// Whether the hold on [device] is one the app formed by itself.
+  bool _isAppFormed(FlipperDevice device) =>
+      _cableOf(device)?.appFormed ?? false;
 
   String? _userDisconnectedKey;
-  final Set<String> _autoTriedUsb = {};
 
   // Keys whose connect the user called off while it was in flight. The
   // platform reports an aborted connect as a failure like any other, and a
@@ -404,7 +553,7 @@ class LinkService extends ChangeNotifier {
       trace.note('link', entry.link.name);
       trace.note('held', entry.held);
       _forgiveUserDisconnect(entry.key);
-      if (entry.isUsb) _usbLinkAskedFor(entry.id);
+      if (entry.isUsb) _usbLinkAskedFor(entry.id, entry.device);
       if (entry.held) {
         await _c.activateById(entry.id, link: entry.link);
         return;
@@ -443,7 +592,7 @@ class LinkService extends ChangeNotifier {
       trace.note('link', device.link.name);
       final key = '${device.link.name}:${device.id}';
       _forgiveUserDisconnect(key);
-      if (device.isUsb) _usbLinkAskedFor(device.id);
+      if (device.isUsb) _usbLinkAskedFor(device.id, device);
       await _open(device, key, trace: trace);
       if (device.isBle) _heardBle.add(device.id);
       notifyListeners();
@@ -488,10 +637,14 @@ class LinkService extends ChangeNotifier {
   }
 
   /// The user asked for the USB link on [id] by hand, so the app no longer
-  /// owns the hold: see [_appFormedUsbIds], where removal *is* the
-  /// endorsement. Not to be confused with [disconnectDevice]'s removal, which
-  /// lets the hold go rather than endorsing it.
-  void _usbLinkAskedFor(String id) => _appFormedUsbIds.remove(id);
+  /// owns the hold: see [_UsbCable.appFormed], where clearing it *is* the
+  /// endorsement. Not to be confused with [disconnectDevice], which lets the
+  /// hold go rather than endorsing it.
+  ///
+  /// Nothing is created for a cable with no record: there is no hold to
+  /// endorse, and the dial that would make one sets the origin itself.
+  void _usbLinkAskedFor(String id, FlipperDevice? device) =>
+      _cableFor(id, device)?.appFormed = false;
 
   Future<void> disconnect(LinkEntry entry) =>
       disconnectDevice(entry.device, id: entry.id, link: entry.link);
@@ -507,8 +660,20 @@ class LinkService extends ChangeNotifier {
     // teardown below aborts it and the attempt's own failure is swallowed.
     if (_activity[key] == LinkActivity.connecting) _cancelled.add(key);
     if (link == FlipperLink.usb) {
-      _holdUsbIds.remove(id);
-      _appFormedUsbIds.remove(id);
+      // Both, and in one place: the origin answers for the hold, so a hold let
+      // go with an origin left behind would answer for a link formed later by
+      // some path that sets neither. The entry itself goes if the prune finds
+      // nothing left on it.
+      //
+      // Found by port rather than by key, because `device` is nullable here
+      // and the id is the only thing this always has. One record per cable is
+      // what makes that enough: while the hold was one entry per *port*, this
+      // released the port the user pressed Disconnect on and left a sibling
+      // entry answering for the same Flipper, so the next appearance was taken
+      // back on behalf of nobody. #465, and #460's shape through a new door.
+      _cableFor(id, device)
+        ?..held = false
+        ..appFormed = false;
     }
     final active = _c.connectedDevice ?? _c.connectingDevice;
     final wasActive = active != null && active.id == id && active.link == link;
@@ -537,29 +702,46 @@ class LinkService extends ChangeNotifier {
   /// that was sent away to install, and the app is holding it on the user's
   /// behalf.
   ///
-  /// No deadline: a firmware install can run for half an hour, and the port
+  /// No deadline: a firmware install can run for half an hour, and the cable
   /// coming back is the only honest signal that it is over. The wait ends on
   /// the OS event, not on a clock.
+  ///
+  /// Which is why it matches on the cable rather than on the port. A Flipper
+  /// that re-enumerated as a different `COM` number was not the device this
+  /// watched for, and with no deadline that left the install on "Installing..."
+  /// until the app was restarted. [_cableKey] is the same answer the hold tier
+  /// uses, including where it says no: the port this device left can be handed
+  /// to the next Flipper plugged in, and ending on that one makes
+  /// `installer.dart` report `UpdateDone` while this one is still flashing.
   Future<void> awaitUsbReturn(FlipperDevice device) async {
     // Being sent away to install firmware and waited for is the user asking
-    // for this link as plainly as pressing Connect, and [_appFormedUsbIds]
+    // for this link as plainly as pressing Connect, and [_UsbCable.appFormed]
     // says why this one is load-bearing rather than tidy: the wait below has
-    // no deadline. For the port it left on, though - a Flipper that
-    // re-enumerates as a different port is not matched by `holds` either, and
-    // that hole predates this line.
-    _usbLinkAskedFor(device.id);
-    bool holds(List<FlipperSessionInfo> sessions) => sessions.any(
-      (s) => s.connected && s.device.isUsb && s.device.id == device.id,
-    );
+    // no deadline.
+    _usbLinkAskedFor(device.id, device);
+    final key = _cableKey(device);
+    bool matches(FlipperSessionInfo s) =>
+        s.connected && s.device.isUsb && _cableKey(s.device) == key;
+    bool holds(List<FlipperSessionInfo> sessions) => sessions.any(matches);
+    // Back already, on a port it did not leave on - so not the link it still
+    // had when this started, which is the case the gone-then-returned pair
+    // below is for. `installer.dart` deletes a hundreds-of-megabyte extraction
+    // in the `finally` *before* this is awaited, and `autoConnectUsb` is on by
+    // default, so the Flipper can be dialled and up before the wait begins.
+    // Requiring a gone event first latched "Installing..." for the life of the
+    // app on the commonest configuration there is.
+    bool backOnAnotherPort(List<FlipperSessionInfo> sessions) =>
+        sessions.any((s) => matches(s) && s.device.id != device.id);
+    if (backOnAnotherPort(_c.sessions)) return;
     final result = Completer<void>();
     var left = !holds(_c.sessions);
     final sub = _c.sessionsStream.listen((sessions) {
+      if (result.isCompleted) return;
       if (!holds(sessions)) {
         left = true;
         return;
       }
-      if (!left || result.isCompleted) return;
-      result.complete();
+      if (left || backOnAnotherPort(sessions)) result.complete();
     });
     try {
       await result.future;
@@ -591,11 +773,11 @@ class LinkService extends ChangeNotifier {
   void _onSessions(List<FlipperSessionInfo> sessions) {
     // Every connected cable, whoever asked - which is why who asked is
     // recorded where the asking happens rather than guessed at here.
-    // `_appFormedUsbIds` is the other half of this set, and the hold tier in
-    // `_reconcileOnce` reads the two together.
+    // `_UsbCable.appFormed` is the other half of this answer, and the hold
+    // tier in `_reconcileOnce` reads the two together.
     for (final session in sessions) {
       if (session.device.isUsb && session.connected) {
-        _holdUsbIds.add(session.device.id);
+        _cable(session.device).held = true;
       }
     }
 
@@ -705,14 +887,20 @@ class LinkService extends ChangeNotifier {
     if (_suspended || _c.isConnecting) return;
 
     final presentIds = {for (final d in _usbPresent) d.id};
-    _autoTriedUsb.removeWhere((id) => !presentIds.contains(id));
+    // One pass for the answers that do not survive absence, and then the
+    // entries with nothing left on them at all. `_UsbCable.forgetAbsentPorts`
+    // is what decides which is which, rather than this loop knowing.
+    for (final cable in _usbCables.values) {
+      cable.forgetAbsentPorts(presentIds);
+    }
+    _usbCables.removeWhere((_, cable) => cable.isSpent);
     // The same prune for the same reason: a cable that went away and came
-    // back is a fresh question for the CLI restore too. The `_autoTriedUsb`
+    // back is a fresh question for the CLI restore too. The `autoTried`
     // one above is what made the restore work at all before #461 - it was the
     // only thing that ever emptied the set `_restoreCli` filtered on then.
     _cliHold?.tried.removeWhere((id) => !presentIds.contains(id));
     // Unplugged, so there is nothing left to explain - and the same event
-    // that clears `_autoTriedUsb` is what lets the next appearance be dialled
+    // that clears `autoTried` is what lets the next appearance be dialled
     // again, which is the thing the hint was standing in for.
     final failed = _autoFailure;
     if (failed != null &&
@@ -735,7 +923,7 @@ class LinkService extends ChangeNotifier {
     // comes back whatever the setting says: they asked for that link and never
     // let it go. A hold the app formed by itself has no such statement behind
     // it, so it is only taken back while the setting that formed it is still
-    // on - `_appFormedUsbIds` is which is which. The setting also adds the
+    // on - `_UsbCable.appFormed` is which is which. The setting also adds the
     // cables nobody has asked for yet, and between those two that is all it
     // decides — whether the app forms that intent by itself when a cable
     // appears.
@@ -756,19 +944,19 @@ class LinkService extends ChangeNotifier {
     if (!held) {
       final candidates = <FlipperDevice>[
         for (final device in _usbPresent)
-          if (_takesHoldBack(device.id)) device,
+          if (_takesHoldBack(device)) device,
         if (_settings.autoConnectUsb)
           for (final device in _usbPresent)
-            if (!_holdUsbIds.contains(device.id)) device,
+            if (!_isHeld(device)) device,
       ];
       for (final device in candidates) {
         if (_userDisconnectedKey == 'usb:${device.id}') continue;
-        if (!_autoTriedUsb.add(device.id)) continue;
-        final holding = _holdUsbIds.contains(device.id);
+        if (!_cable(device).claimAutoDial(device.id)) continue;
+        final holding = _isHeld(device);
         // The dial that takes a cable nobody asked about, and the one place
         // that writes the origin. `_restoreCli` forms a link too and leaves
         // this alone on purpose - see the field.
-        if (!holding) _appFormedUsbIds.add(device.id);
+        if (!holding) _cable(device).appFormed = true;
         await _autoConnect(device, holding ? 'holding this one' : 'plugged in');
         return;
       }
@@ -795,7 +983,7 @@ class LinkService extends ChangeNotifier {
   /// Takes the CLI back on a cable, and says whether it got as far as
   /// trying - which is what ends the reconcile, success or not.
   ///
-  /// Filters on the hold's own attempts rather than on [_autoTriedUsb] -
+  /// Filters on the hold's own attempts rather than on [_UsbCable.autoTried] -
   /// `_CliHold.tried` says why that distinction is #461. The filter itself is
   /// not about auto-connect: it is here because this returns true whenever it
   /// has a candidate, so a cable that cannot be reopened would be retried on
@@ -819,7 +1007,7 @@ class LinkService extends ChangeNotifier {
     // the USB branch free to dial the same cable into RPC underneath a user
     // who is asking for a terminal on it. Unchanged by #461, and not the
     // clause that was wrong: what was wrong was *reading* this set here.
-    _autoTriedUsb.add(device.id);
+    _cable(device).autoTried.add(device.id);
     final key = 'usb:${device.id}';
     LogService.info('[Link] restoring CLI on ${device.name}');
     _setActivity(key, LinkActivity.connecting);
@@ -901,16 +1089,20 @@ class LinkService extends ChangeNotifier {
   ///
   /// Held, and either the user asked for that link - in which case a setting
   /// they flipped afterwards does not take it back - or the setting that
-  /// formed it is still on. [_appFormedUsbIds] is which is which. #460.
-  bool _takesHoldBack(String id) =>
-      _holdUsbIds.contains(id) &&
-      (_settings.autoConnectUsb || !_appFormedUsbIds.contains(id));
+  /// formed it is still on. [_UsbCable.appFormed] is which is which. #460.
+  ///
+  /// A [FlipperDevice] and not an id, because one record answers for every
+  /// port its cable has been on - and the origin has to be the same record's,
+  /// or an app-formed hold taken back on a new port would read as user-formed
+  /// and a since-disabled setting would take it back. #460 across #465.
+  bool _takesHoldBack(FlipperDevice device) =>
+      _isHeld(device) && (_settings.autoConnectUsb || !_isAppFormed(device));
 
   /// The USB half: a cable that appeared, or one the app is holding.
   ///
-  /// Fires for a link the app is holding ([_holdUsbIds]) - a cable someone
+  /// Fires for a link the app is holding ([_UsbCable.held]) - a cable someone
   /// connected over and never released, which since #458 is as often the app
-  /// as the user, hence [_appFormedUsbIds] - and, while `autoConnectUsb` is
+  /// as the user, hence [_UsbCable.appFormed] - and, while `autoConnectUsb` is
   /// on, for any Flipper on a cable with no session held.
   /// Not flipperlib's `autoReconnect`, which recovers a dropped session in
   /// place and never reaches here.
@@ -969,7 +1161,7 @@ class _CliHold {
   /// before it.
   ///
   /// What stays is a failed attempt, which is the loop it exists to not
-  /// start. Not the same question as `LinkService._autoTriedUsb`, which asks
+  /// start. Not the same question as `_UsbCable.autoTried`, which asks
   /// whether auto-connect has dialled a cable: #461 was what it cost to have
   /// one set answering both, since the launch dial fills that one and only an
   /// unplug empties it, so a CLI channel that died with its cable still in
