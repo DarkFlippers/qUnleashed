@@ -122,7 +122,7 @@ void main() {
   late FakeLinkClient client;
   late LinkService links;
 
-  setUp(() async {
+  setUp(() {
     // Auto-connect off. These cases are about what the list shows; with it on
     // the reconcile also tries to dial the remembered BLE device, which the
     // fake refuses and which has nothing to do with any assertion here.
@@ -136,13 +136,6 @@ void main() {
       links.dispose();
       await client.close();
     });
-    // The store is a singleton and outlives the case, so each one starts by
-    // dropping what the last one remembered.
-    final known = KnownDevicesStore.instance;
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
   });
 
   /// Lets the debounced re-enumeration run.
@@ -242,7 +235,7 @@ void main() {
 
   group('what the BLE half shows', () {
     setUp(() async {
-      await KnownDevicesStore.instance.remember(ble('B1', name: 'Bench'));
+      await KnownDevicesStore.instance.remember(ble('b1', name: 'Bench'));
     });
 
     // BLE presence is evidence, not enumeration: a remembered device is listed
@@ -252,13 +245,13 @@ void main() {
       await settle();
 
       final entry = links.entries.single;
-      expect(entry.id, 'B1');
+      expect(entry.id, 'b1');
       expect(entry.isBle, isTrue);
       expect(entry.heard, isFalse);
     });
 
     test('is heard once a session holds it', () async {
-      client.sessions = [held(ble('B1'))];
+      client.sessions = [held(ble('b1'))];
 
       client.plugged();
       await settle();
@@ -272,11 +265,11 @@ void main() {
       client.plugged();
       await settle();
 
-      expect(links.entries.map((e) => e.id), ['A', 'B1']);
+      expect(links.entries.map((e) => e.id), ['A', 'b1']);
     });
 
     test('carries the remembered name, not the session one', () async {
-      client.sessions = [held(ble('B1', name: 'whatever the radio said'))];
+      client.sessions = [held(ble('b1', name: 'whatever the radio said'))];
 
       client.plugged();
       await settle();

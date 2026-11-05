@@ -1,3 +1,4 @@
+import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
@@ -9,11 +10,14 @@ import '../../../../theme/theme.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../controller.dart';
 import '../../../../components/archive/models/key.dart';
+import '../../../../components/selection.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
 import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
+import '../../../../components/filelist/key_table.dart';
+import '../../../../components/filelist/list_scaffold.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
@@ -24,26 +28,45 @@ import '../failure_toast.dart';
 /// limited to the fields common to all of them (name/folder, protocol, size,
 /// modified).
 class DeletedPage extends StatefulWidget {
-  const DeletedPage({super.key, required this.controller});
+  const DeletedPage({
+    super.key,
+    required this.controller,
+    required this.sortSettings,
+  });
 
   final ArchiveController controller;
+
+  /// Shared with every other archive table and owned by `AppShell`, so a sort
+  /// picked here is the one they all open in - and the rail's other mounted
+  /// tables follow it without being rebuilt by hand.
+  final ArchiveSortSettings sortSettings;
 
   @override
   State<DeletedPage> createState() => _DeletedPageState();
 }
 
-class _DeletedPageState extends State<DeletedPage> {
+class _DeletedPageState extends State<DeletedPage>
+    with ListSelection<DeletedPage> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   String _query = '';
   String? _filterVal;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
+
+  /// Rebuilds on either the archive's own changes or a sort picked on another
+  /// mounted table. Built once rather than per build, so the `AnimatedBuilder`
+  /// is not resubscribing to a fresh `Listenable` every frame.
+  late final Listenable _repaint = Listenable.merge([
+    _ctrl,
+    widget.sortSettings,
+  ]);
+
+  List<SortOption> get _sortOpts => sortOptionsFor(deletedColumns());
+
+  /// The stored sort, held to the keys this table's columns offer.
+  ({String key, bool asc}) get _sort =>
+      widget.sortSettings.resolve(_sortOpts.map((o) => o.key));
 
   @override
   void initState() {
@@ -95,54 +118,21 @@ class _DeletedPageState extends State<DeletedPage> {
         return false;
       }).toList();
     }
-    return sortArchiveKeys(out, _sortKey, _sortAsc);
+    final sort = _sort;
+    return sortArchiveKeys(out, sort.key, sort.asc);
   }
 
   List<ArchiveKey> get _selectedKeys =>
-      _ctrl.deletedKeys().where((k) => _selected.contains(_keyId(k))).toList();
-
-  void _enterSelection(ArchiveKey key) {
-    setState(() {
-      _selectionMode = true;
-      _selected.add(_keyId(key));
-    });
-  }
-
-  void _toggleSelect(ArchiveKey key) {
-    final id = _keyId(key);
-    setState(() {
-      if (!_selected.remove(id)) _selected.add(id);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
-  void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
-    setState(() {
-      if (selected) {
-        _selected.addAll(filtered.map(_keyId));
-      } else {
-        _selected.removeAll(filtered.map(_keyId));
-        if (_selected.isEmpty) _selectionMode = false;
-      }
-    });
-  }
+      _ctrl.deletedKeys().where((k) => isSelected(k.id)).toList();
 
   void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
+    unawaited(
+      guarded(
+        '[ArchiveSort] storing the picked sort',
+        () =>
+            widget.sortSettings.pick(key, offered: _sortOpts.map((o) => o.key)),
+      ),
+    );
   }
 
   Future<void> _bulkRestore() async {
@@ -154,7 +144,7 @@ class _DeletedPageState extends State<DeletedPage> {
         context.l10n.archiveRestoreFailed,
       );
     }
-    _exitSelection();
+    exitSelection();
   }
 
   Future<void> _showBulkActions(BuildContext context) async {
@@ -173,7 +163,7 @@ class _DeletedPageState extends State<DeletedPage> {
         context,
         _ctrl,
         keys,
-        onDone: _exitSelection,
+        onDone: exitSelection,
       ),
     ];
 
@@ -195,15 +185,35 @@ class _DeletedPageState extends State<DeletedPage> {
     );
   }
 
-  String _keyId(ArchiveKey k) =>
-      '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
-
   bool get _hasFilter => _filterVal != null || _query.isNotEmpty;
 
   IconData _emptyIcon() {
     if (_hasFilter) return Icons.search_off;
     if (!_ctrl.isConnected) return Icons.link_off;
     return Icons.delete_outline;
+  }
+
+  /// One row. Built against the page's `context`, never a row's: the actions
+  /// sheet keeps the context it is given across its awaits and tests `mounted`
+  /// on it, and a restore that half-fails takes the key off this page - so a
+  /// sheet opened with the row's context would report nothing. #110.
+  Widget _keyRow(ArchiveKey key, List<SizedColumn> cols, QAppColors colors) {
+    final id = key.id;
+    return ArchiveTableRow(
+      key: ValueKey(id),
+      flipperKey: key,
+      cols: cols,
+      colors: colors,
+      cat: key.category,
+      showCategoryIcon: true,
+      progress: _ctrl.progressForKey(key),
+      selectionMode: selectionMode,
+      selected: isSelected(id),
+      onTap: () => selectionMode
+          ? toggleSelect(id)
+          : KeyActionsSheet.show(context, _ctrl, key),
+      onLongPress: () => selectionMode ? toggleSelect(id) : enterSelection(id),
+    );
   }
 
   String _emptyActionLabel() {
@@ -243,7 +253,7 @@ class _DeletedPageState extends State<DeletedPage> {
     final headerColor = colors.adaptCategoryHeader(colors.accent);
 
     return AnimatedBuilder(
-      animation: _ctrl,
+      animation: _repaint,
       builder: (context, _) {
         final all = _ctrl.deletedKeys();
         final filterOpts = _filterOptions(all);
@@ -253,138 +263,62 @@ class _DeletedPageState extends State<DeletedPage> {
           );
         }
         final filtered = _visible(all);
-        final allSelected =
-            filtered.isNotEmpty &&
-            filtered.every((k) => _selected.contains(_keyId(k)));
+        // One record for the toolbar and the table both: two would be two
+        // chances to disagree about what a second tap on a column means. The
+        // getter behind it resolves the sort against this page's own columns,
+        // which allocates both lists, so it is read once here.
+        final resolved = _sort;
+        final sort = (
+          key: resolved.key,
+          asc: resolved.asc,
+          opts: _sortOpts,
+          onSort: _onSort,
+        );
 
-        return PopScope(
-          canPop: !_selectionMode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _selectionMode) _exitSelection();
-          },
-          child: Scaffold(
-            backgroundColor: colors.background,
-            appBar: AppBar(
-              backgroundColor: headerColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleSpacing: categoryTitleSpacing(context),
-              title: const _DeletedAppBarTitle(),
-              actions: [
-                CategoryCountBadge(
-                  filtered: filtered.length,
-                  total: all.length,
-                ),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(50),
-                child: _selectionMode
-                    ? CategorySelectionToolbar(
-                        count: _selected.length,
-                        allSelected: allSelected,
-                        catColor: headerColor,
-                        onClose: _exitSelection,
-                        onToggleAll: () =>
-                            _setAllSelected(filtered, !allSelected),
-                        onActions: () => _showBulkActions(context),
-                      )
-                    : CategoryToolbar(
-                        searchCtrl: _searchCtrl,
-                        query: _query,
-                        filterVal: _filterVal,
-                        filterOpts: filterOpts,
-                        starredOnly: false,
-                        catColor: headerColor,
-                        colors: colors,
-                        showStar: false,
-                        onQueryChanged: (v) => setState(() => _query = v),
-                        onFilterChanged: (v) => setState(() => _filterVal = v),
-                        onStarredToggle: () {},
-                      ),
-              ),
+        return ArchiveListScaffold(
+          headerColor: headerColor,
+          title: const _DeletedAppBarTitle(),
+          actions: [
+            CategoryCountBadge(filtered: filtered.length, total: all.length),
+          ],
+          selection: selectionControl(
+            filtered.map((k) => k.id),
+            onActions: () => _showBulkActions(context),
+          ),
+          toolbar: CategoryToolbar(
+            searchCtrl: _searchCtrl,
+            query: _query,
+            filterVal: _filterVal,
+            filterOpts: filterOpts,
+            sort: sort,
+            starredOnly: false,
+            catColor: headerColor,
+            colors: colors,
+            showStar: false,
+            onQueryChanged: (v) => setState(() => _query = v),
+            onFilterChanged: (v) => setState(() => _filterVal = v),
+            onStarredToggle: () {},
+          ),
+          body: ArchiveKeyTable(
+            columns: (width) =>
+                layoutColumns(deletedColumns(), width, filtered),
+            sort: sort,
+            selectionMode: selectionMode,
+            accent: headerColor,
+            onRefresh: _ctrl.refresh,
+            empty: () => ArchiveEmptyView(
+              icon: _emptyIcon(),
+              title: _query.isNotEmpty
+                  ? context.l10n.archiveEmptyQuery(_query)
+                  : _filterVal != null
+                  ? context.l10n.archiveNoFilesFilter
+                  : context.l10n.archiveNothingHere,
+              subtitle: _hasFilter ? null : context.l10n.archiveDeletedHint,
+              actionLabel: _emptyActionLabel(),
+              onAction: _onEmptyAction,
             ),
-            body: LayoutBuilder(
-              builder: (ctx, constraints) {
-                final cols = layoutColumns(
-                  deletedColumns(),
-                  constraints.maxWidth -
-                      (_selectionMode ? kSelectionIndicatorWidth : 0),
-                  filtered,
-                );
-
-                return RefreshIndicator(
-                  color: headerColor,
-                  displacement: 15,
-                  onRefresh: _ctrl.refresh,
-                  child: filtered.isEmpty
-                      ? SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: constraints.maxHeight,
-                            child: ArchiveEmptyView(
-                              icon: _emptyIcon(),
-                              title: _query.isNotEmpty
-                                  ? context.l10n.archiveEmptyQuery(_query)
-                                  : _filterVal != null
-                                  ? context.l10n.archiveNoFilesFilter
-                                  : context.l10n.archiveNothingHere,
-                              subtitle: _hasFilter
-                                  ? null
-                                  : context.l10n.archiveDeletedHint,
-                              actionLabel: _emptyActionLabel(),
-                              onAction: _onEmptyAction,
-                            ),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            ArchiveColumnHeader(
-                              cols: cols,
-                              sortKey: _sortKey,
-                              sortAsc: _sortAsc,
-                              onSort: _onSort,
-                              colors: colors,
-                              selectionMode: _selectionMode,
-                            ),
-                            Expanded(
-                              child: ListView.builder(
-                                physics: const AlwaysScrollableScrollPhysics(
-                                  parent: ClampingScrollPhysics(),
-                                ),
-                                itemCount: filtered.length,
-                                itemBuilder: (_, i) {
-                                  final key = filtered[i];
-                                  return ArchiveTableRow(
-                                    key: ValueKey(_keyId(key)),
-                                    flipperKey: key,
-                                    cols: cols,
-                                    colors: colors,
-                                    cat: key.category,
-                                    showCategoryIcon: true,
-                                    progress: _ctrl.progressForKey(key),
-                                    selectionMode: _selectionMode,
-                                    selected: _selected.contains(_keyId(key)),
-                                    onTap: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : KeyActionsSheet.show(
-                                            context,
-                                            _ctrl,
-                                            key,
-                                          ),
-                                    onLongPress: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : _enterSelection(key),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                );
-              },
-            ),
+            itemCount: filtered.length,
+            itemBuilder: (i, cols) => _keyRow(filtered[i], cols, colors),
           ),
         );
       },

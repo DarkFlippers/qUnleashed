@@ -1,9 +1,11 @@
-import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel;
-import 'package:flutter/widgets.dart' show NavigatorObserver;
+import 'package:flipperlib/flipperlib.dart'
+    show FlipperConnectErrorKind, FlipperLogLevel;
+import 'package:flutter/widgets.dart' show NavigatorObserver, Widget;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../build_identity.dart';
+import '../connection/connect_report.dart';
 import '../guarded.dart';
 import '../http/app_http.dart';
 import '../logging.dart';
@@ -19,12 +21,15 @@ import 'settings.dart';
 /// Everything above keeps calling `LogService`, `guarded` and the connection
 /// classifier; this turns what they already record into events.
 ///
-/// Phases 1 and 2 of the rollout: errors, crashes, Sentry Logs, breadcrumbs
-/// and tracing. Replay is phase 3 and nothing here enables it - both of its
-/// sample rates are left at the SDK's zero, which §6.4's gate is what stands
-/// in front of.
+/// Phases 1 and 2 of the rollout - errors, crashes, Sentry Logs, breadcrumbs
+/// and tracing - and phase 3 apart from §3's flipperlib observer: replay with
+/// `onErrorSampleRate` behind §1's
+/// second switch, `sessionSampleRate` at zero and §6.4's gate opened with four
+/// masking rules rather than stepped over, plus the one metric §2 asks for in
+/// [_reportConnectFailure].
 ///
-/// This paragraph said the opposite until phase 2 landed and made it false.
+/// This paragraph has now said the opposite twice, each time because a phase
+/// landed and made it false.
 /// ADR 0013's own status block is the current account of what is built; this
 /// one is here so a reader of the class knows which phases its options
 /// belong to.
@@ -97,6 +102,55 @@ class Telemetry {
 
   bool _running = false;
 
+  /// What the running SDK was told about replay, which is not the same thing
+  /// as what the switch says now.
+  ///
+  /// The sample rates are read once, by `SentryFlutter.init`, and 9.30.1 has
+  /// no pause API - so a replay switch that moved while the SDK is up can only
+  /// be applied by taking it down and bringing it back. [_reconcile] compares
+  /// against this to know whether that is needed, exactly as it compares
+  /// `shareLogs` against [_running].
+  ///
+  /// **Written wherever [_running] is written**, including `start()`'s own
+  /// recovery. Left behind there once, and a stale value here is not a cosmetic
+  /// problem: it is a standing disagreement with the switch, which is what
+  /// [_replayRestartAimedAt] exists to keep from becoming a loop.
+  bool _runningWithReplay = false;
+
+  /// The value the last replay restart set out to apply, or null if none is
+  /// outstanding.
+  ///
+  /// This is a termination guard, not bookkeeping. Applying a replay change
+  /// means calling [stop] while the main switch still says on, and `_tearDown`
+  /// deliberately leaves [_running] true when the shutdown fails - so that
+  /// `_reconcile` can be asked again rather than claiming something that did
+  /// not happen. Those two decisions are each right and together they did not
+  /// terminate: the failed stop left the same disagreement in place, and
+  /// `stop`'s own `finally` reconciled straight back into it.
+  ///
+  /// That is not a spin. Each cycle is synchronous work plus a microtask, so
+  /// the event queue is never reached, no timer ever fires - a test's own
+  /// `Timeout` cannot fire either - and the UI isolate is wedged for good. On
+  /// Windows and Linux every cycle also pays the synchronous
+  /// `sentry_close()` described on [_batchedSinceStart].
+  ///
+  /// So a restart is attempted once per value. The latch is dropped as soon as
+  /// the switch and [_runningWithReplay] agree, which is both what a successful
+  /// restart produces and what toggling back to the running value produces, so
+  /// a later genuine change is still applied. `start()`'s recovery leaving
+  /// `_runningWithReplay` stale is how this used to be reached without the
+  /// user touching the switch twice; the same shape, with the same ending, is
+  /// written down at that `catch`.
+  bool? _replayRestartAimedAt;
+
+  /// What the transition in flight was told about replay.
+  ///
+  /// The replay half of [_settlingToward], and it earns its keep in the same
+  /// place: a tap during a transition would otherwise be dropped, because the
+  /// plan that transition is using was built before it. The logs switch went
+  /// to this trouble already; this is the more sensitive of the two switches.
+  bool _settlingTowardReplay = false;
+
   /// Whether a start or a stop is in flight.
   ///
   /// `start()` awaits `settings.load()`, and a successful read calls
@@ -148,6 +202,37 @@ class Telemetry {
   /// Whether this instance has a DSN at all. Says nothing about the switch.
   bool get configured => dsn.isNotEmpty;
 
+  /// Wraps the app so the recorder can see the tree it is recording.
+  ///
+  /// `SentryWidget` mounts `SentryScreenshotWidget`, and replay captures
+  /// through it: without it `ScreenshotRecorder.capture` finds no render
+  /// object and skips every frame, warning "SentryScreenshotWidget is not
+  /// attached" once per recorder and then recording nothing in silence. The
+  /// warning goes through `internalLogger`, which `options.dart` gates on
+  /// `LogService.printing` - so in a quiet build there is no line at all,
+  /// only the silence. So this is not optional decoration around `runApp`.
+  ///
+  /// **`SentryScreenshotWidget` and not `SentryWidget`**, which every example
+  /// reaches for. `SentryWidget` mounts `SentryUserInteractionWidget` as well,
+  /// and that is what `enableUserInteractionBreadcrumbs` and
+  /// `enableUserInteractionTracing` need - both default true, so the obvious
+  /// wrapper would also have switched on a second breadcrumb source §4 does
+  /// not have, and a `ui.action.click` transaction per tap at
+  /// `tracesSampleRate: 1.0`. The breadcrumb carries a ten-deep list of
+  /// ancestor labels, and `scrubEvent` rewrites top-level strings only, so
+  /// `/ext` paths and file names in a `ValueKey` would have left unscrubbed.
+  /// `options.dart` pins both flags off so a later swap back to `SentryWidget`
+  /// fails a diff rather than reopening that quietly.
+  ///
+  /// [child] comes back untouched in a build with no DSN, which is every local
+  /// build by default - so an app nobody reports from carries no wrapper, the
+  /// same promise [navigatorObservers] makes about the observer.
+  ///
+  /// Returns a Flutter type and takes one, so `main.dart` and `app.dart` stay
+  /// free of the SDK. §2.
+  Widget wrap(Widget child) =>
+      configured ? SentryScreenshotWidget(child: child) : child;
+
   /// Brings the SDK up if it should be, and **never throws**.
   ///
   /// `_initCore` awaits this on both entry points, and a throw there is not a
@@ -172,6 +257,7 @@ class Telemetry {
     if (_running || _settling || _closedForExit) return;
     _settling = true;
     _settlingToward = true;
+    _settlingTowardReplay = settings.shareReplay;
     try {
       // Never gated on `loaded`. A preference store that will not open leaves
       // the switch at its default, which is on -
@@ -181,6 +267,7 @@ class Telemetry {
       final plan = TelemetryPlan(
         dsn: dsn,
         shareLogs: settings.shareLogs,
+        shareReplay: settings.shareReplay,
         stamp: await BuildIdentity.resolve(),
         nativeDatabasePath: await _nativeDatabasePath(),
       );
@@ -195,6 +282,8 @@ class Telemetry {
       }
       await _init((options) => configureOptions(options, plan));
       _running = true;
+      _runningWithReplay = plan.shareReplay;
+      _replayRestartAimedAt = null;
       _wireSinks(on: true);
       await tagScope(plan);
     } catch (e, st) {
@@ -218,6 +307,14 @@ class Telemetry {
       // failed again, forever. The teardown itself is what is wanted here, not
       // the bookkeeping around it.
       _running = true;
+      // Paired with `_running`, and the pairing is the point. The plan is out
+      // of scope here, but `_settlingTowardReplay` holds what this transition
+      // set out to apply, which is what a half-up SDK was configured with.
+      // Leaving the old value stood as a disagreement with the switch that
+      // nothing had asked for, and `_reconcile`'s replay arm would act on it
+      // at the next `notifyListeners()` - including the one a retried
+      // `settings.load()` sends. See [_replayRestartAimedAt].
+      _runningWithReplay = _settlingTowardReplay;
       await _tearDown();
     } finally {
       _settling = false;
@@ -244,13 +341,21 @@ class Telemetry {
   /// genuinely moved, and each run picks up the newer value - so it
   /// terminates.
   void _settleAgainIfTheSwitchMoved() {
-    if (settings.shareLogs == _settlingToward) return;
-    _reconcile();
+    if (settings.shareLogs != _settlingToward) {
+      _reconcile();
+      return;
+    }
+    // The logs switch ended where this transition aimed, and the replay one
+    // may not have. Only worth asking while sharing is on: with it off nothing
+    // is running for a replay to be attached to.
+    if (settings.shareLogs && settings.shareReplay != _settlingTowardReplay) {
+      _reconcile();
+    }
   }
 
-  /// Puts the four hooks on or takes them off, in one place.
+  /// Puts the five hooks on or takes them off, in one place.
   ///
-  /// One list rather than two mirrored ones, because adding a fifth sink meant
+  /// One list rather than two mirrored ones, because adding a sink meant
   /// remembering two methods - and the ordering constraint below was stated in
   /// a comment on only one of them.
   ///
@@ -263,6 +368,7 @@ class Telemetry {
     LogService.keptSink = on ? _reportKept : null;
     LogService.breadcrumbSink = on ? _dropCrumb : null;
     AppHttp.exchangeSink = on ? _recordExchange : null;
+    connectFailureSink = on ? _reportConnectFailure : null;
     LogService.attachFlipperlibSink();
   }
 
@@ -275,6 +381,7 @@ class Telemetry {
     if (!_running || _settling) return;
     _settling = true;
     _settlingToward = false;
+    _settlingTowardReplay = settings.shareReplay;
     try {
       await _tearDown();
     } finally {
@@ -312,11 +419,11 @@ class Telemetry {
   /// means nothing starts a *new* one.
   Future<void> closeForExit() async {
     _closedForExit = true;
-    if (!_running || !_keptSinceStart) return;
+    if (!_running || !_batchedSinceStart) return;
     await _tearDown();
   }
 
-  /// Whether a kept line has been handed to the SDK since it came up.
+  /// Whether anything the SDK batches has been handed to it since it came up.
   ///
   /// The gate on [closeForExit], and not a micro-optimisation: on Windows and
   /// Linux `NativeSdkIntegration.close()` is a **synchronous** FFI call into
@@ -328,10 +435,18 @@ class Telemetry {
   /// and skipping it leaves the exit exactly as it was before the flush
   /// existed.
   ///
-  /// Only kept lines can be waiting: transactions are not batched
+  /// Kept lines and metrics are what can be waiting. Both go through the SDK's
+  /// one `TelemetryProcessor` and then into a buffer each - `logBuffer` and
+  /// `metricBuffer` are separate, with their own counters and their own
+  /// timer - and each holds its items until 100 of them, a megabyte, or five
+  /// seconds (9.30.1, unchanged in 10.0.0-rc.1). `close()` flushes both, which
+  /// is why one flag over the two is enough. Transactions are not batched
   /// (`traceLifecycle` is `static`, so `finish` sends), breadcrumbs ride on
-  /// the next event, and no metrics are emitted.
-  bool _keptSinceStart = false;
+  /// the next event, and an issue queues its own send.
+  ///
+  /// A connect that failed as the user quit is the one this would otherwise
+  /// have lost.
+  bool _batchedSinceStart = false;
 
   /// Closes the SDK and takes the hooks off. **Never throws.**
   ///
@@ -347,6 +462,22 @@ class Telemetry {
   Future<void> _tearDown() async {
     try {
       await _shutdown();
+      // The recorder's hook does not come off with the SDK. `ReplayIntegration`
+      // registers an `onBuild` callback into a **static** list on
+      // `SentryScreenshotWidget` and never unregisters - it does not override
+      // `close()` - and while `SentryFlutter.init` clears that list (so the
+      // replay switch's restart does not accumulate hooks), `Sentry.close()`
+      // does not. Left alone, turning sharing off keeps the dead options graph
+      // alive for the process - the DSN, every masking rule, all three
+      // `beforeSend` closures - and fires `setReplayConfig` at a closed SDK
+      // once per rotation. Nothing leaves the device, but holding the DSN and
+      // the privacy rules after the user said no is the wrong thing to keep.
+      //
+      // Only on the success path: a shutdown that failed may leave the native
+      // recorder up, and taking its hook off would then be the lie this
+      // method's `_running` handling is careful not to tell.
+      // ignore: invalid_use_of_internal_member
+      SentryScreenshotWidget.reset();
     } catch (e, st) {
       // `_running` is left **true** on purpose. The native handler may still
       // be up, so saying otherwise would make the switch claim something that
@@ -429,9 +560,10 @@ class Telemetry {
   /// `_guard` is what keeps a rejected send from reaching the zone as an
   /// unlabelled `[uncaught]`.
   void _reportKept(KeptLevel level, String body) {
-    // The one thing that can leave something in the batcher, so the one thing
-    // that makes the exit flush worth paying for. See [closeForExit].
-    _keptSinceStart = true;
+    // One of the two things that can leave something in the SDK's buffers, so
+    // one of the two that make the exit flush worth paying for - §2's connect
+    // counter is the other. See [closeForExit].
+    _batchedSinceStart = true;
     final text = Scrub.outbound(body);
     _guard('a kept log line was not sent', () async {
       final logger = Sentry.logger;
@@ -579,6 +711,47 @@ class Telemetry {
   /// failure the app records, which is why this hooks it rather than adding
   /// `captureException` to several hundred catch sites.
   ///
+  /// **An event with a message, and deliberately not an exception event.**
+  /// `ReplayEventProcessor` keys on an event with a non-empty `exceptions`
+  /// list: it flushes the replay buffer on both platforms, and on iOS it also
+  /// converts the session to a recorded one, so the rest of the run keeps
+  /// uploading. This sink stands against every `guarded()` call site in the
+  /// app - around a hundred and fifty of them - so as an exception event it
+  /// made every handled, recoverable failure upload a replay, which §8 sets
+  /// `sessionSampleRate: 0` precisely to prevent and which
+  /// `diagnosticsReplaySubtitle` tells the user does not happen. #332 fixed
+  /// the loudest call site; this is the mechanism behind it, and a filter is
+  /// not available anywhere downstream - event processors run before
+  /// `beforeSend`, so a filter there uploads the replay and then drops the
+  /// event. #333.
+  ///
+  /// `captureMessage` is the obvious candidate and is the wrong one: it takes
+  /// no stack trace. `captureEvent` with one keeps the frames - the SDK parses
+  /// them into a thread when there is no exception to hang them on
+  /// (`sentry_client.dart`), and `SentryEvent.stacktrace` falls back to that
+  /// thread, which is what the debug-image processor reads - so obfuscated
+  /// frames still symbolicate.
+  ///
+  /// **Which stack it is goes in the context**, because `attachStacktrace` is
+  /// on: hand the SDK an empty one and it substitutes the reporting site's,
+  /// and the old path at least marked its substitution with `snapshot: true`
+  /// where a thread carries no such flag. Most of flipperlib rejects through a
+  /// bare `completeError`, which `guarded._record` documents and which yields
+  /// `StackTrace.empty`, so the substituted case is the common one - and a
+  /// triager who cannot tell is one who chases `telemetry.dart`.
+  ///
+  /// What is lost is the exception type and value in the issue *header*, and
+  /// with them the server-side `event.type`, the `interface_type` tag and the
+  /// `error.type`/`error.value` search fields - so a console search written
+  /// against those stops matching handled failures. Both fields move into the
+  /// message and the context, where the message is the sentence
+  /// `guarded._record` has already written to the log, so the issue title and
+  /// the log line are the same sentence modulo the scrub below. One further
+  /// cost, and the one worth watching: `Sentry.captureEvent` derives its
+  /// client-report category from `SentryEvent.type`, which a hand-built event
+  /// leaves null, so a report *dropped by queue overflow* is now counted under
+  /// `unknown` rather than `error` - the instrument that measures lost error
+  /// reports no longer sees these in the errors dataset.
   ///
   /// **Fingerprinted on the label and the error type**, which is the best
   /// grouping key the app has. Sentry's default would group on the stack, and
@@ -586,11 +759,20 @@ class Telemetry {
   /// without this, one issue would hold every dropped future in the app. With
   /// it, "[Archive] syncing the category" failing with a `TimeoutException` is
   /// one issue and the same label failing with a `PlatformException` is
-  /// another, which is the split somebody triaging would make by hand.
+  /// another, which is the split somebody triaging would make by hand. The
+  /// type is read off the object, not off the message, so it survives the
+  /// exception leaving the envelope.
   ///
-  /// The label is scrubbed. Every one is a literal at its call site today, so
-  /// there is nothing in one to redact - but it is interpolated at a handful
-  /// of them, and a label is the one field here that becomes an issue *title*.
+  /// **The scrub is in two layers and neither is redundant.** The message is
+  /// left for `beforeSend`, which scrubs it once: scrubbing it here as well
+  /// double-applies the query rule, whose replacement is not a fixed point, so
+  /// a catalog URL arrived as `?<query><query>`. The fingerprint and the
+  /// context are scrubbed here because `scrubEvent` walks neither.
+  ///
+  /// Both strings are built inside the guard: an object whose `toString()`
+  /// throws is real enough that `guarded` documents it, and the cost of one is
+  /// this issue going unfiled - `guarded._record` has already written its own
+  /// line, which still reaches Sentry Logs.
   ///
   /// Nothing is awaited. `_record` is synchronous and must stay that way, and
   /// the SDK queues the send itself; `_guard` is what keeps a rejected capture
@@ -601,19 +783,251 @@ class Telemetry {
     Object error,
     StackTrace stack,
   ) {
-    final label = Scrub.outbound(what);
-    _guard(
-      'a guarded failure was not captured',
-      () => Sentry.captureException(
-        error,
+    _guard('a guarded failure was not captured', () {
+      final described = '$error';
+      final label = Scrub.outbound(what);
+      final type = error.runtimeType.toString();
+      return Sentry.captureEvent(
+        SentryEvent(
+          // Unscrubbed on purpose: `beforeSend` scrubs a message, and doing it
+          // twice is what produced `?<query><query>`.
+          message: SentryMessage('$what $verb: $described'),
+          level: SentryLevel.error,
+        ),
         stackTrace: stack,
         withScope: (scope) {
-          scope.fingerprint = [label, error.runtimeType.toString()];
-          scope.setContexts('guarded', {'what': label, 'verb': verb});
+          scope.fingerprint = [label, type];
+          scope.setContexts('guarded', {
+            'what': label,
+            'verb': verb,
+            // The two fields the issue header used to carry for free.
+            'type': type,
+            'error': Scrub.outbound(described),
+            // Whose frames the thread holds. An empty stack is replaced by the
+            // reporting site's own, which looks like the failure's and is not.
+            'stack': stack == StackTrace.empty ? 'reporter' : 'caught',
+          });
+        },
+      );
+    });
+  }
+
+  /// Turns one classified connect failure into a count, or into an issue.
+  ///
+  /// §2's `classifyConnectError` row, and the metrics half of phase 3. The
+  /// kinds the classifier knows are a counter and a breadcrumb: nobody needs
+  /// an issue per Bluetooth-is-off, and what is worth knowing about them is a
+  /// shape - which kinds users actually hit, on which transport, and whether
+  /// the app dialled or they did. `unknown` over BLE is the opposite and goes
+  /// to [_reportUnknownConnect]: one issue per platform string the classifier
+  /// has not learned yet, each of them a sentence shown to a user that was
+  /// wrong.
+  ///
+  /// **`unknown` over USB is counted, not raised**, which amends §2's row and
+  /// is the one place this departs from it. The classifier's needles were
+  /// written against BLE stacks, and the ones that are generic enough to catch
+  /// a USB failure - `timeout`, `not found`, `disconnected`, `unauthorized` -
+  /// file it under a kind named for Bluetooth; what is left matches nothing.
+  /// So an issue per unmatched USB string would be an issue per replug, since
+  /// `LinkService._autoTriedUsb` re-arms on one, in the list §2 keeps for
+  /// strings the classifier can *learn* - and there is nothing to learn into:
+  /// USB needles are a flipperlib change, not a line here. The volume shape is
+  /// the one that has already cost this project real errors. They stay a
+  /// counter, at `kind: unknown`, and a kept log line at the call site.
+  ///
+  /// Nothing is awaited, like the sinks above - and here the SDK does not even
+  /// offer the choice: `Sentry.metrics.count` returns void and unawaits its own
+  /// capture internally. So `_guard` covers a synchronous throw out of the
+  /// hub, not a failed send; a dropped metric is reported by Sentry's own
+  /// client reports rather than by this app.
+  void _reportConnectFailure(
+    FlipperConnectErrorKind kind,
+    Object error,
+    StackTrace stack, {
+    required ConnectAttempt attempt,
+    required bool isBle,
+  }) {
+    final transport = transportLabel(isBle);
+    // `platformFault` joins `unknown` here rather than falling to the counter
+    // below, and that is the whole point of classifying it. A classification
+    // whose only effect was to stop a live plugin bug being reported would be
+    // worse than the wrong sentence it replaced: qUnleashed#436's fault is
+    // upstream in `universal_ble` and unfixed, so the issue is how anyone
+    // knows it is still happening. It takes `unknown`'s path exactly - an
+    // issue, no counter - because the issue is what is wanted.
+    if (isBle &&
+        (kind == FlipperConnectErrorKind.unknown ||
+            kind == FlipperConnectErrorKind.platformFault)) {
+      _reportConnectAsIssue(error, stack, kind: kind, attempt: attempt);
+      return;
+    }
+
+    _batchedSinceStart = true;
+    _guard(
+      'a connect failure was not counted',
+      () async => Sentry.metrics.count(
+        'device.connect.failed',
+        1,
+        attributes: {
+          'kind': SentryAttribute.string(kind.name),
+          'transport': SentryAttribute.string(transport),
+          'attempt': SentryAttribute.string(attempt.name),
         },
       ),
     );
+
+    // `category: 'connection'` rather than `'flipperlib'`, so §4's timeline
+    // and this are distinguishable in an event that carries both - and not
+    // through `_dropCrumb`, which is the library's sink and would label it as
+    // if the library had said it.
+    //
+    // Unscrubbed on purpose, and the only sink here that can say so: every
+    // part of this message is one of the three closed vocabularies above.
+    // Nothing from the device, the file system or the thrown object reaches
+    // it - the thrown object's own text is already a kept log line.
+    _guard(
+      'a connect breadcrumb was not added',
+      () => Sentry.addBreadcrumb(
+        Breadcrumb(
+          message:
+              'connect failed: ${kind.name} on $transport (${attempt.name})',
+          category: 'connection',
+          level: SentryLevel.warning,
+        ),
+      ),
+    );
   }
+
+  /// The connect failures that become an issue rather than a number.
+  ///
+  /// Two kinds reach here. `unknown` is the list §2 asks for by name: a string
+  /// the classifier has not learned, each one a sentence shown to a user that
+  /// was wrong. `platformFault` is a string it *has* learned and still wants
+  /// an issue for, because the fault behind it is upstream and unfixed -
+  /// qUnleashed#436, and [_reportConnectFailure]'s gate says why.
+  ///
+  /// **The fingerprint is deliberately unchanged by that second kind.** It is
+  /// `['device.connect', runtimeType, signature]` and the kind is not in it,
+  /// so the events that were arriving as `unknown` keep landing in the issue
+  /// they were already grouped into. Adding the kind would have re-fingerprinted
+  /// every open `unknown` issue, orphaning each one and opening a replacement
+  /// - churn in exchange for a field the context already carries.
+  ///
+  /// §2 asks for this list by name, and the grouping is the whole of the
+  /// request. Sentry's default groups on the stack, which here says which of
+  /// the handful of catch sites saw the failure rather than what the platform
+  /// said - so one string arriving from two sites would be two issues, and two
+  /// strings from one site one. The fingerprint therefore carries the message,
+  /// which is the field grouping usually treats as noise and is here the
+  /// entire finding.
+  ///
+  /// BLE only, for the reason [_reportConnectFailure] gives about USB.
+  ///
+  /// [_connectSignature] is what keeps that from going the other way. The
+  /// message holds a BLE address or a serial often enough, and without it the
+  /// same unseen string from two Flippers is two issues - a list of devices
+  /// where §2 asked for a list of strings.
+  ///
+  /// The message is scrubbed before it reaches either the fingerprint or the
+  /// context, because `scrubEvent` walks neither. Built inside the guard, so
+  /// an object whose `toString()` throws - which `guarded` documents as real -
+  /// is one unreported error rather than a throw inside a `catch` block.
+  void _reportConnectAsIssue(
+    Object error,
+    StackTrace stack, {
+    required FlipperConnectErrorKind kind,
+    required ConnectAttempt attempt,
+  }) {
+    _guard('an unclassified connect error was not captured', () {
+      final message = Scrub.outbound('$error');
+      return Sentry.captureException(
+        error,
+        stackTrace: stack,
+        withScope: (scope) {
+          scope.fingerprint = [
+            'device.connect',
+            error.runtimeType.toString(),
+            _connectSignature(message),
+          ];
+          scope.setContexts('connect', {
+            'kind': kind.name,
+            // Constant, because the one caller is the BLE arm.
+            'transport': transportLabel(true),
+            'attempt': attempt.name,
+            'message': message,
+          });
+        },
+      );
+    });
+  }
+
+  /// What makes two unclassified connect errors the same issue.
+  ///
+  /// Frames dropped by [_platformFrames], then identifiers out and error
+  /// codes left in, and that second asymmetry is the point: a
+  /// BLE address, a serial or an iOS peripheral identifier varies per device
+  /// and per pairing and says nothing about the cause, while a code usually
+  /// *is* the cause - Android's `status 22` and `status 62` are different
+  /// failures and must not merge into one issue. A *service* UUID is a
+  /// constant and identical on every Flipper; it is the peripheral identifier
+  /// CoreBluetooth hands out instead of a MAC that varies, and it is why the
+  /// UUID rule is here at all.
+  ///
+  /// **Where the line falls is twelve characters, and it was eight.** Eight
+  /// took `0x80070005` and `0x8007048F` down to one `0x<id>` - two different
+  /// Windows HRESULTs, which `universal_ble`'s Windows plugin produces by
+  /// stringifying `hresult_error::code()`. Two causes in one issue, titled
+  /// after whichever arrived first, and the second never learned: the exact
+  /// inversion of what this is for. The case below it could not see that,
+  /// because `22` and `62` are too short to reach the boundary either way.
+  /// Twelve loses nothing the rule is for - a separator-less BLE address is
+  /// twelve hex characters and a serial is longer.
+  static String _connectSignature(String message) => message
+      .replaceAll(_platformFrames, ' <frames>')
+      .replaceAll(_identifier, '<id>');
+
+  /// A stack trace the platform wrote into the message, where the string is
+  /// all this fingerprint has to group on.
+  ///
+  /// `universal_ble`'s Android plugin stringifies a caught Java exception
+  /// whole - `java.lang.NullPointerException` and then its frames - and hands
+  /// the result over as the error's text. Those frames carry line numbers out
+  /// of the ROM's own framework classes, so `Handler.java:938` on a OnePlus 6
+  /// is a different number on a Xiaomi: one plugin bug arrived as
+  /// QUNLEASHED-X and QUNLEASHED-W, identically titled, differing only in
+  /// their frames - the line numbers, how a frame with no source file is
+  /// spelled, and one extra `Looper` frame - and so in nothing anybody can
+  /// act on. Two issues, each read as a one-off, where the paragraph above
+  /// asks for a list of strings.
+  ///
+  /// Dropped whole rather than masked number by number, because the doc on
+  /// [_reportUnknownConnect] already says why: Sentry's default grouping *is*
+  /// the stack, and this fingerprint exists to group on what the platform
+  /// said instead. A trace smuggled inside the message is that same stack
+  /// arriving by the back door. The marker is left behind so the signature
+  /// still records that there was one, and so two strings that differ only in
+  /// whether they carry a trace stay apart.
+  ///
+  /// Only a frame at the start of its own line, which is how Java writes one.
+  /// A Dart trace is not matched and does not need to be: the VM writes
+  /// `#0  Foo.bar (...)`, the `at` form is dart2js's, and none of the six
+  /// targets is web. A message that says `at` mid-sentence keeps it.
+  static final RegExp _platformFrames = RegExp(r'(?:\r?\n[ \t]*at [^\r\n]*)+');
+
+  static final RegExp _identifier = RegExp(
+    // A MAC or a BLE address: four or more colon-separated pairs, so a clock
+    // or a timeout written `12:30` in a message is left alone.
+    r'[0-9a-f]{2}(?::[0-9a-f]{2}){3,}'
+    // A UUID. Its position used to be load-bearing - at eight characters the
+    // bare-run rule below took its first group and left the rest - and at
+    // twelve it is not, because a UUID's leading group is eight hex and then a
+    // hyphen.
+    r'|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}'
+    // A separator-less address, a serial, a handle: twelve hex characters or
+    // more. Not eight - the boundary paragraph above is why.
+    r'|[0-9a-f]{12,}',
+    caseSensitive: false,
+  );
 
   /// Follows the switch after the first start.
   ///
@@ -628,7 +1042,50 @@ class Telemetry {
     // And nothing comes back up once the process is on its way out, whatever
     // the switch says - see [closeForExit].
     if (_closedForExit) return;
-    if (settings.shareLogs == _running) return;
+    if (settings.shareLogs == _running) {
+      // The main switch agrees with reality. The replay one may not, and the
+      // rates are read once at `init` with no pause API in this major - so
+      // the only way to apply it is to bring the SDK down.
+      //
+      // `stop` and not a restart of its own: stopping leaves `_running` false
+      // against a switch that still says on, which is the disagreement this
+      // very listener acts on - `_tearDown` ends by reconciling and `start`
+      // runs again with a plan built from the new value. That implicit second
+      // half is load-bearing rather than incidental, which is why
+      // `test/telemetry_lifecycle_test.dart` asserts the SDK comes back up
+      // carrying the new rate rather than merely that it went down.
+      //
+      // Not where replay cannot run at all. `NativeSdkIntegration.close` is a
+      // synchronous FFI `sentry_close()` on the desktop targets, which
+      // `_batchedSinceStart` already documents as uninterruptible under its
+      // two-second timeout - so restarting for a rate no recorder will read
+      // would freeze the UI isolate with the crash handler down, in exchange
+      // for nothing. The Diagnostics row is hidden there for the same reason.
+      //
+      // And at most once per value, which [_replayRestartAimedAt] is the whole
+      // explanation of: without it a shutdown that fails reconciles straight
+      // back into this branch and never leaves it.
+      if (settings.shareReplay == _runningWithReplay) {
+        // In agreement, so any outstanding attempt is spent - whether it
+        // succeeded or the user put the switch back where it was.
+        _replayRestartAimedAt = null;
+      } else if (_running &&
+          DiagnosticsSettings.replaySupported &&
+          settings.shareReplay != _replayRestartAimedAt) {
+        _replayRestartAimedAt = settings.shareReplay;
+        // The restart is a reporting blackout: all five sinks come off and the
+        // native handler goes down for a native close plus a native init, a
+        // `BuildIdentity.resolve()` and a platform channel. A crash lost in
+        // that window is indistinguishable from no crash, so the gap is named
+        // here and shows up in the timeline of the next report.
+        LogService.caught(
+          '[Telemetry] restarting to apply the replay switch; nothing is '
+          'reported until it is back up',
+        );
+        _guard('following the replay switch failed', stop);
+      }
+      return;
+    }
     // `guarded` and not `unawaited`: a ChangeNotifier listener is a void
     // callback, and both of these are already no-throw - but a bare
     // `unawaited` here is the shape CLAUDE.md and #23 are about.
@@ -652,23 +1109,68 @@ class Telemetry {
   /// and termination is not something to lean on it for.
   bool _reportingAFailure = false;
 
-  /// `guarded` without the import, which would be circular: `guarded` logs
-  /// through `LogService`, and this file is what `LogService` reports
-  /// *through*. Same contract - the returned future never rejects.
+  /// `guarded`'s contract without `guarded` itself: the returned work never
+  /// rejects.
+  ///
+  /// Not a call to it, because `guarded._record` hands every failure to
+  /// `guardedFailureSink`, and that sink is this class - so a capture that
+  /// failed would be reported by capturing it again, without bound. The
+  /// import is fine and already here; it is the call that would recurse.
   ///
   /// [what] is the operation, because one message for five callers is a
   /// message that cannot say which part of reporting broke. A failed Sentry
   /// log send used to arrive in the log as a problem with the Diagnostics
   /// switch.
-  void _guard(String what, Future<void> Function() task) {
-    Future.sync(task).catchError((Object e, StackTrace st) {
+  ///
+  /// `try`/`await` rather than `Future.sync(...).catchError(...)`, for the
+  /// reason [guarded]'s doc carries at length. It bit harder here: two
+  /// callers hand this a `Future<SentryId>`, which is
+  /// `Future<SentryId>`, and because this returns `void` the `ArgumentError`
+  /// had nobody to reject at and went to the zone as an unlabelled
+  /// `[uncaught]` - the one outcome this helper exists to prevent, arriving
+  /// only ever on top of something already wrong.
+  void _guard<T>(String what, Future<T> Function() task) {
+    // Dropped deliberately and not `unawaited`: nothing waits on reporting,
+    // and `_run` cannot reject.
+    _run(what, task);
+  }
+
+  /// The body of [_guard], which has to be `async` to `await` the task while
+  /// [_guard] itself stays `void`.
+  Future<void> _run<T>(String what, Future<T> Function() task) async {
+    try {
+      await task();
+    } catch (e, st) {
       if (_reportingAFailure) return;
       _reportingAFailure = true;
       try {
-        LogService.error('[Telemetry] $what: ${LogService.describe(e, st)}');
+        // Described into a local, because `describe` interpolates the error
+        // and one whose `toString()` throws would otherwise escape the
+        // `finally` below - which catches nothing - and reach the zone as the
+        // `[uncaught]` above. The type names the culprit, which "an error"
+        // does not. `guarded._record` keeps its own copy of this; one helper
+        // owning it is a follow-up, not this branch.
+        String described;
+        try {
+          described = LogService.describe(e, st);
+        } catch (_) {
+          described = 'a ${e.runtimeType} whose toString() threw';
+        }
+        // A second `try`, the way `guarded._record` has one: `describe` is
+        // guarded above but `error` is not, `finally` catches nothing, and
+        // `_run` is `async` - so a throw here rejects a future `_guard` has
+        // already dropped and lands in the log as the unlabelled `[uncaught]`
+        // this guard exists to prevent. The new `_reportGuarded` widens what
+        // reaches this block, because its string building is synchronous.
+        try {
+          LogService.error('[Telemetry] $what: $described');
+        } catch (_) {
+          // The logger itself is gone. Nothing can be written, and not
+          // rejecting outranks the line.
+        }
       } finally {
         _reportingAFailure = false;
       }
-    });
+    }
   }
 }

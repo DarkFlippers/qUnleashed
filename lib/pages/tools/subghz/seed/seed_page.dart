@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../../../../components/dialogs/confirm.dart';
 import '../../../../components/dialogs/name.dart';
 import '../../../../components/notification.dart';
-import '../../../../components/path.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
@@ -85,6 +84,9 @@ class _SeedPageState extends State<SeedPage> {
       context,
       title: l10n.seedNameTitle,
       initial: suggested,
+      // The Sub-GHz app's limit, not the volume's: everything else about the
+      // rule is the device's and is the default.
+      rule: SeedSubFile.nameRule,
       // The extension is shown and not editable, which is the whole reason the
       // field holds a base name.
       suffixText: SeedSubFile.fileExtension,
@@ -93,7 +95,6 @@ class _SeedPageState extends State<SeedPage> {
         SeedSubFile.maxBaseNameLength,
       ),
       confirmLabel: l10n.seedSave,
-      validate: _nameProblem,
     );
     if (chosen == null || !mounted) return;
 
@@ -471,6 +472,9 @@ class _ResultCard extends StatelessWidget {
     final seed = result.seed;
     final counter = result.counter;
     final hopsUsed = result.hopsUsed;
+    // Once, and read by both the sentence and the button: they are the same
+    // answer, and the bug this closes was the two of them derived apart.
+    final blocked = controller.saveBlock;
 
     return _Card(
       children: [
@@ -489,7 +493,10 @@ class _ResultCard extends StatelessWidget {
           if (counter != null)
             _Row(
               label: l10n.seedCounter,
-              value: seedHex(counter, capture.manufacturer.counterDigits),
+              value: seedHex(
+                counter,
+                capture.manufacturer.protocol.counterDigits,
+              ),
             ),
         ],
         // A no-match is the result most likely to be misread as a verdict on
@@ -503,14 +510,21 @@ class _ResultCard extends StatelessWidget {
         // stranded one is restarting - which the bare status does not say.
         if (result.outcome == SeedOutcome.engineBusy)
           _Hint(l10n.seedEngineBusyHint),
+        // `engineFault` among them: one of its causes is an answer this
+        // build does not understand (`SeedController._answerOrFault`), and for
+        // all three nothing the user does to this capture will help.
         if (result.outcome == SeedOutcome.engineSelfTestFailed ||
-            result.outcome == SeedOutcome.engineUnavailable)
+            result.outcome == SeedOutcome.engineUnavailable ||
+            result.outcome == SeedOutcome.engineFault)
           _Hint(l10n.seedEngineBrokenHint),
-        if (seed != null && hopsUsed != null && hopsUsed < seedHopsConfident)
-          _Hint(l10n.seedLowConfidence(hopsUsed, seedHopsConfident)),
-        if (result.outcome == SeedOutcome.found && capture.frequencyHz == null)
-          _Hint(l10n.seedSaveNoFrequency),
-        if (controller.canSave) ...[
+        // Why there is no Save button, taken from the gate rather than
+        // re-derived here. This was two conditions re-deriving the frequency
+        // and the hop count, so an answer missing a field said nothing at all:
+        // the headline over an empty card with no seed, or the seed rows with
+        // no button and no reason. #294
+        if (_saveBlockText(l10n, blocked, hopsUsed) case final hint?)
+          _Hint(hint),
+        if (blocked == null) ...[
           const SizedBox(height: 12),
           FilledButton.icon(
             // `saving`, not just `savedTo`: the stat and the write take a
@@ -624,31 +638,6 @@ class _CaptureList extends StatelessWidget {
   }
 }
 
-/// What is wrong with [value] as a name for the recovered remote, in words.
-///
-/// Lives here rather than in `seed_sub_file.dart` because it is the only part
-/// of the rule that needs strings: the check itself is a pure function of the
-/// string. Reads the global `l10n` rather than taking one, the way
-/// `describeConnectError` does, so it can be passed to [QNameDialog] by name.
-///
-/// The switch is exhaustive, so a new [SeedNameProblem] is a compile error
-/// here rather than a silently unexplained refusal.
-String? _nameProblem(String value) =>
-    switch (SeedSubFile.checkBaseName(value)) {
-      // Nothing to say: either the name is fine, or the field is empty - which
-      // the dialog gates itself and deliberately does not complain about.
-      null || SeedNameProblem.empty => null,
-      SeedNameProblem.tooLong => l10n.seedNameTooLong(
-        SeedSubFile.maxBaseNameLength,
-      ),
-      SeedNameProblem.illegalCharacter => l10n.commonNameIllegal(
-        reservedNameCharsSpelled,
-      ),
-      SeedNameProblem.controlCharacter => l10n.commonNameControlChar,
-      SeedNameProblem.nonAscii => l10n.commonNameNonAscii,
-      SeedNameProblem.dotEdge => l10n.commonNameDotEdge,
-    };
-
 class _Card extends StatelessWidget {
   const _Card({required this.children});
 
@@ -729,6 +718,32 @@ class _Hint extends StatelessWidget {
     );
   }
 }
+
+/// The sentence for one refusal of the Save button - null when nothing is
+/// blocked, and null where the card already carries the reason.
+///
+/// A switch rather than a map, for the reason [_failureText] below gives: a
+/// [SeedSaveBlock] member added with nothing to say about it does not compile.
+String? _saveBlockText(L10n l10n, SeedSaveBlock? block, int? hopsUsed) =>
+    switch (block) {
+      // Nothing is blocked - the button is there.
+      null => null,
+      // Said above already: every outcome that is not `found` has a headline
+      // that reads as a refusal, and six of the seven add a hint of their own.
+      // `stopped` is the one that does not, and carries it in the headline
+      // alone - which is why a new outcome needs a look at that list rather
+      // than a sentence here.
+      SeedSaveBlock.notFound => null,
+      SeedSaveBlock.noFrequency => l10n.seedSaveNoFrequency,
+      // `hopsUsed` is there whenever this arm is the answer: a `found` result
+      // that does not say how many hops back it never reaches the gate -
+      // `SeedController._answerOrFault` turns it into an engine fault where
+      // the result is stored.
+      SeedSaveBlock.lowConfidence => l10n.seedLowConfidence(
+        hopsUsed!,
+        seedHopsConfident,
+      ),
+    };
 
 /// What a failed operation is called, in the user's language.
 ///

@@ -136,9 +136,19 @@ fi
 # with nothing printed. Not reachable at pubspec's size, but it is a silent exit
 # waiting for a longer file.
 #
-# The quit has to hang off an address: `s/…/…/{p;q}` is not valid sed.
+# Two things about the shape, and the second one cost a dev build. The quit
+# has to hang off an address, because a block cannot attach to an `s`:
+# `s/…/…/{p;q}` is not valid sed. And the closing `}` needs a newline before
+# it, which POSIX states outright - "the <right-brace> shall be preceded by a
+# <newline> or <semicolon>" - and which BSD sed, the sed on the macOS runners,
+# enforces: `;q}` is `extra characters at the end of q command` there, because
+# `q` ends at a `;` or a newline and `}` is neither. GNU sed accepts the bare
+# `;q}`, so the non-conforming form passed every job that is not macOS.
 pubspec_version="$(
-  sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' "$pubspec"
+  sed -nE '/^version:/{
+    s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p
+    q
+  }' "$pubspec"
 )"
 if [[ ! "$pubspec_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
   echo "::error::pubspec.yaml version must be major.minor.patch, not '$pubspec_version'." >&2
@@ -360,8 +370,22 @@ fi
 # a define like the rest. SENTRY_AUTH_TOKEN is not and must never be: a define
 # is compiled into the binary. The upload step reads that one from the
 # environment. ADR 0013.
+#
+# Say when it is missing, on the same grounds as the commit above: a misnamed
+# or rotated secret expands to the empty string, the define is dropped, and the
+# only symptom is one line in the shipped app's own log, on a user's machine.
+# That is how `secrets.QU_SENTRY_DSN` - a secret that never existed - shipped
+# five green builds that reported nothing.
+#
+# A warning and not an error, because a fork has no secrets and has to be able
+# to build - the same trade the symbol upload makes. Unconditional, because
+# `channel` is `dev` or `release` by the check above and nothing else reaches
+# here: this script is the CI path, and a `local` build is the one that never
+# runs it.
 if [[ -n "${QU_SENTRY_DSN:-}" ]]; then
   args+=(--dart-define=QU_SENTRY_DSN="$QU_SENTRY_DSN")
+else
+  echo "::warning::No DSN, so this $channel build will report nothing. Check the SENTRY_DSN secret." >&2
 fi
 if [[ -n "$commit" ]]; then
   args+=(--dart-define=QU_COMMIT="$commit")

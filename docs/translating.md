@@ -32,7 +32,7 @@ speak that one. Left as "English", it puts a second "English" in the list.
 
 ## Placeholders
 
-211 strings carry a placeholder in braces. **Keep every one exactly as it is,
+237 strings carry a placeholder in braces. **Keep every one exactly as it is,
 spelling included** — the app substitutes a value at runtime, and a renamed or
 dropped placeholder is a blank where a number should be, or a crash.
 
@@ -43,7 +43,7 @@ dropped placeholder is a blank where a number should be, or a crash.
 Move them wherever your grammar needs: `{reason} — {message}` is fine.
 `{Reason}` or `{причина}` is not.
 
-Eighteen strings pick a form by a number:
+Twenty-four strings pick a form by a number:
 
 ```
 {count, plural, one{1 frame} other{{count} frames}}
@@ -86,7 +86,7 @@ everyone.
 
 ## Context is already there
 
-All 1308 strings carry a description saying where the string appears and what it
+All 1456 strings carry a description saying where the string appears and what it
 means, and Crowdin shows it beside the string. For a bare word it says whether
 it is a verb or a noun, which English leaves ambiguous and most languages do
 not.
@@ -102,3 +102,19 @@ misleads a translator is a defect in this repository, not in the translation.
   where English has it.
 - **Length matters.** A label two or three times the English is likely to be cut
   off on a phone. Where your language has a shorter form, prefer it.
+
+## How a translation reaches the app
+
+Crowdin exports it, a nightly job opens a pull request, and merging it ships
+it. Two things in that path are worth knowing if it ever goes wrong.
+
+Crowdin names its Spanish `es-ES`, and the file it writes is `app_es.arb` —
+`crowdin.yml` decides that. Those have to agree or the build refuses the pair,
+so a **Custom Post-Export Processor** app (Project Settings → File Processors)
+rewrites the `@@locale` line to match the filename as the file leaves Crowdin.
+Its code lives in this repository at `.github/crowdin/normalise_locale.js`, and
+[0016](adr/0016-the-translation-branch-has-one-owner.md) says why there.
+
+If that app is removed or edited, the nightly pull request goes red and names
+the file. Fixing it means putting the snippet back, not editing the
+translation — the next export would undo that.

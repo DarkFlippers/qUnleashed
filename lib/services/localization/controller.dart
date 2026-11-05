@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging.dart';
 import '../prefs_reader.dart';
+import '../settings/persist.dart';
 import 'gen/l10n_generated.dart';
 
 class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
@@ -27,6 +28,31 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
 
   static List<Locale> get supported => L10n.supportedLocales;
 
+  /// What the app renders in when it has nothing better: the ARB template's
+  /// own language.
+  ///
+  /// It has to be named rather than taken from the head of the list.
+  /// `basicLocaleListResolution` answers with the *first* entry of whatever it
+  /// is given - both when nothing matches and when the device offers no
+  /// preference at all (`app.dart:154` and `:237` in the framework) - and
+  /// `gen-l10n` emits `supportedLocales` sorted, so the head of that list is
+  /// whichever language sorts first. It was `en` until Belarusian arrived from
+  /// Crowdin and silently became `be`, which would have rendered the whole app
+  /// in Belarusian on every device whose language it does not speak.
+  static const Locale fallback = Locale('en');
+
+  /// [supported], with [fallback] first, for anything that resolves a device
+  /// language. The picker uses [supported] instead, where sorted is what a
+  /// reader wants.
+  ///
+  /// This list is what `MaterialApp.supportedLocales` is given as well, because
+  /// the framework runs the same resolution for the widget tree and would
+  /// otherwise fall back to the sorted head on its own.
+  static final List<Locale> resolutionOrder = <Locale>[
+    fallback,
+    ...L10n.supportedLocales.where((locale) => locale != fallback),
+  ];
+
   /// Locale the app actually renders in, with the device language mapped onto
   /// a supported one.
   Locale get resolved {
@@ -35,10 +61,10 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       return basicLocaleListResolution(
         WidgetsBinding.instance.platformDispatcher.locales,
-        L10n.supportedLocales,
+        resolutionOrder,
       );
     } catch (_) {
-      return L10n.supportedLocales.first;
+      return fallback;
     }
   }
 
@@ -112,12 +138,23 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     if (locale == _locale) return;
     _locale = locale;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    if (locale == null) {
-      await prefs.remove(_prefLocale);
-    } else {
-      await prefs.setString(_prefLocale, locale.languageCode);
-    }
+    // Through persistSetting rather than SharedPreferences directly. The
+    // language page wraps this in a VoidCallback, which discards the future,
+    // so before #313 a store that would not open reached the zone as an
+    // unlabelled `[uncaught]` naming no setting, and a store that refused the
+    // write said nothing at all.
+    //
+    // Following the system is an absent preference, not a stored "system",
+    // so the null case removes rather than writes - one of the two per call,
+    // never both. A refused removal reads as "locale.code did not persist"
+    // and means the old language is still on disk and comes back at the next
+    // launch.
+    await persistSetting(
+      _prefLocale,
+      (prefs) => locale == null
+          ? prefs.remove(_prefLocale)
+          : prefs.setString(_prefLocale, locale.languageCode),
+    );
   }
 
   @override

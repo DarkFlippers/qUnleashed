@@ -24,6 +24,26 @@
 [![Ukraine Telegram Chat](https://img.shields.io/endpoint?color=neon&style=flat&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fflipperzero_unofficial_ua)](https://t.me/flipperzero_unofficial_ua)
 [![Discord Server](https://img.shields.io/discord/937479784148115456?style=flat&logo=discord&label=Discord&color=%237289DA&link=https%3A%2F%2Fdiscord.unleashedflip.com%2F)](https://discord.unleashedflip.com)
 
+## Supported systems
+
+| | |
+|---|---|
+| Android | 10 (API 29) or later |
+| iOS | 15.0 or later |
+| macOS | 12.0 or later |
+| Windows | 10 or later, 64-bit |
+| Linux | GLib 2.72 and glibc 2.35 or later — Ubuntu 22.04, Debian 12, Mint 21 and anything newer |
+
+The Linux build links against the system's GTK 3 and GLib rather than bundling
+them, so the versions above are a hard floor: an older system cannot start the
+binary at all. The release is built on the oldest of them, and CI refuses a
+build that would need anything newer —
+[`check_linux_abi.sh`](.github/scripts/check_linux_abi.sh) is where the floor is
+enforced, and `check_linux_abi.sh --print-floor` prints it.
+
+The Windows figure is Flutter's own requirement for running a Flutter desktop
+app; the other three are this project's build configuration.
+
 ## Features
 
 qUnleashed keeps the familiar companion-app workflows from the original Flipper Android App and extends them for custom firmware: USB support on mobile **and** desktop, firmware repair from DFU mode, phone GPS/internet sharing, a stronger local archive and a bigger toolbox.
@@ -86,6 +106,7 @@ A CI check enforces all of this, so a pull request that edits a translated file 
 - Keep product names untranslated: **qUnleashed**, **Flipper**, **Flipper Zero**, and protocol names such as Sub-GHz, NFC, RFID, iButton.
 - Give every new key an `@key` description saying where it appears and, for a bare word, whether it is a verb or a noun. Translators see only the string and that description.
 - Name placeholders for what they hold (`{fileName}`, not `{arg0}`); the name is shown to translators.
+- A key named `androidWidget*` **also becomes an Android string resource**: `androidWidgetErrorBusy` becomes `@string/widget_error_busy`, written at build time by `tool/widget_strings.dart` for the home-screen widget. Its text is drawn by the launcher and by a broadcast receiver with no Flutter engine guaranteed to be running, so it cannot come from `L10n`. No other ARB key becomes a resource, and `widget_strings_guard_test` holds the two sides together.
 
 ## Support ApertureFox projects
 <p align="left">

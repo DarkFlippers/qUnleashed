@@ -719,7 +719,75 @@ class FileManagerController extends ChangeNotifier {
 
   Future<void> refresh() => _task(_refresh);
 
-  Future<void> _refresh() async {
+  /// Per folder: the listing that is out, and the one promised to callers who
+  /// arrived while it was.
+  ///
+  /// Nothing *in the controller* read `_loading`, so the toolbar's own gate was
+  /// the only thing stopping a folder being listed twice over - and the retry
+  /// buttons in both error panels pass `refresh` straight through, as does
+  /// pull-to-refresh and any tap arriving while the first listing is still out.
+  /// Two listings of one folder overlap, and whichever lands last wins, which
+  /// need not be the newer one.
+  ///
+  /// Coalesced rather than dropped, which is what this guard first did and what
+  /// `ArchiveController._syncCategory`'s `if (_syncing) return;` can afford.
+  /// Ten call sites here `await refresh()` *after changing the folder* -
+  /// delete, rename, create, paste, upload - and a dropped refresh would make
+  /// that await a lie: the pre-delete listing lands afterwards and the deleted
+  /// file is still on screen with nothing said. So a caller who arrives while a
+  /// listing is out is promised one that starts after it, and everybody who
+  /// arrives in that window shares it. Two taps cost one extra listing, ten
+  /// taps also cost one, and none of them overlap.
+  ///
+  /// A bare flag could not do even the first job: `open()` moves `_path` and
+  /// then calls this, so it would skip the new folder's listing altogether and
+  /// leave the previous folder's entries on screen under the new path.
+  ///
+  /// Listings of two *different* paths still overlap - that is tapping two
+  /// folders quickly rather than one twice - but the one that lands for a
+  /// folder the user has left now writes nothing, which is the half of that
+  /// race that reached the screen. #244.
+  final Map<String, Future<void>> _listingNow = {};
+  final Map<String, Future<void>> _listingNext = {};
+
+  Future<void> _refresh() {
+    final path = _path;
+    final now = _listingNow[path];
+    if (now == null) return _listOnce(path);
+    return _listingNext[path] ??= now.then((_) {
+      // Dropped before the next listing starts, so callers arriving during
+      // *that* one are promised a further listing rather than this one.
+      _listingNext.remove(path);
+      // The one listing here that is still free to drop. Closing the page
+      // between the first landing and this starting otherwise sent a
+      // 30-second request to the device for a result nobody would read -
+      // `_disposed` gates `_notify` only.
+      //
+      // Not an `async` callback, which is what this was: inside one, the
+      // `remove` above becomes a dropped future the analyzer asks to be
+      // `unawaited`, and that is the keyword this repository's budget test
+      // counts. A sync callback returning the future keeps both quiet.
+      if (_disposed) return Future<void>.value();
+      return _listOnce(path);
+    });
+  }
+
+  Future<void> _listOnce(String path) {
+    // Registered before it is returned, and before `_list` can suspend: the
+    // whole point is that the next caller in this microtask sees it.
+    //
+    // The braces are load-bearing. `whenComplete` awaits a future its callback
+    // returns, and `Map.remove` answers with the value it removed - which here
+    // is this very future, so the arrow form deadlocked on itself and every
+    // listing hung for ever.
+    final work = _list(path).whenComplete(() {
+      _listingNow.remove(path);
+    });
+    _listingNow[path] = work;
+    return work;
+  }
+
+  Future<void> _list(String path) async {
     // Internal storage (`/int`) holds mostly dot-prefixed system files, so
     // reveal hidden entries automatically when first entering that root. The
     // user can still toggle them off afterwards.
@@ -733,7 +801,7 @@ class FileManagerController extends ChangeNotifier {
     _notify();
     try {
       final batch = await _client.storageList(
-        ListRequest(path: _path),
+        ListRequest(path: path),
         timeout: const Duration(seconds: 30),
       );
       final out = <RemoteEntry>[];
@@ -748,17 +816,30 @@ class FileManagerController extends ChangeNotifier {
           );
         }
       }
+      // Nothing, if the user has moved on. A listing is answered for the path
+      // it asked about, and `_path` can have moved while it was out; writing
+      // it anyway puts one folder's entries on screen under another's name and
+      // clears the spinner of the listing still running. Cheaper and more
+      // general than keeping the two paths from overlapping in the first
+      // place.
+      if (path != _path) return;
       _entries = out;
     } catch (e) {
       // Not _lastFailure: that one belongs to something the user asked for,
       // and the panel below already renders this one for as long as the
       // listing it describes is on screen.
+      LogService.caught('[FileManager] list $path failed: $e');
+      if (path != _path) return;
       _error = '$e';
       _entries = const [];
-      LogService.caught('[FileManager] list $_path failed: $e');
     } finally {
-      _loading = false;
-      _notify();
+      // Only for the listing that still describes what is on screen - and the
+      // early returns above skip the finally's body the same way, which is why
+      // this check is here rather than around the writes alone.
+      if (path == _path) {
+        _loading = false;
+        _notify();
+      }
     }
   }
 

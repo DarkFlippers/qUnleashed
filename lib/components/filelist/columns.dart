@@ -21,6 +21,33 @@ class ArchiveCol {
 
 typedef SizedColumn = ({ArchiveCol col, double width});
 
+/// One entry in the toolbar's sort sheet.
+typedef SortOption = ({String key, String label});
+
+/// The sort choices the toolbar offers for the table built from [cols].
+///
+/// Folder leads, and is the one choice with no column behind it: the table
+/// prints a file's name and its folder in the same cell, so there is no header
+/// to tap for it (#122). The rest follow the columns in table order, which
+/// also puts a sort back within reach after [layoutColumns] has dropped the
+/// column that offered it - on a 320-wide phone that is Protocols in the
+/// infrared table, and everything past the name in the deleted one. A column
+/// with no `hideLevel` is never dropped and keeps its header at any width.
+///
+/// The name column's label is "Name / Folder" - or "Remote / Folder", or
+/// "Key / Folder", or "Script / Folder" - which reads as a third thing next
+/// to "Name" and "Folder, then name"; the sheet says what the sort does
+/// instead of what the column holds.
+List<SortOption> sortOptionsFor(List<ArchiveCol> cols) {
+  final s = l10n;
+  return [
+    (key: 'folder', label: s.sortByFolder),
+    for (final c in cols)
+      if (c.sortKey case final key?)
+        (key: key, label: key == 'name' ? s.sortByName : c.label),
+  ];
+}
+
 const double kNameMinWidth = 140;
 const double kRowHeight = 48;
 const double kHeaderHeight = 34;

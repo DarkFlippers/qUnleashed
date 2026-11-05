@@ -29,11 +29,18 @@ class _Discovered implements DiscoveredDevice {
   final DeviceTransport transport;
 }
 
-FlipperDevice usb(String id) => FlipperDevice(
+/// A cable, optionally one that reported a [serial].
+///
+/// Default null, which is the shape every case here had before #465 and a real
+/// one: macOS and Linux report no serial as null. `serial: ''` is the other
+/// real one - Windows' `getParentSerialNumber` returns `''` from its own
+/// fallback - and both must mean *no identity but the port*.
+FlipperDevice usb(String id, {String? serial}) => FlipperDevice(
   id: id,
   name: id,
   link: FlipperLink.usb,
   source: _Discovered(id, DeviceTransport.usb),
+  serialNumber: serial,
 );
 
 FlipperDevice ble(String id) => FlipperDevice(
@@ -159,6 +166,24 @@ class FakeReturnClient implements FlipperClient {
   @override
   Future<List<FlipperDevice>> refreshUsbOnly() async => const [];
 
+  /// Raised by the next `switchToRpcMode`, which is where a link that drops
+  /// under a dial fails: `LinkService.connect` awaits the dial and then the
+  /// switch, and nothing is holding the transport open in between.
+  Object? rpcSwitchThrows;
+
+  @override
+  Future<FlipperDevice> connectBleAddress(
+    String address, {
+    String? name,
+    Duration timeout = FlipperClient.bleAddressConnectTimeout,
+  }) async => ble(address);
+
+  @override
+  Future<void> switchToRpcMode() async {
+    final failure = rpcSwitchThrows;
+    if (failure != null) throw failure;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -175,12 +200,6 @@ void main() {
     await settings.load();
     await settings.setAutoConnectUsb(false);
     await settings.setAutoConnectBle(false);
-
-    final known = KnownDevicesStore.instance;
-    await known.load();
-    for (final device in [...known.devices]) {
-      await known.forget(device);
-    }
 
     client = FakeReturnClient();
     links = LinkService.forTest(client);
@@ -252,6 +271,120 @@ void main() {
       expect(done, isFalse);
     });
 
+    // #465. A desktop USB id is the port, so the Flipper that came back from
+    // the updater on another `COM` number was not the device this watched for -
+    // and with no deadline the install sat on "Installing..." until the app was
+    // restarted.
+    test(
+      'ends when it returns on another port under the same serial',
+      () async {
+        client.sessions = [up(usb('COM3', serial: 'flip-1'))];
+        var done = false;
+        unawaited(
+          links
+              .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+              .then((_) => done = true),
+        );
+        await tick();
+
+        client.reportSessions(const []);
+        await tick();
+
+        client.reportSessions([up(usb('COM7', serial: 'flip-1'))]);
+        await tick();
+
+        expect(done, isTrue);
+      },
+    );
+
+    // The wait can begin with the Flipper already back: `installer.dart`
+    // deletes a hundreds-of-megabyte extraction in the `finally` before this is
+    // awaited, and `autoConnectUsb` is on by default, so the cable can be
+    // dialled and up first. Requiring a gone event before a returned one
+    // latched "Installing..." for the life of the app on the commonest
+    // configuration there is.
+    test('ends when it is already back on another port', () async {
+      client.sessions = [up(usb('COM7', serial: 'flip-1'))];
+      var done = false;
+      unawaited(
+        links
+            .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+            .then((_) => done = true),
+      );
+      await tick();
+
+      expect(done, isTrue);
+    });
+
+    // Still this device. The serial is what widened, not the question.
+    test('is not ended by another Flipper on another port', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(
+        links
+            .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+            .then((_) => done = true),
+      );
+      await tick();
+
+      client.reportSessions([up(usb('COM7', serial: 'flip-2'))]);
+      await tick();
+
+      expect(done, isFalse);
+    });
+
+    // The dangerous one, and the reason the serial has to be able to say *no*.
+    // A port this Flipper vacated can be handed straight to the next one
+    // plugged in - on Linux `/dev/ttyACM<n>` takes the lowest free index, so it
+    // usually is - and `installer.dart` reports `UpdateDone` the line after
+    // this future completes. Ending here tells the user the install finished
+    // while their Flipper is still being written to.
+    test('is not ended by another Flipper on the port it vacated', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(
+        links
+            .awaitUsbReturn(usb('COM3', serial: 'flip-1'))
+            .then((_) => done = true),
+      );
+      await tick();
+
+      client.reportSessions([up(usb('COM3', serial: 'flip-2'))]);
+      await tick();
+
+      expect(done, isFalse, reason: 'the install is not over');
+    });
+
+    // The deliberate limit, pinned: with no serial on either side the port is
+    // all there is to go on, and this behaves as it did before #465.
+    test('is not ended by another port when neither has a serial', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(links.awaitUsbReturn(usb('COM3')).then((_) => done = true));
+      await tick();
+
+      client.reportSessions([up(usb('COM7'))]);
+      await tick();
+
+      expect(done, isFalse);
+    });
+
+    // `''` is Windows' "no serial". It must not fuse two cables into one
+    // device, or a second Flipper would satisfy an install's wait.
+    test('is not ended by another cable reporting an empty serial', () async {
+      client.sessions = const [];
+      var done = false;
+      unawaited(
+        links.awaitUsbReturn(usb('COM3', serial: '')).then((_) => done = true),
+      );
+      await tick();
+
+      client.reportSessions([up(usb('COM7', serial: ''))]);
+      await tick();
+
+      expect(done, isFalse);
+    });
+
     test('is not ended by the same Flipper over BLE', () async {
       client.sessions = const [];
       var done = false;
@@ -286,7 +419,7 @@ void main() {
   });
 
   group('whether a remembered Flipper is within reach', () {
-    setUp(() => KnownDevicesStore.instance.remember(ble('B1')));
+    setUp(() => KnownDevicesStore.instance.remember(ble('b1')));
 
     bool heardOf(String id) =>
         links.entries.firstWhere((e) => e.id == id).heard;
@@ -295,14 +428,14 @@ void main() {
       client.plugged();
       await tick();
 
-      expect(heardOf('B1'), isFalse);
+      expect(heardOf('b1'), isFalse);
     });
 
     test('becomes yes when the radio hears it', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     // Heard before it was remembered is not evidence it is here now. The
@@ -327,50 +460,70 @@ void main() {
           mode: FlipperMode.rpc,
           device: null,
           connected: true,
-        ).let(ble('B1')),
+        ).let(ble('b1')),
       );
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     test('goes back to no when the link fails', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
-      client.reportLink(dropped(ble('B1')));
+      client.reportLink(dropped(ble('b1')));
       await tick();
 
-      expect(heardOf('B1'), isFalse);
+      expect(heardOf('b1'), isFalse);
     });
 
     // An automatic reconnect is the client saying it has this: the device has
     // not gone anywhere, and dimming the row would be a lie that corrects
     // itself a second later.
     test('stays yes while the client is reconnecting', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
 
       // With a reason, because a drop that carries none is already ignored by
       // the next condition along - this case passed without reading
       // `reconnecting` at all until a mutation said so.
-      client.reportLink(dropped(ble('B1'), reconnecting: true));
+      client.reportLink(dropped(ble('b1'), reconnecting: true));
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
     });
 
     // The user closing a link says nothing about whether the Flipper is
     // there, and the row should not go dim because they pressed disconnect.
     test('stays yes when the user closed the link', () async {
-      client.reportHeard(ble('B1'));
+      client.reportHeard(ble('b1'));
       await tick();
-      await links.disconnectDevice(ble('B1'), id: 'B1', link: FlipperLink.ble);
+      await links.disconnectDevice(ble('b1'), id: 'b1', link: FlipperLink.ble);
 
-      client.reportLink(dropped(ble('B1')));
+      client.reportLink(dropped(ble('b1')));
       await tick();
 
-      expect(heardOf('B1'), isTrue);
+      expect(heardOf('b1'), isTrue);
+    });
+
+    // The drop that happens *during* the dial, which reaches none of the
+    // cases above: no `FlipperConnectionState` is ever published, because the
+    // link came up and died inside `connect`. All the service gets is the
+    // thrown error, and `connect` dims the row only for
+    // `deviceUnreachable` - so until flipperlib learned to classify
+    // `No active transport`, a Flipper that had just gone out of range kept
+    // its "in reach" dot. qUnleashed#363.
+    test('goes back to no when the link drops under the dial', () async {
+      client.reportHeard(ble('b1'));
+      await tick();
+
+      client.rpcSwitchThrows = StateError(noActiveTransportMessage);
+      await expectLater(
+        links.connect(links.entries.firstWhere((e) => e.id == 'b1')),
+        throwsStateError,
+      );
+
+      expect(heardOf('b1'), isFalse);
     });
   });
 }

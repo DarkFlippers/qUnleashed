@@ -18,7 +18,7 @@ void main() {
   // A non-default value for every key, so a test can tell "this came from
   // disk" from "this is the initialiser".
   const stored = <String, Object>{
-    'device.autoconnect.usb': true,
+    'device.autoconnect.usb': false,
     'device.autoconnect.ble': false,
     'device.sync_time_on_start': false,
   };
@@ -43,7 +43,7 @@ void main() {
 
     await settings.load();
 
-    expect(settings.autoConnectUsb, isTrue);
+    expect(settings.autoConnectUsb, isFalse);
     expect(settings.autoConnectBle, isFalse);
     expect(settings.syncTimeOnStart, isFalse);
     expect(keptLines, isEmpty, reason: 'a clean read says nothing');
@@ -56,6 +56,16 @@ void main() {
     expect(keptLines, isEmpty);
   });
 
+  // The only case that states the values. Everything else here compares
+  // `snapshot()` to `reset()`'s own snapshot, which is a tautology, and the
+  // wrong-typed cases below catch a flipped default only as a side effect of
+  // `stored` being the exact negation - edit `stored` and that guard goes
+  // without a word. No `load()`: `setUp` has already called `reset()`, and
+  // loading an empty store is what the case above covers.
+  test('the defaults are USB on, BLE on, clock pushed', () {
+    expect(snapshot(), {'usb': true, 'ble': true, 'sync': true});
+  });
+
   test('a load notifies', () async {
     SharedPreferences.setMockInitialValues(stored);
     var notifications = 0;
@@ -66,7 +76,7 @@ void main() {
     await settings.load();
 
     expect(notifications, 1);
-    expect(settings.autoConnectUsb, isTrue);
+    expect(settings.autoConnectUsb, isFalse);
   });
 
   // One case per key, so the assertion does not depend on which order _load
@@ -133,7 +143,7 @@ void main() {
   // defaults and auto-connect being dead for the process: DeviceController
   // awaits load() *outside* the try that guards its discovery, and load()
   // memoises - so before this store caught its own failure, one bad read was
-  // handed to every later caller and _tryAutoConnect threw on every firing.
+  // handed to every later caller and _reconcileOnce threw on every firing.
   //
   // Both halves are needed. completes pins the reject-to-resolve flip; the
   // history read pins that the catch is not a bare swallow, which would pass
@@ -164,7 +174,7 @@ void main() {
   // #124 guarded the three reads main() makes before runApp, so a store that
   // will not open no longer stops the app - which means this catch is
   // reachable in a running session, and a transient fault should heal on the
-  // next read. Bounded: _tryAutoConnect awaits load() on a debounce fired by
+  // next read. Bounded: _reconcileOnce awaits load() on a debounce fired by
   // cable events, so it is one round-trip per plug, not a loop.
   test('a failed read is retried by the next caller', () async {
     useUnopenablePrefs();
@@ -176,7 +186,7 @@ void main() {
     SharedPreferences.setMockInitialValues(stored);
     await settings.load();
 
-    expect(settings.autoConnectUsb, isTrue, reason: 'read again');
+    expect(settings.autoConnectUsb, isFalse, reason: 'read again');
     expect(settings.loaded, isTrue);
   });
 

@@ -20,8 +20,18 @@ The format gate takes its file list from `git ls-files`, because `dart format`
 does not read the analyzer's exclude list. Running `dart format .` reformats
 generated protobuf and the platform folders, which CI then rejects.
 
-There is **no code generation**. No `build_runner`, nothing to run before the
-code compiles.
+There is **no `build_runner`** and no generation step to run by hand. Two
+steps generate from data inside the build: `flutter gen-l10n` compiles
+`translations/*.arb` into `lib/services/localization/gen/`, and Gradle's
+`generateWidgetStrings` runs `tool/widget_strings.dart` over those same files
+to write the home-screen widget's Android string resources, which cannot be
+Flutter strings - that file says why.
+
+Two generated files are gitignored and have to exist before the code
+compiles: `lib/services/notifications/firebase_options.dart`, for which
+`.github/scripts/stub_firebase_config.sh` writes a placeholder on a checkout
+without secrets, and `lib/modules/cpp/faaccrack/faaccrack.c`, which is
+generated outside this repository and must never be committed.
 
 **The version is not yours to pick.** `pubspec.yaml` holds the version being
 built *toward*, every push to `main` publishes a dev build from it, and CI
@@ -96,7 +106,11 @@ there and why it was the first thing scheduled.
   not cover.
 - **`guarded()` never rejects.** Queues chain the next operation with
   `previous.then(...)`, so a rejected future would strand everything behind it
-  for the life of the chain. Do not "improve" it to propagate.
+  for the life of the chain. Do not "improve" it to propagate. It is
+  `try`/`await` and not `Future.sync(...).catchError(...)` for a reason: a
+  `catchError` handler is checked against the future's *real* type argument,
+  and `void` being a top type means that argument is rarely what the signature
+  says — which is how it rejected silently for months (QUNLEASHED-A).
 - **Auto-reconnect is on** (`autoReconnect = true`, `reconnectSettle` 600 ms),
   and a file upload restarts after the session is restored
   (`client/api/storage.dart`). Code that assumes a transfer runs once is wrong.
@@ -112,10 +126,14 @@ there and why it was the first thing scheduled.
   declaring one on a fake does nothing, the real body runs. Fake
   `callRpcFrames` and `notificationStream` instead; everything above them goes
   through those two. `test/emulate_start_test.dart` is the worked example.
-- **Connection errors are classified at the boundary**, not typed:
-  `classifyConnectError` → `FlipperConnectErrorKind`, consumed by an exhaustive
-  `switch`. It matches substrings from platform BLE stacks, so a sealed
-  hierarchy is impossible here. [0008](docs/adr/0008-swallowed-errors.md)
+- **Connection errors are classified at the boundary**, and almost none of
+  them are typed: `classifyConnectError` → `FlipperConnectErrorKind`, consumed
+  by an exhaustive `switch`. It matches substrings from platform BLE stacks, so
+  a sealed hierarchy is impossible here. The exception is this library's own
+  throw — `FlipperServicesMissingError` is read by type before any string, with
+  its sentence kept as the fallback, because re-parsing a message flipperlib
+  wrote one frame earlier is not boundary classification.
+  [0008](docs/adr/0008-swallowed-errors.md)
 
 ## Definition of Done
 

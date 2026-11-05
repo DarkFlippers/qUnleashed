@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/dialogs/name.dart';
+import 'package:qunleashed/components/name_rule.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
 
@@ -36,6 +37,7 @@ class Prompt {
 Future<Prompt> open(
   WidgetTester tester, {
   String initial = 'suggested',
+  NameRule rule = deviceNameRule,
   String? Function(String)? validate,
   String? helperText,
   String? hintText,
@@ -57,6 +59,7 @@ Future<Prompt> open(
             result = QNameDialog.show(
               context,
               title: 'Name the File',
+              rule: rule,
               initial: initial,
               validate: validate,
               helperText: helperText,
@@ -103,10 +106,14 @@ List<String> actionOrder(WidgetTester tester) => tester
     .where((label) => label.isNotEmpty)
     .toList();
 
-/// Refuses anything with a `?` in it, which is the shape every real caller's
-/// rule has: a message, or null.
-String? noQuestionMarks(String value) =>
-    value.contains('?') ? 'No question marks' : null;
+/// Refuses one name the storage would accept, which is the shape a caller's
+/// *extra* rule has now that the storage rule is the dialog's own: a message,
+/// or null.
+/// Anything *containing* `taken`, not just the exact name: a name that breaks
+/// the storage rule as well has to break this one too, or swapping the two
+/// cannot be told apart.
+String? nameTaken(String value) =>
+    value.trim().contains('taken') ? 'That name is taken' : null;
 
 void main() {
   testWidgets('returns the name that was typed', (tester) async {
@@ -177,14 +184,70 @@ void main() {
     expect(await prompt.answer, isNull);
   });
 
-  group('a name the caller refuses', () {
-    testWidgets('is said in words and cannot be confirmed', (tester) async {
-      await open(tester, validate: noQuestionMarks);
+  group('the rule the dialog carries', () {
+    // What #277 is about: the four prompts that write a user-named file to the
+    // device validated nothing, so the dialog now owns the storage rule and a
+    // caller cannot forget to pass one.
+    testWidgets('refuses a character the Flipper will not carry', (
+      tester,
+    ) async {
+      await open(tester);
 
-      await tester.enterText(find.byType(TextField), 'what?');
+      await tester.enterText(find.byType(TextField), 'gate/one');
       await tester.pump();
 
-      expect(find.text('No question marks'), findsOneWidget);
+      expect(find.textContaining(r'\ / : * ? " < > |'), findsOneWidget);
+      expect(enabled(tester, confirm()), isFalse);
+    });
+
+    testWidgets('refuses a name outside ASCII, which the RPC layer does', (
+      tester,
+    ) async {
+      await open(tester);
+
+      await tester.enterText(find.byType(TextField), 'Ворота');
+      await tester.pump();
+
+      expect(enabled(tester, confirm()), isFalse);
+    });
+
+    testWidgets('counts the budget the caller passed, not the default', (
+      tester,
+    ) async {
+      await open(tester, rule: const NameRule.ofBytes(8));
+
+      await tester.enterText(find.byType(TextField), 'x' * 9);
+      await tester.pump();
+      expect(enabled(tester, confirm()), isFalse);
+
+      await tester.enterText(find.byType(TextField), 'x' * 8);
+      await tester.pump();
+      expect(enabled(tester, confirm()), isTrue);
+    });
+
+    // Both rules broken at once. The storage one wins: that name is refused
+    // whatever else is on the card, where "taken" is fixed by another name.
+    testWidgets('is reported before the caller\'s own extra rule', (
+      tester,
+    ) async {
+      await open(tester, validate: nameTaken);
+
+      await tester.enterText(find.byType(TextField), 'taken?');
+      await tester.pump();
+
+      expect(find.text('That name is taken'), findsNothing);
+      expect(enabled(tester, confirm()), isFalse);
+    });
+  });
+
+  group('a name the caller refuses', () {
+    testWidgets('is said in words and cannot be confirmed', (tester) async {
+      await open(tester, validate: nameTaken);
+
+      await tester.enterText(find.byType(TextField), 'taken');
+      await tester.pump();
+
+      expect(find.text('That name is taken'), findsOneWidget);
       expect(enabled(tester, confirm()), isFalse);
     });
 
@@ -192,9 +255,9 @@ void main() {
       // The disabled button is not the whole gate: the field's own submit
       // bypasses it, which is how a rule gets enforced on screen and not in
       // the result.
-      final prompt = await open(tester, validate: noQuestionMarks);
+      final prompt = await open(tester, validate: nameTaken);
 
-      await tester.enterText(find.byType(TextField), 'what?');
+      await tester.enterText(find.byType(TextField), 'taken');
       await tester.pump();
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
@@ -213,14 +276,14 @@ void main() {
       // The check runs on every keystroke, which is the point of the dialog
       // being stateful. A check that ran once on open would leave the button
       // dead for the rest of the dialog's life.
-      await open(tester, validate: noQuestionMarks);
+      await open(tester, validate: nameTaken);
 
-      await tester.enterText(find.byType(TextField), 'what?');
+      await tester.enterText(find.byType(TextField), 'taken');
       await tester.pump();
       await tester.enterText(find.byType(TextField), 'what');
       await tester.pump();
 
-      expect(find.text('No question marks'), findsNothing);
+      expect(find.text('That name is taken'), findsNothing);
       expect(enabled(tester, confirm()), isTrue);
     });
   });

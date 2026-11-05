@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/permissions/permission.dart';
 import '../../../components/cardlist.dart';
+import '../../../components/dialogs/storage_permission.dart';
+import '../../../components/permission_notice.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
@@ -14,6 +17,7 @@ import '../../devices/device_scope.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';
+import 'rename_key.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/fap.dart';
 import '../../../components/archive/models/key.dart';
@@ -23,13 +27,22 @@ import 'widgets/key_actions_sheet.dart';
 import '../../../components/filelist/progress_fill.dart';
 import 'widgets/sync_progress_view.dart';
 import 'failure_toast.dart';
+import '../../../services/archive/sort_settings.dart';
 
 class ArchivePage extends StatefulWidget {
-  const ArchivePage({super.key, required this.controller});
+  const ArchivePage({
+    super.key,
+    required this.controller,
+    required this.sortSettings,
+  });
 
   /// Built and owned by [AppShell], which keeps it across slot changes - so
   /// this page neither creates nor disposes one.
   final ArchiveController controller;
+
+  /// Carried only to hand on to the two tables this page pushes. Nothing on
+  /// this screen is sorted by it.
+  final ArchiveSortSettings sortSettings;
 
   @override
   State<ArchivePage> createState() => _ArchivePageState();
@@ -38,18 +51,27 @@ class ArchivePage extends StatefulWidget {
 class _ArchivePageState extends State<ArchivePage> {
   ArchiveController get _ctrl => widget.controller;
 
+  // Both of these load in initState - the category page its metadata, the
+  // deleted page its list - and both were missed by the first pass over this
+  // file, which guarded the storage cards two methods below and left the
+  // category cards above them alone. The push-site census is what found them.
+  // #244.
   void _openCategory(ArchiveCategory cat) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CategoryPage(controller: _ctrl, category: cat),
+    pushPage(
+      context,
+      (_) => CategoryPage(
+        controller: _ctrl,
+        sortSettings: widget.sortSettings,
+        category: cat,
       ),
     );
   }
 
   void _openDeleted() {
-    Navigator.of(
+    pushPage(
       context,
-    ).push(MaterialPageRoute(builder: (_) => DeletedPage(controller: _ctrl)));
+      (_) => DeletedPage(controller: _ctrl, sortSettings: widget.sortSettings),
+    );
   }
 
   Widget _categoriesCard(BuildContext context) {
@@ -107,12 +129,12 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   void _openFileManager(String initialPath) {
-    final client = DeviceScope.of(context).client;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            FileManagerPage(client: client, initialPath: initialPath),
-      ),
+    // The file manager lists the path in initState, so a second tap is a
+    // second listing as well as a second page. #244.
+    final client = DeviceScope.clientOf(context);
+    pushPage(
+      context,
+      (_) => FileManagerPage(client: client, initialPath: initialPath),
     );
   }
 
@@ -125,7 +147,8 @@ class _ArchivePageState extends State<ArchivePage> {
       return;
     }
     final ok = await _ctrl.launchFapFavorite(fav);
-    if (!mounted) return;
+    // Null: see launchFapFavorite. The tap that started it owns the outcome.
+    if (!mounted || ok == null) return;
     if (ok) {
       unawaited(openRoute(context, AppRoute.remoteControl));
     } else {
@@ -198,50 +221,8 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
-  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) async {
-    final colors = context.appColors;
-    final ctrl = TextEditingController(text: key.name);
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(
-          context.l10n.fmRename,
-          style: TextStyle(color: colors.dialogText),
-        ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: context.l10n.archiveFileName,
-            hintStyle: TextStyle(color: colors.textMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(c, v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text(context.l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            child: Text(context.l10n.fmRename),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (newName != null && newName.isNotEmpty && newName != key.name) {
-      await _ctrl.renameKey(key, newName);
-      if (!context.mounted) return;
-      reportArchiveFailure(
-        context,
-        _ctrl.lastFailure,
-        context.l10n.archiveRenameFailed,
-      );
-    }
-  }
+  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) =>
+      promptRenameKey(context, controller: _ctrl, key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -261,11 +242,26 @@ class _ArchivePageState extends State<ArchivePage> {
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
+                  // Above the Flipper's own storage cards, because the two are
+                  // easy to confuse and the distinction is the reassurance:
+                  // what is on the device is unaffected, it is the copy on
+                  // this phone that cannot be read. #351.
+                  SliverToBoxAdapter(
+                    child: PermissionNotice(
+                      permission: AppPermission.storage,
+                      severity: PermissionNoticeSeverity.blocking,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      title: context.l10n.permissionStorageDeniedTitle,
+                      body: context.l10n.permissionStorageDeniedArchive,
+                      actionLabel: context.l10n.permissionStorageGrant,
+                      onAction: () => unawaited(promptStorageAccess(context)),
+                    ),
+                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 16, bottom: 4),
                       child: StorageUsageCards(
-                        client: DeviceScope.of(context).client,
+                        client: DeviceScope.clientOf(context),
                         enabled: _ctrl.isConnected,
                         onOpenInternal: () => _openFileManager('/int'),
                         onOpenExternal: () => _openFileManager('/ext'),

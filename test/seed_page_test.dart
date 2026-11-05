@@ -22,30 +22,13 @@ import 'package:qunleashed/pages/tools/subghz/seed/seed_page.dart';
 
 import 'seed_fakes.dart';
 
-Future<void> _openPage(WidgetTester tester, SeedFakeClient client) async {
-  // The page builds its own controller, so the folder has to be there before
-  // it lists - unlike the controller tests, which go through a helper.
-  if (client.folder.isEmpty) client.folder['one.txt'] = seedCaptureFixture;
-  await tester.pumpWidget(
-    MaterialApp(
-      localizationsDelegates: L10n.localizationsDelegates,
-      supportedLocales: L10n.supportedLocales,
-      // The page reads the app's colour extension, so a bare MaterialApp
-      // renders it as a null check on a missing theme.
-      theme: buildAppTheme(Brightness.dark, const Color(0xFFFF8A00)),
-      home: SeedPage(client: client, recoverer: FoundRecoverer()),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
 /// Walks capture -> recover -> Save, stopping with the name dialog open.
 ///
 /// The route into that dialog was written out six times in this file. Split
 /// out so that a change to it - a renamed button, an extra confirm, a
 /// different fixture - is one edit rather than six.
 Future<void> _openNameDialog(WidgetTester tester, SeedFakeClient client) async {
-  await _openPage(tester, client);
+  await mountSeedPage(tester, client);
 
   await tester.tap(find.text('one.txt'));
   await tester.pumpAndSettle();
@@ -143,7 +126,7 @@ void main() {
       tester,
     ) async {
       final client = SeedFakeClient();
-      await _openPage(tester, client);
+      await mountSeedPage(tester, client);
       await tester.tap(find.text('one.txt'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Recover Seed'));
@@ -187,7 +170,7 @@ void main() {
       // It also pins the suffix contract end to end: the field holds a base
       // name, the caller appends `.sub`, and the result is not `gate.sub.sub`.
       final client = SeedFakeClient();
-      await _openPage(tester, client);
+      await mountSeedPage(tester, client);
       await tester.tap(find.text('one.txt'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Recover Seed'));
@@ -211,7 +194,7 @@ void main() {
       // passed, because nothing here ever typed a dotted name. An exhaustive
       // switch buys totality, not a correct pairing.
       final client = SeedFakeClient();
-      await _openPage(tester, client);
+      await mountSeedPage(tester, client);
       await tester.tap(find.text('one.txt'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Recover Seed'));
@@ -257,7 +240,7 @@ void main() {
       // was reported with a sentence naming nine characters the user had not
       // typed. A keyboard cannot produce one; a paste can.
       final client = SeedFakeClient();
-      await _openPage(tester, client);
+      await mountSeedPage(tester, client);
       await tester.tap(find.text('one.txt'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Recover Seed'));
@@ -283,7 +266,7 @@ void main() {
       // screen saying so, and written the file under a name the user did not
       // choose.
       final client = SeedFakeClient();
-      await _openPage(tester, client);
+      await mountSeedPage(tester, client);
       await tester.tap(find.text('one.txt'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Recover Seed'));
@@ -313,7 +296,7 @@ void main() {
     Future<void> openTwo(WidgetTester tester, SeedFakeClient client) async {
       client.folder['one.txt'] = seedCaptureFixture;
       client.folder['two.txt'] = seedCaptureFixture;
-      await _openPage(tester, client);
+      await mountSeedPage(tester, client);
     }
 
     /// The trash icon on the row titled [name].

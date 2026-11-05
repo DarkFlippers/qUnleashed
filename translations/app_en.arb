@@ -31,6 +31,11 @@
     "description": "Explanation under the System default entry of the language list."
   },
 
+  "navDevice": "Device",
+  "@navDevice": {
+    "description": "Bottom navigation tab that opens the device screen. A noun, not a status: the tab used to be labelled with the connection state instead, which is a sentence in several languages and could not be drawn at a raised text size. The state is on the tab's icon now, and in the tab's accessibility label."
+  },
+
   "navArchive": "Archive",
   "@navArchive": {
     "description": "Bottom navigation tab that opens the file archive."
@@ -251,14 +256,24 @@
     "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
 
+  "diagnosticsReplayTitle": "Include a replay of the screen",
+  "@diagnosticsReplayTitle": {
+    "description": "Label of the second switch on the Diagnostics screen, below the sharing switch and shown only while sharing is on. Decides whether a recording of the screen is kept and sent when something fails. On by default, and only ever active on Android and iOS. \"Replay\" is what the service calls it; the label says what it is instead, because the user has no reason to know the term."
+  },
+
+  "diagnosticsReplaySubtitle": "Recording runs the whole time the app is open, and leaves your device only when something goes wrong. Card bytes, signal plots and the Flipper screen are hidden from it.",
+  "@diagnosticsReplaySubtitle": {
+    "description": "Explains the switch above it. Three facts in the order a user asks them: that recording is continuous, that the recording only leaves the device on a failure, and what stays hidden even then. The first is deliberate and must survive translation - the sample rate gates the upload, not the capture, so a user reading only the switch label would think nothing is recorded until something breaks. The third is a promise three masking rules keep rather than a reassurance. Renders at up to six lines and ellipsises after that, so if the translation runs long, keep the first and third facts ahead of the second. \"Hidden\" rather than \"blacked out\": the mask is painted in the theme's primary colour, not black."
+  },
+
   "diagnosticsNoticeTitle": "Failures are shared with the developers",
   "@diagnosticsNoticeTitle": {
     "description": "Heading of the one-time notice shown on the first launch, and once more for people already using the app when sharing was added. States the fact rather than asking a question, because reporting is already on while the notice is on screen - it is a notice, not a consent prompt."
   },
 
-  "diagnosticsNoticeBody": "When something goes wrong, the error and the crash are sent by themselves, with the app version and the build it came from. Card data, keys, captures and your location are never sent. You can turn this off now or at any time in Settings \u2192 Diagnostics.",
+  "diagnosticsNoticeBody": "When something goes wrong, the error and the crash are sent by themselves, with the app version and the build it came from. On Android and iOS a recording of the screen goes with them. Card data, keys, captures and your location are hidden from that recording and are never sent. You can turn this off now or at any time in Settings \u2192 Diagnostics.",
   "@diagnosticsNoticeBody": {
-    "description": "Body of the one-time notice. Three things in the order a user asks them: what is sent, what never is, and how to stop it. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
+    "description": "Body of the one-time notice. Four things in the order a user asks them: what is sent, that a screen recording is part of it, what never is, and how to stop it. The recording sentence names the two platforms because replay is native-backed and does nothing on desktop, so saying it unconditionally would be false for most desktop users. \"Hidden from that recording\" is a claim five masking rules keep, not a reassurance - keep it attached to the recording sentence in translation, because apart they read as two unrelated promises. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
   },
 
   "diagnosticsNoticeTurnOff": "Turn it off",
@@ -1623,6 +1638,16 @@
     "description": "Body of the unreachable error over USB."
   },
 
+  "connectServicesMissingTitle": "Flipper services not found",
+  "@connectServicesMissingTitle": {
+    "description": "Title of the connection error when the device connected but offered none of the Flipper Bluetooth services."
+  },
+
+  "connectServicesMissingBody": "The device connected but did not offer the Flipper services. Turn Bluetooth off and on in your system settings, then connect again. If that does not help, forget the device in your system Bluetooth settings and pair it again.",
+  "@connectServicesMissingBody": {
+    "description": "Body of the error when no Flipper services were found on a connected device. Usually a stale Bluetooth service cache, so the two remedies are ordered cheapest first."
+  },
+
   "connectScanFailed": "Could not finish looking for devices",
   "@connectScanFailed": {
     "description": "Toast shown when the device scan in the connection picker fails part-way. The list on screen is short rather than empty, so it needs saying."
@@ -1636,6 +1661,16 @@
         "type": "String"
       }
     }
+  },
+
+  "connectPlatformFaultTitle": "Your phone reported an error",
+  "@connectPlatformFaultTitle": {
+    "description": "Title of the connection-failed dialog when the phone's own Bluetooth software failed rather than the Flipper or the link - an internal fault with nothing for the user to change. Keep it short; it is a dialog title."
+  },
+
+  "connectPlatformFaultBody": "This is a fault in your phone''s software, not in your Flipper or the connection. Try connecting again, and restart the app if it keeps happening.",
+  "@connectPlatformFaultBody": {
+    "description": "Body of the connection-failed dialog for a fault inside the phone's Bluetooth software. Deliberately says nothing about Bluetooth settings, range or the Flipper, because none of those is the cause and every other message in this dialog already covers them. 'Flipper' is the product name and stays in Latin script."
   },
 
   "connectFailedTitle": "Connection failed",
@@ -1656,6 +1691,11 @@
   "pickerSelectUsbDevice": "Select USB device",
   "@pickerSelectUsbDevice": {
     "description": "Title of the dialog listing Flippers reachable over USB."
+  },
+
+  "pickerUsbOnlyReason": "Bluetooth devices are not listed: this screen needs a USB connection",
+  "@pickerUsbOnlyReason": {
+    "description": "Line under the title of the USB-only device picker, saying why no Bluetooth device is in the list. Shown whenever the picker is narrowed to USB; today the command line is the only screen that narrows it, because a Bluetooth link cannot carry a terminal session."
   },
 
   "pickerSelectDevice": "Select device",
@@ -1680,7 +1720,7 @@
 
   "pickerCantFindDevice": "Can''t find my device",
   "@pickerCantFindDevice": {
-    "description": "Button that drops the name filter so every nearby Bluetooth device is listed."
+    "description": "Button that drops the name filter, so everything the picker can see is listed - unrelated USB hardware as well as nearby Bluetooth devices."
   },
 
   "pickerShowOnlyDevices": "Show only devices",
@@ -1999,6 +2039,21 @@
     "description": "Filter entry that shows files of every type."
   },
 
+  "sortTitle": "Sort by",
+  "@sortTitle": {
+    "description": "Title of the sheet that chooses how a file list is ordered."
+  },
+
+  "sortByName": "Name",
+  "@sortByName": {
+    "description": "Sort entry ordering files by name alone, ignoring the folders they are in."
+  },
+
+  "sortByFolder": "Folder, then name",
+  "@sortByFolder": {
+    "description": "Sort entry grouping files by the folder they live in, ordering each folder's files by name."
+  },
+
   "categoryNfc": "NFC",
   "@categoryNfc": {
     "description": "Archive category for contactless cards and tags. NFC is a standard abbreviation, usually left as is."
@@ -2182,6 +2237,11 @@
   "connectSearch": "Search",
   "@connectSearch": {
     "description": "Button that starts scanning for Flippers."
+  },
+
+  "connectSearchSubtitle": "Also searches for Bluetooth devices",
+  "@connectSearchSubtitle": {
+    "description": "Subtitle of the Search row. The rows under it are plugged-in Flippers plus Bluetooth ones already connected once, so until then nothing on the page says Bluetooth is available at all."
   },
 
   "connectActive": "Active",
@@ -4367,6 +4427,9 @@
   },
 
   "mfRunAgain": "Run again",
+  "@mfRunAgain": {
+    "description": "Button that starts the MIFARE key recovery over again, offered once a run has finished or been stopped."
+  },
   "mfStopConfirm": "Stop",
   "@mfStopConfirm": {
     "description": "Button that stops the running key recovery."
@@ -6391,11 +6454,6 @@
     "description": "Error under the new-name field of the replace-or-skip dialog."
   },
 
-  "fmConflictRenameInvalid": "Enter a valid file name",
-  "@fmConflictRenameInvalid": {
-    "description": "Error under the new-name field of the replace-or-skip dialog when the name is empty or contains a slash."
-  },
-
   "fmConflictForAll": "Apply to all {count}",
   "@fmConflictForAll": {
     "description": "Checkbox in the replace-or-skip dialog applying one choice to every remaining conflict.",
@@ -7556,6 +7614,19 @@
     }
   },
 
+  "archiveSyncStoppedEarly": "Sync stopped after {done} of {total}",
+  "@archiveSyncStoppedEarly": {
+    "description": "Shown when a sync ended before reaching the whole queue because the link to the device went down and did not come back. Distinct from the summary above it: that one reports how a finished sync went, this one says the rest was never attempted. The numbers are the files reached and the files queued, not successes - a user who sees this should try again rather than conclude the remainder failed. Carries no error text: the caller appends the same parenthesised cause counts it appends to the summary above, because which faults occurred is a property of the sync and not of one of its two endings.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
   "archiveConnectToRestore": "Connect a device to restore",
   "@archiveConnectToRestore": {
     "description": "Error shown when restoring needs a connected Flipper."
@@ -7595,6 +7666,37 @@
   "archiveDeleteFailed": "Delete failed",
   "@archiveDeleteFailed": {
     "description": "Toast shown when deleting one or more archive keys failed. Followed by the reason, joined with fmFailedBecause."
+  },
+
+  "archiveDeleteStoppedEarly": "device disconnected after deleting {deleted} of {total}",
+  "@archiveDeleteStoppedEarly": {
+    "description": "Reason shown under archiveDeleteFailed when the link to the device was down, or dropped and did not come back, so part of the selection was never attempted. Lowercase: it is appended to 'Delete failed' with fmFailedBecause. {deleted} is what actually went, {total} the files the delete had something to do for - the remainder was either refused, in which case its cause is appended in brackets, or never asked for, so a user who sees this should try again. The appended causes are untranslated error text from the device or the operating system.",
+    "placeholders": {
+      "deleted": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "archiveDeleteSummary": "{failed} of {total} not fully deleted",
+  "@archiveDeleteSummary": {
+    "description": "Reason shown under archiveDeleteFailed when the link held but some files could not be deleted - the device refused them, or the copy on this phone could not be removed after the device copy already went, which is why it says 'not fully'. Lowercase: it is appended to 'Delete failed' with fmFailedBecause. Bracketed causes follow it, untranslated error text with a count each, e.g. 'Delete failed: 2 of 5 not fully deleted (Bad state: ERROR_STORAGE_DENIED x1, FileSystemException: Deletion failed (errno 13) x1)'.",
+    "placeholders": {
+      "failed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "archiveNoLocalCopy": "the copy on this phone is gone",
+  "@archiveNoLocalCopy": {
+    "description": "Reason shown under archiveRestoreFailed when a deleted entry cannot be restored to the device because the file it kept on the phone is no longer there. Lowercase: it is appended to 'Restore failed' with fmFailedBecause."
   },
 
   "archiveRenameFailed": "Rename failed",
@@ -7925,14 +8027,64 @@
     "description": "Header of the widget caption switch and size choice."
   },
 
+  "androidWidgetDescription": "Send an archive key to the Flipper with one tap",
+  "@androidWidgetDescription": {
+    "description": "Description of the home-screen widget, shown by the Android launcher in its own widget picker before the app has run. One sentence, and keep it short - some launchers show only two lines. 'Flipper' is the product name and stays in Latin script."
+  },
+
+  "androidWidgetChooseKey": "Choose a key",
+  "@androidWidgetChooseKey": {
+    "description": "Caption on a home-screen widget that has no key assigned yet, prompting the user to open the app and pick one. The widget can be resized but its smallest size is one cell, so prefer two short words."
+  },
+
+  "androidWidgetStateConnecting": "Connecting…",
+  "@androidWidgetStateConnecting": {
+    "description": "Caption on the home-screen widget while it opens the connection to the Flipper. A verb in the continuous sense. Keep the trailing ellipsis, and prefer one word - the widget's smallest size is one cell."
+  },
+
+  "androidWidgetStateEmulating": "Emulating",
+  "@androidWidgetStateEmulating": {
+    "description": "Caption on the home-screen widget while the Flipper is emulating the key, which lasts until the user stops it. A verb in the continuous sense, one word if your language has one."
+  },
+
+  "androidWidgetStateSending": "Sending…",
+  "@androidWidgetStateSending": {
+    "description": "Caption on the home-screen widget while the Flipper is transmitting the key over the air - a gate remote or a wardriving capture. The file is already on the Flipper by this point, so this is not an upload to the device. A verb in the continuous sense; keep the trailing ellipsis and prefer one word."
+  },
+
+  "androidWidgetStateSent": "Sent",
+  "@androidWidgetStateSent": {
+    "description": "Caption on the home-screen widget once the Flipper has finished transmitting the key over the air. Nothing was uploaded to the device - the file was already there. Past tense of the verb, one word."
+  },
+
+  "androidWidgetErrorNoDevice": "Flipper not found",
+  "@androidWidgetErrorNoDevice": {
+    "description": "Caption on the home-screen widget when no Flipper could be reached at all. 'Flipper' is the product name and stays in Latin script. It shares a one-cell widget with nothing else, so prefer the shortest phrasing your language has."
+  },
+
+  "androidWidgetErrorBusy": "Flipper is busy",
+  "@androidWidgetErrorBusy": {
+    "description": "Caption on the home-screen widget when the Flipper answers but is running something else, so the key cannot be sent now. 'Flipper' is the product name and stays in Latin script. Prefer the shortest phrasing - this is one of the two longest captions."
+  },
+
+  "androidWidgetErrorFile": "File not found",
+  "@androidWidgetErrorFile": {
+    "description": "Caption on the home-screen widget when the key could not be loaded on the Flipper. Covers every way that fails - the file is gone from the archive, it is corrupt, the read timed out, or the link dropped part-way - and also the case where the key the widget remembered cannot be read back. So prefer wording that does not promise the file is missing."
+  },
+
+  "androidWidgetErrorFailed": "Failed",
+  "@androidWidgetErrorFailed": {
+    "description": "Caption on the home-screen widget when sending the key failed for a reason it cannot name. Past tense of the verb, or your language's shortest equivalent of 'it did not work'. One word, fitting a one-cell widget."
+  },
+
   "toolSeedRecovery": "Recover SubGHz Seeds",
   "@toolSeedRecovery": {
     "description": "Title of the SubGHz rolling-code seed recovery tool."
   },
 
-  "toolSeedRecoverySubtitle": "Recover FAAC, Genius and Erreka remotes",
+  "toolSeedRecoverySubtitle": "Recover FAAC, BFT, Genius and Erreka remotes",
   "@toolSeedRecoverySubtitle": {
-    "description": "Subtitle of the SubGHz seed recovery tool. It names the manufacturers whose SeedManufacturer.advertised is true; BFT is solved but not listed, because the firmware recovers those itself. test/seed_models_test.dart holds this sentence to that field, so a name added or removed here fails."
+    "description": "Subtitle of the SubGHz seed recovery tool. FAAC, BFT, Genius and Erreka are gate-remote manufacturers: keep all four, in Latin script, untranslated and untransliterated. FAAC is the maker's name; the code spells it 'FAAC SLH' after the protocol variant, but this sentence names the maker."
   },
 
   "seedTitle": "Recover SubGHz Seeds",
@@ -8035,9 +8187,9 @@
     "description": "Shown when a seed was found but re-encrypting did not reproduce the capture."
   },
 
-  "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file.",
+  "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file. A longer capture may settle it: press the remote a few more times and capture again.",
   "@seedUnverifiedHint": {
-    "description": "Explains why saving is unavailable after an unverified result."
+    "description": "Explains why saving is unavailable after an unverified result, and what to try. TRANSLATORS: 'may settle it' is deliberately hedged - more hops let the engine reject a seed it could not verify, but for a long capture the fault is elsewhere and another capture will not help."
   },
 
   "seedNothingMatched": "No seed matched this capture",
@@ -8121,9 +8273,15 @@
     }
   },
 
-  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters.",
-  "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the Sub-GHz app can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. Why it is exact rather than hedged is recorded on SeedSubFile.maxBaseNameLength.",
+  "commonNameEmpty": "Type a name.",
+  "@commonNameEmpty": {
+    "description": "Shown when a name field has been left empty, or holds nothing but spaces. Only the prompts that are not QNameDialog render this - that dialog keeps its confirm button disabled and says nothing, because an error on a field the user has just cleared reads as a complaint about their typing.",
+    "placeholders": {}
+  },
+
+  "commonNameTooLong": "Use a shorter name - {max} characters at most.",
+  "@commonNameTooLong": {
+    "description": "Shown when a typed file name is longer than the storage it is being written to will carry. TRANSLATORS: {max} is an exact figure - 255 for a file on the Flipper's storage, 63 for a Sub-GHz name, because that app's own save buffer holds less - so render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. The sentence names no owner for the limit on purpose, since it is shown for both. The limit is counted in bytes, but every name it can appear for is ASCII, so 'characters' is what the user sees and is not a lie. Replaces seedNameTooLong.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -8156,6 +8314,24 @@
   "commonNameDotEdge": "A name cannot start or end with a dot.",
   "@commonNameDotEdge": {
     "description": "Shown when a typed file name begins or ends with a period."
+  },
+
+  "commonFileTooLarge": "That file is {size}. Pick one under {limit}.",
+  "@commonFileTooLarge": {
+    "description": "Shown when a file chosen in a picker is too big for the app to read into memory. TRANSLATORS: {size} and {limit} arrive already formatted and already in English units - '115.8 MB', '2.0 MB' - so place them, do not try to inflect around them. {limit} differs between screens, so do not hard-code it in the translation. The sentence states the size rather than calling the file invalid, because the file is fine and it is this importer that will not take it; the second half says what to do instead, since the user is standing in front of a picker.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+
+  "commonPickFailed": "The system picker failed, and nothing was chosen",
+  "@commonPickFailed": {
+    "description": "Toast shown when the operating system's file or folder picker answered with an error instead of a selection, so the operation did not start. TRANSLATORS: 'the system picker' is the operating system's own dialog, not a screen of this app. It deliberately says neither 'file' nor 'folder': one of the four screens that show this is choosing files to upload and the other three are choosing a folder to save into, so a word for either would be wrong somewhere - pick a noun that covers both, or drop it. The app also cannot say why the dialog failed, which is why the sentence does not try to. The second half is there because the user has just been in that dialog and needs to know the pick did not half-happen: nothing was uploaded, saved or exported."
   },
 
   "seedReplaceTitle": "Replace File?",
@@ -8315,7 +8491,7 @@
 
   "seedEngineBrokenHint": "Nothing you do with this capture will help: the recovery engine in this build is not working. Please report it.",
   "@seedEngineBrokenHint": {
-    "description": "Hint shown when the engine failed its own checks or is missing from the build."
+    "description": "Hint shown when the recovery engine in this build is not working: it failed its own checks, is missing from the build, or answered something this build cannot read. TRANSLATORS: the point is that nothing the user does with this capture will help."
   },
   "appsCatalogServer": "Catalog server",
   "appsCatalogOfficial": "Official catalog",
@@ -8469,5 +8645,165 @@
   "appsSignatureUnknownKey": "Installation refused: the catalog signs with a key this build of the app does not trust. Update the app.",
   "@appsSignatureUnknownKey": {
     "description": "Install refused because the download is signed with a key this app build does not list as trusted."
+  },
+
+  "permissionOpenSettings": "Open settings",
+  "@permissionOpenSettings": {
+    "description": "Button on a permission notice. Opens this app's page in the system settings, which is the only place any of these permissions can be changed. TRANSLATORS: 'settings' means the phone's own Settings app, not this app's settings screen."
+  },
+
+  "permissionDismiss": "Dismiss",
+  "@permissionDismiss": {
+    "description": "Button that puts an informational permission notice away for good on this install. Only offered where nothing the user asked for has failed."
+  },
+
+  "permissionContinue": "Continue",
+  "@permissionContinue": {
+    "description": "Confirms the storage explainer dialog and opens the system settings screen."
+  },
+
+  "permissionNotNow": "Not now",
+  "@permissionNotNow": {
+    "description": "Declines the storage explainer dialog. Everything except local files keeps working."
+  },
+
+  "permissionRecheckedOnReturn": "Checked again when you come back to the app.",
+  "@permissionRecheckedOnReturn": {
+    "description": "Footnote on the blocking permission screen, telling the user they do not need to restart the app after granting access in system settings."
+  },
+
+  "permissionStorageTitle": "Storage access",
+  "@permissionStorageTitle": {
+    "description": "Title of the dialog that explains what storage access is for, shown before the system settings screen opens."
+  },
+
+  "permissionStorageWhy": "qUnleashed keeps your keys, dumps and IR library in Documents/qUnleashed, so a file manager can reach them and you can back them up yourself.",
+  "@permissionStorageWhy": {
+    "description": "Why the app wants access to shared storage. TRANSLATORS: 'Documents/qUnleashed' is a literal folder path and is not translated. 'dumps' are saved copies of NFC/RFID card contents."
+  },
+
+  "permissionStorageStepsTitle": "Android asks on its own screen",
+  "@permissionStorageStepsTitle": {
+    "description": "Heading above the three steps. Warns the user that what opens next is a system screen listing every installed app, not a simple yes/no prompt."
+  },
+
+  "permissionStorageStepFind": "Find qUnleashed in the list",
+  "@permissionStorageStepFind": {
+    "description": "First step on the Android all-files-access settings screen. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+
+  "permissionStorageStepAllow": "Turn on “Allow access to manage all files”",
+  "@permissionStorageStepAllow": {
+    "description": "Second step. TRANSLATORS: the quoted text is Android's own wording for this switch - please use the wording your platform uses in this language rather than translating it literally."
+  },
+
+  "permissionStorageStepReturn": "Come back - no restart needed",
+  "@permissionStorageStepReturn": {
+    "description": "Third step. The app re-reads the permission when it is resumed."
+  },
+
+  "permissionStorageDeclineNote": "Decline and everything except local files keeps working.",
+  "@permissionStorageDeclineNote": {
+    "description": "Reassurance under the storage explainer: refusing is a feature gate, not a broken app."
+  },
+
+  "permissionStorageDeniedTitle": "No access to storage",
+  "@permissionStorageDeniedTitle": {
+    "description": "Heading of the notice shown where a denied storage permission has consequences. Says what is out of reach rather than naming the permission."
+  },
+
+  "permissionStorageDeniedIrLibrary": "Your library may already be in Documents/qUnleashed, but this app cannot read the folder, so it cannot tell.",
+  "@permissionStorageDeniedIrLibrary": {
+    "description": "Body of the storage notice in the infrared library dialog. The specific harm: the dialog offers to download a library that is already on disk, because the listing is refused. TRANSLATORS: 'Documents/qUnleashed' is a literal folder path."
+  },
+
+  "permissionStorageDeniedIrStillWorks": "Browsing your Flipper and sending files still work - only the copy on this phone is out of reach.",
+  "@permissionStorageDeniedIrStillWorks": {
+    "description": "Names what still works, so a denial does not read as a broken app."
+  },
+
+  "permissionStorageDeniedSizes": "Folder sizes cannot be read, so these show as empty. Your files are not gone.",
+  "@permissionStorageDeniedSizes": {
+    "description": "Body of the storage notice on the Settings - Storage page, which reported 0 B for every folder. TRANSLATORS: the reassurance is the point - the user's files still exist."
+  },
+
+  "permissionStorageDeniedArchive": "Saved keys and dumps on this phone cannot be read. What is on your Flipper is unaffected.",
+  "@permissionStorageDeniedArchive": {
+    "description": "Body of the storage notice on the Archive page."
+  },
+
+  "permissionStorageGrant": "Grant access",
+  "@permissionStorageGrant": {
+    "description": "Button on a storage notice. Opens the explainer, then the system settings screen."
+  },
+
+  "permissionBluetoothDeniedTitle": "Bluetooth access denied",
+  "@permissionBluetoothDeniedTitle": {
+    "description": "Heading shown in the device picker when the Bluetooth permission was refused. Replaces 'No devices found.', which blamed the hardware."
+  },
+
+  "permissionBluetoothDeniedPicker": "Nothing can be scanned for until you allow it. You can also plug your Flipper in with a USB-C cable.",
+  "@permissionBluetoothDeniedPicker": {
+    "description": "Body shown in the device picker on Android, where USB-OTG is still a route to the device. TRANSLATORS: naming the USB alternative is the point - the app is still usable."
+  },
+
+  "permissionBluetoothBlockedTitle": "Bluetooth access needed",
+  "@permissionBluetoothBlockedTitle": {
+    "description": "Title of the blocking screen on iOS, where a refused Bluetooth permission leaves the app with no way to reach a Flipper at all."
+  },
+
+  "permissionBluetoothBlockedBody": "qUnleashed reaches your Flipper over Bluetooth. iPhone has no USB option, so there is nothing to show until access is allowed.",
+  "@permissionBluetoothBlockedBody": {
+    "description": "Body of the iOS blocking screen. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+
+  "permissionBluetoothBlockedHint": "Settings > qUnleashed > Bluetooth",
+  "@permissionBluetoothBlockedHint": {
+    "description": "Where the switch is, so the user does not hunt for it. TRANSLATORS: please use the names iOS itself uses for these screens in this language. qUnleashed is the app name and is not translated."
+  },
+
+  "permissionPushDeniedTitle": "Notifications are turned off",
+  "@permissionPushDeniedTitle": {
+    "description": "Heading on Settings - Push when the notification permission was refused. Replaces 'This build is not signed for push', which asserted the wrong cause."
+  },
+
+  "permissionPushDeniedBody": "Notifications are turned off for qUnleashed, so nothing here can reach you. Everything else works as usual.",
+  "@permissionPushDeniedBody": {
+    "description": "Body of the push notice. TRANSLATORS: qUnleashed is the app name and is not translated."
+  },
+
+  "permissionPushTurnOn": "Turn on",
+  "@permissionPushTurnOn": {
+    "description": "Button on the push notice. Opens the system settings page where notifications can be re-enabled."
+  },
+
+  "permissionServiceNotificationTitle": "Background link may stop",
+  "@permissionServiceNotificationTitle": {
+    "description": "Heading of the notice for a refused foreground-service notification permission. Android needs the ongoing notification for the service to exist, so without it the connection dies when the screen sleeps."
+  },
+
+  "permissionServiceNotificationBody": "Android needs to show an ongoing notification to keep the connection alive while the screen is off. Without it the link drops when your phone sleeps.",
+  "@permissionServiceNotificationBody": {
+    "description": "Body of the foreground-service notification notice."
+  },
+
+  "permissionServiceLocationTitle": "Background link is less reliable",
+  "@permissionServiceLocationTitle": {
+    "description": "Heading of the notice for a missing location permission on the foreground service. The service starts without its location type, which Android may treat more harshly."
+  },
+
+  "permissionServiceLocationBody": "Without location access the background service runs with fewer guarantees, so Android may stop it sooner. The connection itself does not need your location.",
+  "@permissionServiceLocationBody": {
+    "description": "Body of the foreground-service location notice. TRANSLATORS: the last sentence matters - the app is not tracking the user."
+  },
+
+  "irSearchPartial": "Some folders could not be searched, so this list may be short.",
+  "@irSearchPartial": {
+    "description": "Shown under infrared search results when one or more folders failed to list. Before this, a failure mid-search silently pruned a subtree and the short result was presented as complete."
+  },
+
+  "permissionSettingsOpenFailed": "Could not open system settings. Open Settings, find qUnleashed, and change it there.",
+  "@permissionSettingsOpenFailed": {
+    "description": "Shown when the button on a permission notice could not launch the system settings screen. Tells the user how to get there by hand, because on a non-dismissible notice that button is the only way forward. TRANSLATORS: qUnleashed is the app name and is not translated."
   }
 }

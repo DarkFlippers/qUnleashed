@@ -12,6 +12,8 @@ import 'package:qunleashed/pages/tools/overview/page.dart';
 import 'package:qunleashed/pages/flibler/widgets/progress_panel.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 Widget _wrap(Widget child) => MaterialApp(
   theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
   home: child,
@@ -85,6 +87,16 @@ void _expectOneAction(List<String> labels) {
   expect(shown, hasLength(1), reason: 'expected one of $labels, got $shown');
 }
 
+/// A settings page at a desktop window, settled.
+///
+/// The four cases below differ in the page and in nothing else about getting
+/// it on screen.
+Future<void> _pumpPage(WidgetTester tester, Widget page) async {
+  sizeView(tester, const Size(900, 1600));
+  await tester.pumpWidget(_wrap(page));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('Flibler settings show the SDK and change it in dialogs', (
     tester,
@@ -98,8 +110,7 @@ void main() {
       await controller.setSdkSource(AssemblerSdkSource.unleashed);
       await controller.setCustomIndexUrl('');
     });
-    await tester.binding.setSurfaceSize(const Size(420, 2400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(420, 2400));
 
     await tester.pumpWidget(
       _wrap(AppsSettingsPage(buildRemote: _StubRemote())),
@@ -166,8 +177,7 @@ void main() {
     addTearDown(
       () => controller.setPreference(AssemblerBackendPreference.auto),
     );
-    await tester.binding.setSurfaceSize(const Size(420, 2400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(420, 2400));
 
     await tester.pumpWidget(
       _wrap(AppsSettingsPage(buildRemote: _StubRemote())),
@@ -205,8 +215,7 @@ void main() {
     addTearDown(
       () => controller.setPreference(AssemblerBackendPreference.auto),
     );
-    await tester.binding.setSurfaceSize(const Size(420, 2400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(420, 2400));
 
     await tester.pumpWidget(
       _wrap(AppsSettingsPage(buildRemote: _StubRemote())),
@@ -226,8 +235,7 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues(const {});
     await AssemblerController.instance.loadSettings();
-    await tester.binding.setSurfaceSize(const Size(400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    sizeView(tester, const Size(400, 700));
 
     await tester.pumpWidget(
       _wrap(AppsSettingsPage(focusBuild: true, buildRemote: _StubRemote())),
@@ -256,11 +264,7 @@ void main() {
       await controller.setPreference(AssemblerBackendPreference.server);
       await controller.setPreference(AssemblerBackendPreference.auto);
     });
-    await tester.binding.setSurfaceSize(const Size(900, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    await tester.pumpWidget(_wrap(const ToolsPage()));
-    await tester.pumpAndSettle();
+    await _pumpPage(tester, const ToolsPage());
 
     // Asserted against a driven status rather than against localReady, which
     // would just restate the implementation and pass either way.

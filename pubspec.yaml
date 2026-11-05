@@ -11,7 +11,7 @@ publish_to: 'none'
 # No build number. §6 derives it from the commit count, so one here would be a
 # number that means nothing; the build scripts that fall back to reading
 # this line stop at the `+` and are unaffected either way.
-version: 0.16.0
+version: 0.17.2
 
 environment:
   # What this actually builds on, rather than a wider window.
@@ -37,7 +37,7 @@ dependencies:
     path: lib/modules/extensions/super_drag_and_drop
   super_clipboard:
     path: lib/modules/extensions/super_clipboard
-  universal_ble: ^2.1.1
+  universal_ble: ^3.2.0
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1
   flutter_libserialport: ^0.6.0
@@ -67,7 +67,36 @@ dependencies:
   package_info_plus: ^8.1.0
   device_info_plus: ^11.5.0
   url_launcher: ^6.3.1
-  flutter_local_notifications: ^21.0.0
+  # The floor is not about notifications. `flutter_local_notifications_linux`
+  # pinned `dbus: ^0.7.8` through 8.0.1 and 8.0.2 widened it to
+  # `>=0.7.8 <0.9.0`; universal_ble 3.1.1 moved to `bluez: ^0.9.0`, which
+  # wants `dbus: ^0.8.0`. So this constraint is what decides whether the BLE
+  # plugin can go past 3.1.0 - and staying below 3.1.1 is not expressible as a
+  # caret, so the alternative to this bump is pinning the BLE plugin under its
+  # own latest to avoid a notifications one.
+  #
+  # The step that does the deciding is one further in: 8.0.2 needs
+  # `flutter_local_notifications_platform_interface: ^12.0.0`, and 21.0.0 pins
+  # `^11.0.0` - so under 21.x the newest reachable Linux package is 8.0.0 and
+  # `dbus` stays capped below 0.8.0, whatever that release's own `^8.0.0`
+  # allows. 22.0.0 already permits 8.0.2; 22.3.2 is the first that requires
+  # it, which is why the floor is here and not there.
+  #
+  # 22.0.0 broke nothing this app calls. The three users between them call
+  # `initialize`, `show`, `cancel`, `createNotificationChannel`,
+  # `getNotificationAppLaunchDetails`, `resolvePlatformSpecificImplementation`,
+  # `requestNotificationsPermission` and `requestPermissions`, and all of those
+  # are unchanged from 21.0.0 through 22.3.3. What 22.0.0 did was add Web
+  # support, move where Windows reports an UnsupportedError for
+  # `periodicallyShow` (never called here), highlight the app on
+  # `requestNotificationPolicyAccess` (never called), and widen the `xml`
+  # range in its Windows package.
+  #
+  # What it does carry in: `flutter_local_notifications_web`, whose 3.4 KB
+  # service worker is bundled into every artifact, because Flutter's asset
+  # bundler is not platform-filtered even though the plugin itself is. Nothing
+  # on a target this app ships can load it.
+  flutter_local_notifications: ^22.3.2
   logger: ^2.7.0
   logging: ^1.3.0
   window_manager: ^0.5.1
@@ -131,9 +160,20 @@ dependency_overrides:
 # every dev build of a cycle would upload under the same name. CI passes the
 # one `derive_version.sh` produces instead, which is the string
 # `BuildStamp.sentryRelease` makes the events carry. 0014 §5.
+#
+# `wait_for_processing` is what makes the upload step's failure branch mean
+# anything. It defaults to false (`configuration.dart`), which omits
+# `sentry-cli --wait`, so the command returns as soon as the server has
+# accepted the chunks - before it has parsed them. A debug file Sentry then
+# rejects, or a PDB whose debug id pairs with nothing that shipped, never
+# changes the exit code and nothing reports it. With this on, a server-side
+# rejection becomes a non-zero exit, which the action turns into a warning and
+# a step-summary line. It costs the upload's processing time; #310 is what it
+# costs not to have it.
 sentry:
   upload_debug_symbols: true
   upload_source_maps: false
+  wait_for_processing: true
   org: dark-flippers
   project: qunleashed
 
@@ -143,13 +183,9 @@ flutter:
   uses-material-design: true
   generate: true
   fonts:
-    - family: FlipperBold
+    - family: Born2bSportyV3
       fonts:
-        - asset: assets/font/flipper-bold.ttf
-          weight: 500
-    - family: Born2bSportyV2
-      fonts:
-        - asset: assets/font/born2b-sporty-v2.ttf
+        - asset: assets/font/born2b-sporty-v3.ttf
     - family: GravityBold8
       fonts:
         - asset: assets/font/gravity-bold-8.ttf

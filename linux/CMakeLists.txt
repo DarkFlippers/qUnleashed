@@ -34,6 +34,48 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Debug" "Profile" "Release")
 endif()
 
+# === Debug information in Release ===
+#
+# Not Flutter's. The Release configuration compiles at `-O3` with no `-g`, so
+# the binaries carry a symbol table and unwind info but no DWARF -
+# `sentry-cli debug-files check` on one reports `symtab, unwind` where a `-g`
+# build reports `symtab, debug, unwind`. The upload step is not failing and the
+# bundle is not empty; what Sentry receives simply cannot name a file or a
+# line, and an inlined frame is gone entirely. Same shortfall #310 found on
+# Windows, where the MSVC Release default wrote no PDB at all.
+#
+# Set on the configuration-level variable rather than inside
+# `APPLY_STANDARD_SETTINGS`, because that function reaches only the targets
+# that call it. This reaches every target in the tree, which is the point: the
+# plugin shared objects are most of what a native crash is.
+#
+# `enable_language(C)` first, and it is not decoration. `project()` above
+# declares `LANGUAGES CXX`, so without this line C is still unenabled here and
+# `${CMAKE_C_FLAGS_RELEASE}` expands to **nothing** - the append would not
+# extend the defaults, it would replace them with ` -g` and shadow the cache
+# entry that `lib/modules/cpp`'s own `project(... LANGUAGES C)` writes later.
+# All three C libraries would then lose `-DNDEBUG`, and `qunleashed_mfkey32`
+# would lose `-O3` outright - hardnested and faaccrack's engine objects add
+# `-O3` themselves, so they keep it. They are the MIFARE and SubGHz
+# bruteforce engines, where throughput is the point.
+#
+# None of that shows up in a warm build directory, where the cache entry
+# already exists and the append lands on it correctly. It only appears on a
+# clean checkout - which is every CI run.
+enable_language(C)
+
+# `-g` does not change code generation; `-O3` still applies. What it changes is
+# the size of the output, and on ELF that size ships - the DWARF goes *into*
+# the `.so`, where Windows would have written a separate PDB. `build/linux.sh`
+# therefore packages a stripped copy and leaves this bundle, the one the upload
+# step reads, alone. That strip is the thing to keep if this ever moves.
+#
+# If this block ever stops applying, `build/linux.sh` refuses to package the
+# build rather than quietly shipping one Sentry cannot read.
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
@@ -105,6 +147,31 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endforeach(bundled_library)
+
+# The three `lib/modules/cpp` libraries, which are not Flutter plugins and so
+# are not in the list above. They used to append to it from
+# `runner/CMakeLists.txt`, but `flutter/generated_plugins.cmake` clears that
+# variable and is included after this subdirectory - so they were silently
+# dropped and no Linux release has ever shipped them. See the note beside
+# `QUNLEASHED_FFI_LIBRARIES` in `runner/CMakeLists.txt`.
+#
+# Empty means `runner/CMakeLists.txt` stopped setting it, or something cleared
+# it the way `generated_plugins.cmake` clears the variable this replaced. A
+# `foreach` over nothing is CMake's quietest construct - it would configure,
+# build and install silently, and only `build/linux.sh` would notice, in a job
+# that runs on no pull request. Failing here puts it in front of anyone who
+# runs `flutter build linux` at all.
+if(NOT QUNLEASHED_FFI_LIBRARIES)
+  message(FATAL_ERROR
+    "QUNLEASHED_FFI_LIBRARIES is empty, so the mfkey32, hardnested and "
+    "faaccrack libraries would not be installed into the bundle and the app "
+    "could not load them. See runner/CMakeLists.txt. (#338)")
+endif()
+foreach(ffi_library ${QUNLEASHED_FFI_LIBRARIES})
+  install(FILES "${ffi_library}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endforeach(ffi_library)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")

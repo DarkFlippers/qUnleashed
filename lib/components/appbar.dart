@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
+import 'sensitive_surface.dart';
 
 class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
   const QPageAppBar({
@@ -43,6 +44,13 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
   final double elevation;
 
   static const double toolbarHeight = 68;
+
+  /// What a bar with no [bottom] prefers.
+  ///
+  /// For the `PreferredSizeWidget`s that wrap one of these - `Scaffold.appBar`
+  /// wants the size before the bar is built, so a wrapper has to answer for
+  /// it, and the height should not be restated per feature.
+  static const Size preferredSizeWithoutBottom = Size.fromHeight(toolbarHeight);
 
   @override
   Size get preferredSize =>
@@ -229,7 +237,7 @@ class _Subtitle extends StatelessWidget {
   }
 }
 
-class _DeviceSubtitle extends StatelessWidget {
+class _DeviceSubtitle extends StatelessWidget with VisibleSurface {
   const _DeviceSubtitle({
     required this.name,
     required this.connected,

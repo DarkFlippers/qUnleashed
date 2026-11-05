@@ -4,10 +4,37 @@ Status: Accepted (2026-10-09). Reporting is **on by default and sent
 automatically**, behind a one-time notice that carries no policy link because
 there is no policy.
 
-**Replay is decided on and not built.** §1 is the decision - on, with a second
-switch of its own - and phase 3 is where it lands, behind §6.4's gate. Both
-sample rates are at zero in the shipped options today. The two halves of that
-sentence were written four lines apart and read as a contradiction.
+**Replay is built, uploaded on errors only.** §1's decision, with §6.4's gate
+opened rather than stepped over: `onErrorSampleRate` is 1.0 behind the second
+switch and `sessionSampleRate` is a flat zero.
+
+**"Errors only" is the upload, not the capture**, which §8 has said all along
+and this block briefly said the opposite of. `onErrorSampleRate` above zero
+makes `replay.isEnabled` true, and `replayStarted` starts the recorder
+unconditionally - `replayIsBuffering` only withholds the replay id from the
+scope. So the screen is captured continuously into a ring buffer the native
+SDK discards unless a failure arrives. What makes that acceptable as a default
+is that the masks in §6.4 run **at capture time**, so the buffer never holds
+card bytes, a key, a capture or a location to begin with; what makes it honest
+is that `diagnosticsReplaySubtitle` and §1's notice both say so in those terms,
+rather than letting a user infer "errors only" means "recorded only then".
+
+The session rate is zero by decision and not by omission. What it would add is
+not more recording - that is already happening - but whole sessions **leaving**
+the device, into the same cache measured discarding error events under load
+(`client_discard`/`cache_overflow` on 2026-10-11, two of the three errors
+captured that day), buying nothing the buffered minute before a failure does
+not already carry.
+
+**Replay is Android and iOS only.** `ReplayIntegration` gates on
+`supportsReplay`, so the four desktop targets and web record nothing whatever
+the rates say. The Diagnostics row is therefore dropped on those platforms
+(`DiagnosticsSettings.replaySupported`), which is the same judgement that
+drops it when sharing is off: a switch that does nothing is worse than no
+switch, and here it also promised a recording that never happens. Restarting
+the SDK for a rate no recorder will read is gated on the same flag - on the
+desktop targets `Sentry.close()` is a synchronous FFI call that cannot be
+interrupted.
 
 Phase 1 is built and **an event has been seen to arrive**: a forced Dart
 error from a local Windows build reached `dark-flippers` as
@@ -31,13 +58,83 @@ span; a ufbt `error` or `critical` now reaches the log rather than only the
 Assembler console; and `traced` covers all six operations §2 names, plus the
 ufbt job.
 
-Phase 3 is untouched: no metrics, and replay is off, which is where §6.4's gate
-still stands.
+**Phase 3 is built apart from the flipperlib observer.** Replay is on for
+errors with §6.4's surfaces masked by type, the second switch is on the
+Diagnostics screen, and `SentryScreenshotWidget` wraps the app at `runApp` -
+without it the recorder finds no render object and skips every frame after one
+log line that release builds do not carry.
 
-Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
-Android Gradle Plugin, and §3's submodule commits as release commits rather
-than event tags. Facts last checked against the tree 2026-10-09; git holds how
-the decision got here.
+`SentryScreenshotWidget` and **not** `SentryWidget`, which every SDK example
+reaches for. `SentryWidget` also mounts `SentryUserInteractionWidget`, which is
+what `enableUserInteractionBreadcrumbs` and `enableUserInteractionTracing`
+need - both default true. That would have added a breadcrumb source §4 says
+does not exist ("breadcrumbs come from flipperlib only"), carrying a ten-deep
+list of ancestor widget labels that §6.2's scrubber does not reach, since
+`_scrubStringValues` rewrites top-level strings only and the app keys rows with
+file names and `/ext` paths. It would also have added a `ui.action.click`
+transaction per tap at `tracesSampleRate: 1.0`, on all six platforms - the same
+envelope pressure this document uses to justify `sessionSampleRate: 0`. Both
+flags are pinned off in `options.dart` so a later swap back to `SentryWidget`
+costs a failing diff rather than reopening either quietly.
+
+**Metrics are wired, as one counter.** §2's `classifyConnectError` row is the
+whole of them: a kind the classifier knows becomes `device.connect.failed`,
+carrying the kind, the transport and whether the app dialled or the user did,
+plus a breadcrumb in a `connection` category of its own. An unknown string over
+BLE goes the other way, to an issue fingerprinted on that string with device
+identifiers taken out of it - so the list is one entry per unlearned string
+rather than one per Flipper, which is what makes it the classifier's to-do
+list. The identifier rule stops at twelve characters and not eight, because
+eight merged two Windows HRESULTs into one issue and the second cause would
+never have been learned.
+
+`connectFailureSink` is the fifth hook `_wireSinks` installs, and it is filled
+from the `catch` of every connect attempt the app makes rather than from one
+place: the picker's scan and its two dials, the CLI page's channel and
+`LinkService`'s CLI restore, both auto-dials, and the home-screen widget's cold
+link - which reports at all only because `Telemetry.start` runs in `_initCore`
+rather than `_runApp`. **Not** from `showConnectionFailedDialog`, which looks
+like the chokepoint and is not: it is skipped when the widget is gone and no
+auto path reaches it. And not from `AutoConnectHintCard`, which classifies
+inside `build`, where a report would fire on every rebuild (#135/#136).
+
+**A cancel is not a failure, and one path had to be taught that.** `connect`
+and `_open` set an activity, so `disconnectDevice` marks the key cancelled and
+they swallow the abort; the remembered-BLE dial goes straight to
+`connectBleAddress` and sets none, so flipperlib's own `BLE connect aborted`
+arrived in `_autoDial`'s catch like any other failure - and being a string no
+needle matches, it filed an issue per cancel in the list above. `_autoDial`
+now checks `_userDisconnectedKey`, the same signal `_maybeAutoConnect` refuses
+to re-dial on. A review caught this; no test would have.
+
+Two gaps worth knowing rather than smoothing over. A counter that does not
+fire reads as a zero, so the two windows where the hooks outlive a live hub -
+a `_tearDown` whose close threw, and the replay-switch restart this document
+already calls a blackout - show as *no connect failures* rather than as a gap.
+And the SDK swallows its own send failures into `options.log`, which is gated
+on `debug`, which is `LogService.printing`, which is false in a release build:
+a dropped metric is recorded nowhere but Sentry's own client reports. An
+`options.logger` bridge into `caught` would fix that for every channel at
+once and is not in this phase.
+
+What is left of the phase is the `FlipperRpcObserver` PR in flipperlib, §3.
+
+Three things about it are uncomfortable and are written down rather than
+smoothed over. `privacy.mask<T>()` is `@experimental` in 9.30.1, so every call
+carries `// ignore: experimental_member_use` - the same wall that left
+`attachViewHierarchy` alone, except that there the default was already the safe
+value and here it is the unsafe one. Masking by widget type means
+`telemetry/options.dart` imports three pages for their types, pointing a
+service at the UI; the alternative, `SentryMask` in the pages, puts the SDK
+outside this folder and breaks §2. And the first version of this shipped with
+two surfaces masked when seven needed it - see §6.4, which now states the rule
+rather than only the list.
+
+Owed and not in the phase table: §3's submodule commits as release commits
+rather than event tags. The Android R8 mapping is no longer among them - the
+Sentry Android Gradle Plugin mints its UUID in `android/app/build.gradle.kts`
+and `upload-debug-symbols` sends it, #343. Facts last checked against the tree
+2026-10-17; git holds how the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -205,7 +302,7 @@ as it does now.
 | `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why the fold coalesces them. That coalescing was not visible from `_emit` - `_remember` returned `void` and folded silently - so it has to report whether the line was new. With the buffer gone under §1's amendment the fold *is* that answer, and `_isNewLine` is all that is left of it. |
 | `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures a release build keeps no record of today, §5. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
-| `classifyConnectError` | `unknown` becomes an issue; every other kind is a metric and a breadcrumb. The issue list is then exactly the platform strings the classifier does not know yet. |
+| `classifyConnectError` | `unknown` over BLE becomes an issue; every other kind, and `unknown` over USB, is a metric and a breadcrumb. The issue list is then the BLE platform strings the classifier has not learned yet. USB is counted instead because the needles were written against BLE stacks: a USB failure either matches one of the generic ones (`timeout`, `not found`, `unauthorized`) and lands under a Bluetooth-flavoured kind, or matches nothing - and an issue per unmatched string is one per replug, in a list there is no USB vocabulary to learn it into. Giving the classifier that vocabulary is a flipperlib change, §3. A cancel is neither a count nor an issue: a dial the user called off is not a failure. |
 | `AppHttp` | Hand-made spans. Nothing instruments `dart:io` `HttpClient`, and the map's tile client is left out: URLs and query strings are always sent, and tile URLs carry the Carto key. |
 
 A `traced(name, ...)` helper in the same folder covers the operations a user
@@ -387,7 +484,28 @@ area:
 | `refresh`, `syncCategory`, `sync` failed | 3 | |
 | `$path is unavailable`, `no hardware name` | | expected absence |
 | `md5 check <path> failed`, per file in a sync | | the per-sync summary at `warn` covers it (#194) |
+| `read <path> failed`, per file in a sync | | **amended 2026-10-12**, same argument - see below |
 | `[Map] location stream`, `[StorageCards] watchStorage` | | stream noise, repeats |
+
+**Amended 2026-10-12: the per-file `read` in a sync leaves `caught`.** It was
+ruled into the 12 above, on the general principle that an operation the user
+asked for and did not get is worth keeping. Three days of real volume says the
+principle has an exception and this is it: that one site produced 2267 entries
+from a single sync, 94% of everything the project sent, because a dead
+transport turns one fault into one failure per queued file. The burst
+overflowed the SDK's envelope cache, and what the cache evicted was **error
+events** - `client_discard`/`cache_overflow` on 2026-10-11, two of the three
+errors captured that day. Keeping those lines cost crash reports.
+
+So it takes the `md5 check` row's treatment, for the row's own stated reason,
+and the per-sync summary at `warn` carries it - now with a count per distinct
+cause rather than one example, since a single `_lastReadError` slot would
+otherwise report whichever failure happened to be last. The per-file line also
+stops being the thing that notices a sync going wrong at scale: the loop waits
+for the session and retries once before giving up, and says so as an outcome.
+
+The general ruling stands for the other eleven. This row is an exception won by
+measurement, which is the only thing that should buy one.
 
 Fifteen of twenty-four. The three excluded kinds are also the only chatty ones,
 so the boundedness #110 and #111 argued for is kept rather than traded away.
@@ -427,25 +545,230 @@ gate it.
 1. **Not collected:** `sendDefaultPii: false`; no screenshots, no view
    hierarchy; print breadcrumbs off, since `LogService` feeds Sentry directly.
 2. **One scrubber, client-side.** `_redact` moves to `telemetry/scrub.dart`
-   and gains known Flipper names, file names under `/ext` and `/int` (the
-   extension survives), long hex runs, coordinates and URL query strings. It
-   runs before every event, breadcrumb, log and transaction is sent - which,
-   since the amendment to §1, is the only place it runs. It is applied in the
-   sinks rather than in `_emit`, so the console keeps the real path: a
+   and gains file names under `/ext` and `/int` (the extension survives),
+   coordinates and URL query strings.
+
+   **Amended: two rules were removed.** It also held known Flipper names and
+   long hex runs, and both are gone. A Flipper's name is generated rather
+   than a person's, and a UID, a key, a MAC or a serial is the thing a report
+   about this app has to contain - `recovered <hex> for sector 3` is not a
+   report, it is the shape of one. §6.4's masks were opened for the same
+   facts in the same change, with one exception §6.4 argues: a recovered key
+   and a card UID stay masked in the replay. Everything else - device name,
+   serial, BLE MAC, the `device info` dump - is open on all three channels.
+   The old arrangement was the worst of both, a screen recording that showed
+   nothing beside a log that said nothing.
+
+   What that cost, named because it was not part of the decision: the FAAC
+   `fix` is logged in hex by `seed_controller.dart` - `[Seed] searching ...`
+   on every run, `[Seed] search failed for ...` when one fails - so that
+   identifier now leaves intact. It names a remote rather than opening one,
+   and the seed beside it is never logged, only `seed=<bool>`. The old rule
+   did not reliably take it either: `toRadixString(16)` drops leading zeros,
+   and the rule wanted eight characters with a letter among them.
+
+   **§6.3's server-side rules are the other half and are not changed here.**
+   If they still strip long hex runs, a key never reaches a report however
+   this file is written, and the amendment is defeated in transit. Checking
+   them is a console task, not a code one.
+
+   The scrubber runs before every event, breadcrumb, log and transaction is
+   sent - which, since the amendment to §1, is the only place it runs. It is
+   applied in the sinks rather than in `_emit`, so the console keeps the real
+   path: a
    developer reading their own terminal is not the threat model, and
    `<redacted>` there is a worse terminal for no gain.
 3. **Server-side rules for the same patterns,** and "Prevent storing IP
    addresses" on. Native crashes do not pass through Dart's `beforeSend`, and
    their module paths carry `C:\Users\<name>\…` — the Windows launcher
    extracts into `%TEMP%`.
-4. **Replay masks.** `maskAllText` masks text widgets. The hex editor paints
+4. **Replay masks, and two unmasks.** `maskAllText` masks text widgets. The hex editor paints
    card bytes with `TextPainter` (`pages/archive/editor/hex/view.dart`), and
    the remote-desktop screen is a `RawImage` fed the `ui.Image` that
    `remote/desktop/frame_decoder.dart` decodes
    (`remote/desktop/widgets/screen.dart:151`) — not an `Image` widget, so
    `maskAllImages` does not reach that one either. Neither surface is masked by
-   anything the SDK does on its own; both are wrapped in `SentryMask` and
-   checked in a recorded replay before replay ships.
+   anything the SDK does on its own.
+
+   **The rule, which matters more than the list.** `maskAllText` reaches
+   `Text`, `EditableText` and `RichText`; `maskAllImages` reaches `Image`,
+   sparing root-bundle assets. A `CustomPainter` or a `RenderBox` that paints
+   its own glyphs or pixels is none of those, so **every custom-painted
+   surface in this app is unmasked until it is named** in
+   `telemetry/options.dart`. (`maskAllText`'s own dartdoc says "only `Text`
+   and `EditableText`" and is stale; `buildMaskingConfig` is the source of
+   truth.)
+
+   This was first written with two rules, for the hex editor and the remote
+   screen. A review found five more, and the shape of the misses is the
+   argument for stating the rule here:
+
+   - `CodeEditor` (`re_editor`, a `RenderBox` painting through `_drawText`) is
+     the editor a user **lands on** - `EditorMode.text` is the default and hex
+     is the mode they switch into - so opening `/ext/nfc/card.nfc` shows the
+     UID, ATQA, SAK and plaintext key block, and `.mfkey32.log`/`.nested.log`
+     show nonce dumps. Masking the opt-in view and not this one was close to
+     backwards.
+   - `TerminalView` (`xterm`, also a `RenderBox`), where `storage read`, `nfc`
+     and `subghz` output lands as raw text.
+   - `PlotterView`, which paints the Sub-GHz pulse plot, with the bits,
+     histogram and raw RF beside it being the same capture in other forms.
+   - `FlutterMap`, which draws every tile as a `RawImage` - so a replay
+     recorded the user's own position, auto-centred, with GPS-tagged pins on
+     it, while §1's notice promised their location is never sent.
+   - `RawImage` itself, as the net under the mechanism rather than another
+     inventory only as good as its last reader. In this app a raw image is
+     device or user content by construction.
+
+   Masked by enclosing type rather than per surface, and `WidgetFilter`
+   stops descending on a mask decision, so a new widget inside any of them is
+   covered the day it is written. Rules and not `SentryMask` in the widget
+   trees, which would have put the SDK outside `telemetry/`.
+
+   `test/telemetry_lifecycle_test.dart` asserts every rule is present **and
+   that it masks rather than unmasks**, with the switch on and off. That
+   second half was missing and mattered: `mask<T>()` and `unmask<T>()` both
+   append a rule named after the type, so a name-based assertion passed either
+   way - a reviewer made that one-word edit and the whole suite stayed green.
+   `unmask` is the worst available outcome, because it applies to the subtree
+   and short-circuits later rules, so it would defeat `maskAllText` inside the
+   hex table too. The assertion now reads `privacy.toJson()`, which is public
+   and carries the SDK's own `'mask'`/`'unmask'` description.
+
+   **The blanket also made the feature unusable, and that is the amendment.**
+   `maskAllText` reaches every `Text` in the app, so the first replays to
+   arrive were a rectangle where each button, tab and title had been - five
+   minutes of silent video nobody could read. Two `unmask` rules answer it:
+   `VisibleSurface`, an app-owned marker that is the inverse of
+   `SensitiveSurface`, and `ButtonStyleButton`, which is every Material
+   button in one line.
+
+   **Only the safe direction is enumerated, and that is the whole argument.**
+   Turning `maskAllText` off and listing the sensitive surfaces instead is
+   the enumeration this section already rejected once, and it fails the wrong
+   way round: a `Text` nobody thought of ships a card dump. Under an unmask
+   list the same oversight is a grey box. What carries the marker today is
+   the nav bar's bottom tab, the app bar's device subtitle and
+   `FlipperInfoLine` - so a Flipper's name, its serial, its BLE MAC and the
+   rest of `device info` are legible, matching §6.2's half of the same
+   decision. The app bar *title* is deliberately not unmasked: seven of its
+   sixteen call sites pass something that is not a constant - a filename
+   (`archive/editor/page.dart`, `tools/infrared/widgets/ir_file_viewer.dart`),
+   a directory name (`tools/infrared/page.dart`), a brand or category from
+   downloaded data (`infrareds_page.dart`, `brands_page.dart`), a catalog
+   app's name (`apps/catalog/detail_page.dart`) and a version
+   (`firmware_changelog_page.dart`) - and one rule cannot tell those from the
+   nine constants.
+
+   **`ButtonStyleButton` is wider than the four obvious button types.** With
+   `useMaterial3: true` an `IconButton` builds an `_IconButtonM3` that
+   extends it, so every `IconButton` subtree is unmasked too, and
+   `SegmentedButton`, `MenuItemButton` and `DropdownMenu` would be if the app
+   used them. The audit that accepted the rule covered that whole set. The
+   hazard it leaves is the inverse of the usual one: a `SensitiveSurface`
+   placed *inside* a button is never reached, because `WidgetFilter` stops
+   descending on an unmask.
+
+   Recovered MIFARE keys and card UIDs stay masked in the replay although
+   §6.2 now sends them in logs, and the reason is not privacy but copy:
+   `diagnosticsShareSubtitle` and §1's notice both promise in as many words
+   that keys are never sent. Changing that promise is a translation cycle
+   across eight locales, so it is its own task rather than a line in this
+   one. **The copy stays, and this is what it now rests on.** The promise
+   says "never sent", not "hidden from the recording", so the replay masks
+   alone would not keep it - §6.2's half decides it too. It holds, and by
+   measurement rather than by rule: no `LogService` call in
+   `lib/pages/tools/mifare/` interpolates a key or a cuid. They log a sector
+   and key *name*, a path, or exception text, and a cuid dictionary filename
+   is still taken by `_flipperExtensions`. What the hex rule actually carried
+   away was BLE addresses, serials, the `device info` dump, commit SHAs and
+   the FAAC fix.
+
+   So the sentence is true because of what the app happens to log, where it
+   used to be true because a rule enforced it. That is a real weakening and
+   it is the reason this paragraph exists: a future
+   `LogService.error('[Recover] bad key $key')` makes the sentence false with
+   nothing failing. Whoever adds a key to a log body owns rewriting the copy,
+   or `Scrub` owns a call-site-scoped rule - a regex over shape cannot tell a
+   key from a MAC, which is why the blanket went.
+
+   **What actually triggers a replay upload**, since it is the fact this
+   whole amendment turns on: `ReplayEventProcessor` keys on an event with a
+   non-empty `exceptions` list. A `captureMessage` is not one, and neither is
+   a Sentry Log - so `LogService` at any of its three kept levels is
+   replay-safe, and the level is never the lever. Two things followed from
+   that. *Every* `guarded()` failure uploaded a replay, through
+   `_reportGuarded`'s `captureException`, so silencing one call site handed the
+   role to the next. And - still true, and the reason the lever had to be the
+   call itself - `beforeSend` is no backstop: event processors run first, so a
+   filter there uploads the replay and then drops the event.
+
+   **That lever has now been pulled** (#333). `_reportGuarded` sends a
+   `captureEvent` carrying a message and no exception, so a handled failure -
+   any `guarded()` call site, and there are around a hundred and fifty - no
+   longer flushes the replay buffer or converts an iOS session to a recorded
+   one. Not the `captureMessage` this paragraph first proposed: that takes no
+   stack trace, and the frames are most of the value. `captureEvent` with a
+   `stackTrace` keeps them, because the SDK parses a stack with no exception to
+   hang it on into a thread, and `SentryEvent.stacktrace` falls back to that
+   thread - which is the field the debug-image processor reads, so obfuscated
+   frames still symbolicate.
+
+   What it costs, in full, because "the exception moves into the message" is
+   only the half a reader notices:
+
+   - The issue header loses the exception type and value. They move into the
+     message - the same sentence `guarded._record` writes to the log - and into
+     the `guarded` context, which gains `type` and `error`. The fingerprint is
+     unchanged, so existing issues keep their grouping; the level is now
+     explicit at `error`, which is what the server defaulted an exception event
+     to anyway.
+   - **Console queries written against the exception interface stop matching
+     handled failures**: the server-side `event.type`, the `interface_type`
+     tag, and the `error.type`/`error.value` search fields are no longer
+     populated for them. Nothing in the repository holds such a query; a saved
+     search or dashboard widget might.
+   - `Sentry.captureEvent` derives its client-report category from
+     `SentryEvent.type`, which a hand-built event leaves null, where
+     `captureException` passed `error` outright. So a guarded report **dropped
+     by queue overflow** is now counted under `unknown`, and the errors-dataset
+     view of client discards - the instrument that measured exactly this kind
+     of loss, §1's envelope-cache eviction - no longer shows them. Setting the
+     event's `type` would buy it back at the price of a payload field the
+     server infers for itself; left alone deliberately, recorded here because
+     it is the one cost nothing else would surface.
+   - The context gains `stack`, which says whose frames the thread carries.
+     `attachStacktrace` is on, so an empty stack is replaced by the reporting
+     site's own; the exception path at least marked its substitution with
+     `snapshot: true`, and a thread carries no such flag. Most of flipperlib
+     rejects through a bare `completeError`, so the substituted case is the
+     common one and a triager who cannot tell is one who reads
+     `telemetry.dart`'s frames as the failure's.
+   - `options.ignoreErrors` now applies to these events, which matched nothing
+     before because they had no message. It is empty, and an entry added to it
+     would silently drop whichever call sites its pattern matches.
+
+   **What still uploads a replay**, and deliberately: an uncaught error, which
+   reaches Sentry through the SDK's own handlers and a native crash through
+   neither of them, and `_reportUnknownConnect` - one issue per platform
+   connect string the classifier has not learned, bounded by the number of
+   distinct strings, and the one handled failure where seeing what the user did
+   *is* the finding. A feedback event would too; the app sends none.
+
+   Both halves are held by a test, because neither can see the other.
+   `test/guarded_replay_test.dart` asserts the behaviour - that a `guarded()`
+   failure carries no `exceptions` list, that the frames are the failure's
+   where it has any, and that grouping, level, context and scrub survive -
+   because the symptom was replay quota in a console, which no count can see.
+   `test/capture_exception_budget_test.dart` counts what can restore it.
+
+   Two things this gate still owes. **No surface has been checked in a
+   recorded replay on a device** - the test proves the rules the options block
+   recorded, not what the SDK does with them. And there is **no runtime
+   signal** if a rule stops matching: every SDK diagnostic about masking and
+   capture is behind `RuntimeChecker.kDebugMode` and compiled out of release,
+   so a mask that silently stops applying, or a missing
+   `SentryScreenshotWidget`, would be invisible in a shipped build.
 
 ### 7. `sentry_flutter` 9.30.1, written to move to 10
 
@@ -474,7 +797,10 @@ analyzer and the suite are green across the downgrade. 10 changes that
 constraint, so the move also undoes this.
 
 Code is written so that 10 is close to a version bump: no SDK profiling, and
-no `enableMetrics`. It is not quite free any more - phase 2 sets
+no `enableMetrics` - phase 3's counter does not want one. `Sentry.metrics` is
+the same three calls in both majors, and the option gates only what the SDK's
+own integrations capture by themselves, which is nothing here; 10 drops it
+altogether. It is not quite free any more - phase 2 sets
 `options.enableLogs = true`, which this major needs and 10 configures
 differently, so the move has that one line to revisit. One line with a comment
 pointing here is the whole delta, which is a different thing from the rewrite
@@ -564,6 +890,12 @@ of it, which is that the one category recording the screen is also on by
 default, and §6.4's gate is the only thing between it and a card dump leaving
 a device. That gate is therefore load-bearing rather than cautious.
 
+It is now open, and the two rules holding it are four lines of code with an
+analyzer suppression on each. Errors-only sampling is the second half of the
+answer: a replay exists only where a failure already did, so the window in
+which that gate matters is the width of one crash rather than the whole
+session.
+
 **Every `LogService.error` as an issue.** No exception object to group on, and
 most of them are expected.
 
@@ -577,10 +909,39 @@ most of them are expected.
   platform.
 - `classifyConnectError` gets a feed of the strings it misses.
 - A new ratchet: `package:sentry*` imports outside `lib/services/telemetry/`.
-- Every distributed build uploads debug files: dSYMs, PDBs, Android and Linux
-  native symbols through `sentry_dart_plugin`; the R8 mapping through the
-  Sentry Android Gradle Plugin with auto-install off, which the Dart plugin does
-  not cover.
+- Every distributed build uploads debug files through `sentry_dart_plugin`:
+  dSYMs, PDBs, and the Linux and Android native libraries; the R8 mapping
+  through a second step in `upload-debug-symbols`, which the Dart plugin does
+  not cover. **This bullet was true in the letter and wrong in
+  the substance for three releases.** Uploading was never the hard part - the
+  plugin hands whole build directories to `sentry-cli`, which reads any debug
+  file in them, and it did upload something for every platform. The hard part
+  is what a Release toolchain writes by default: no PDB at all from CMake's
+  MSVC configuration, and no DWARF from its Linux one. What reached Sentry for
+  those two was export tables and symbol tables, so a frame resolved to the
+  nearest exported symbol and never to a file and line. Both are fixed in
+  their respective `CMakeLists.txt`, and both build scripts now keep the debug
+  information out of what ships. #310.
+
+  The R8 mapping was the other half of the same gap, and was wrong in the
+  letter too: the Gradle plugin was named here and never configured, so every
+  Android Java and Kotlin frame arrived renamed and nothing mapped it back.
+  `android/app/build.gradle.kts` now applies `io.sentry.android.gradle` with
+  auto-install off and native symbols off - `sentry_dart_plugin` is the one
+  place that sends those, for all six targets - but it is configured **not to
+  upload at all**. It mints the mapping's UUID and ships it in the APK; the
+  send is a second step in `upload-debug-symbols`, with its own pinned
+  `sentry-cli`, which reads that UUID back out of a built APK and files the
+  mapping under it.
+
+  That split is not fastidiousness. The plugin's upload throws from inside its
+  own `asSentryCliExec` action and is a finalizer of `assembleRelease`, so an
+  unreachable Sentry fails the Android build and `set -e` in `android.sh` then
+  skips the copy into `dist/` - a release discarded over symbolication, which
+  is the one thing every other upload here is arranged to prevent. Uploading
+  afterwards also means the mapping is addressed by the identifier that
+  actually shipped rather than by one re-derived later, and that the APK build
+  needs no token and no network. #343.
 - Store paperwork, and more of it than an opt-in build would need: Google
   Play Data safety declaring crash logs, diagnostics and - because replay is
   on - screen recordings, as collected and optional; App Store privacy labels
@@ -588,7 +949,11 @@ most of them are expected.
   wanted before store submission and the repository has none, but §1's notice
   no longer waits on it: it carries the substance and gains the link when
   there is one.
-- **Kept log lines are batched, and only the desktop exit drains them.**
+- **Kept log lines and metrics are batched, and only the desktop exit drains
+  them.** Both go through one `TelemetryProcessor`, which keeps a buffer per
+  kind - `logBuffer` and `metricBuffer`, each with its own counters and its own
+  timer - and `close()` flushes both, which is why `Telemetry.closeForExit`
+  gates its single drain on either kind having been handed over.
   Sentry buffers logs five seconds behind the line that produced them
   (`defaultFlushTimeout`), the only public drain is `Sentry.close()`, and
   nothing in sentry 9.30.1 - or 10.0.0-rc.1 - lets the app shorten that window:
@@ -596,7 +961,11 @@ most of them are expected.
   `flushTimeoutMillis` TODO. `AppShutdown` closes the SDK before the window
   goes, so a desktop quit gets its last lines out. Nothing else does: a mobile
   exit has no hook worth hanging it off (`paused` comes back, `detached` is not
-  reliably delivered), and the headless isolate `widgetMain()` starts never
+  reliably delivered) - and note that `SentryWidgetsBindingObserver` *would*
+  flush on `inactive`, but only `if (!_isNavigatorObserverCreated())`, so
+  installing `SentryNavigatorObserver` (§2) is the only reason that sentence is
+  still true; dropping the observer would quietly start draining on mobile -
+  and the headless isolate `widgetMain()` starts never
   reaches `_runApp`, so it has no flush on any platform. Issues are unbatched
   and unaffected.
 - Desktop gets no crash-free rate and no offline cache. Mobile carries
@@ -619,6 +988,10 @@ most of them are expected.
 - A sixth ratchet, a ceiling on `caught` per area — seventh counting the
   import guard above. It is the only one of them whose number is meant to rise
   once and then hold.
+- And a further one, after #333: a ceiling of one on `Sentry.captureException`
+  across `lib/`, because that call is what decides whether a handled failure
+  uploads a session replay (§6) and no filter downstream of it can decline. The
+  one it allows is `_reportUnknownConnect`.
 - #103 stops being a parallel debt and becomes part of this, though less of it
   is left than its text says: the per-area triage is read through everywhere
   but `pages/tools`, and what the issue still holds open is the blind spots the
@@ -632,6 +1005,13 @@ most of them are expected.
   `sentry_flutter` pins `jni` to 0.14.2, whose Windows CMake target calls
   `find_package(JNI)`; without one the configure step fails before anything
   compiles. The job pins Temurin 17, as the Android one does.
+- **The Linux runner needs libcurl and zlib headers.** `sentry_flutter`
+  builds sentry-native from source during `flutter build linux`, where libcurl
+  is its transport (`find_package(CURL REQUIRED)`) and crashpad takes zlib from
+  the system on everything but MSVC. Without the first the CMake configure
+  stops at `Could NOT find CURL` before anything compiles, which is how the
+  first dev build after this merged lost Linux. `auto-release.yml`'s apt list
+  is the authority; the image ships zlib, but that is not something to rest on.
 - **`windows/CMakeLists.txt` had to move one block.** sentry-native includes
   `GNUInstallDirs`, which clears
   `CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT` - and Flutter's template reads

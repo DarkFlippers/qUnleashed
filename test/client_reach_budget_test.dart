@@ -54,7 +54,7 @@ const Map<String, int> kBudget = {
   // Was 2, then 1, now none. `appbar.dart`'s optional client went first;
   // `dialogs/connection.dart` was the last, and both went for the same
   // reason: ADR 0011 put the device scope above the Navigator, so every
-  // caller is inside it and `DeviceScope.of(context).client` is a client to
+  // caller is inside it and `DeviceScope.clientOf(context)` is a client to
   // pass. `showConnectionDialog` reads it there and `ConnectionDialog`
   // requires one.
   'components': 0,

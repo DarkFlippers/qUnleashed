@@ -86,10 +86,21 @@
           - "pubspec.yaml"
           - "analysis_options.yaml"
 
+# Nearly every PR carries a CHANGELOG entry, so CHANGELOG.md cannot sit in the
+# any-glob list - it labelled the whole repository area/docs. A changelog-only
+# PR is still a docs change, hence the second rule.
+#
+# The two rules live under `any` because top-level entries are AND-ed, not
+# OR-ed (labeler's checkMatchConfigs); as siblings they could never both hold
+# and the label would never apply. Within `any` they are OR-ed.
 "area/docs":
-  - changed-files:
-      - any-glob-to-any-file:
-          - "README.md"
-          - "CHANGELOG.md"
-          - "LICENSE"
-          - "screenshots/**"
+  - any:
+      - changed-files:
+          - any-glob-to-any-file:
+              - "README.md"
+              - "LICENSE"
+              - "docs/**"
+              - "screenshots/**"
+      - changed-files:
+          - all-globs-to-all-files:
+              - "CHANGELOG.md"

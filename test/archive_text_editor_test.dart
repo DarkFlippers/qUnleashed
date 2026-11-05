@@ -8,9 +8,11 @@ import 'package:qunleashed/pages/archive/editor/find_panel.dart';
 import 'package:qunleashed/pages/archive/editor/line_numbers.dart';
 import 'package:qunleashed/pages/archive/editor/page.dart';
 import 'package:qunleashed/pages/archive/editor/syntax.dart';
+import 'package:qunleashed/pages/archive/editor/toolbar.dart';
 import 'package:re_editor/re_editor.dart';
 
 import 'firmware_fixture.dart';
+import 'view_size.dart';
 
 /// The device the editor's title bar shows, kept for [_closeEditor].
 ///
@@ -179,6 +181,13 @@ void main() {
       expect(find.byType(CodeEditor), findsOneWidget);
       expect(_editor(tester).text, 'DELAY 100\nSTRING hi\nENTER');
       expect(_editor(tester).lineCount, 3);
+      // `re_editor`'s own controller is the one that crashed on a desktop
+      // right click, and nothing else in the suite would notice the page
+      // being pointed back at it (QUNLEASHED-D).
+      expect(
+        tester.widget<CodeEditor>(find.byType(CodeEditor)).toolbarController,
+        isA<EditorSelectionToolbarController>(),
+      );
 
       await _closeEditor(tester);
     });
@@ -199,8 +208,7 @@ void main() {
     });
 
     testWidgets('opens a big file without building every line', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(500, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      sizeView(tester, const Size(500, 900));
 
       final lines = List<String>.generate(
         20000,

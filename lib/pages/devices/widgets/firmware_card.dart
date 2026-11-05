@@ -260,7 +260,15 @@ class _FirmwareCardState extends State<FirmwareCard> {
     // No `DeviceScope` around this any more: it is provided above the
     // Navigator, so a pushed route is inside it - ADR 0011. It used to be
     // re-provided here, and this was the only push that remembered to.
-    final device = DeviceScope.of(context);
+    //
+    // `clientOf`, and that matters more here than at a read in a `build`.
+    // Nothing clears `Element._dependencies` on a rebuild - only `activate`
+    // and `deactivate` touch it - so a listening read from a callback is a
+    // *standing* dependency for the element's life, not one that lapses at the
+    // next build. This card is the device screen's heaviest, and one tap on a
+    // changelog used to subscribe it to the five-second info poll until the
+    // screen went away. #344.
+    final client = DeviceScope.clientOf(context);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => FirmwareChangelogPage(
@@ -273,7 +281,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
           deviceInfo: widget.deviceInfo,
           selectedChannelId: _fw.selectedChannelId(entry),
           selectedVariant: _fw.selectedVariant(entry),
-          client: device.client,
+          client: client,
         ),
       ),
     );
@@ -287,7 +295,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
     // The device scope owns the client; this card is always built inside one.
     // Reading it here rather than holding `FlipperOneClient().get()` in a
     // field is what lets a widget test mount this against a fake - ADR 0002.
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
 
     final entry = config.firmwares[_page.clamp(0, config.firmwares.length - 1)];
     final fetchState = _fw.fetchStateFor(entry);
@@ -348,6 +356,25 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   Widget _carousel(FirmwareConfig config) {
     return SizedBox(
+      // **A known overflow, not an open question.** A fixed height holding
+      // text that scales is the same class of bug as #463, which filed it as
+      // "same card, not confirmed" on the strength of a screenshot. A
+      // screenshot is the one instrument that cannot see it, for two reasons
+      // that are not the same reason: the overflow report lives inside an
+      // `assert` in `RenderFlex.paint`, so a release build says nothing
+      // whether or not anything clips; and the excess is clipped anyway -
+      // by the slide's own `Column`, whose `Flex.clipBehavior` is
+      // `Clip.hardEdge`, by the `PageView`'s viewport, and by the card's
+      // `Clip.antiAlias`. `device_header_fit_test.dart` records the same trap.
+      //
+      // Pumped through `test/firmware_fixture.dart` at a 360 dp window, this
+      // overflows by 10 pixels at a scaler of 1.3, 163 at 2.0 and 555 at 3.1,
+      // and by 73 at 1.3 on a 320. Fixing it means deciding what the carousel
+      // does instead - a `PageView` needs a bounded height, and the slide's
+      // 22pt name wraps before the box runs out - which is a design question
+      // rather than the one-line change #463's two rows were. It is #471;
+      // this note is here so the 110 is not read as a number that was
+      // measured.
       height: 110,
       child: Row(
         children: [
@@ -480,7 +507,7 @@ class _FirmwareControls extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
       child: Column(
         children: [
-          _SettingsDropdown<FirmwareDirectoryChannel>(
+          SettingsDropdown<FirmwareDirectoryChannel>(
             title: context.l10n.firmwareUpdateChannel,
             value: selectedChannel,
             items: channels,
@@ -494,7 +521,7 @@ class _FirmwareControls extends StatelessWidget {
           ),
           if (showVariant) ...[
             const SizedBox(height: 8),
-            _SettingsDropdown<UnleashedVariant>(
+            SettingsDropdown<UnleashedVariant>(
               title: context.l10n.firmwareBuildVariant,
               value: variant,
               items: UnleashedVariant.values,
@@ -518,8 +545,81 @@ class _FirmwareControls extends StatelessWidget {
   }
 }
 
-class _SettingsDropdown<T> extends StatelessWidget {
-  const _SettingsDropdown({
+/// A setting's title beside a tap target showing its current value, or
+/// above it once both will not fit one line.
+///
+/// ## The two arrangements, and why there are two
+///
+/// A title and a value on one line stop fitting on one line at some text
+/// size, and this one did it badly: the title was an `Expanded` beside an
+/// inflexible dropdown, so the dropdown took its whole intrinsic width - its
+/// value plus 22 of padding and border, the 6 before the chevron and the
+/// chevron's 18, none of which follows the text scaler because nothing here
+/// sets `Icon.applyTextScaling` - and the title got the remainder. At a
+/// scaler of 2 that remainder fell to about one glyph, and `Text` with no
+/// `maxLines` wraps per character: a vertical column of letters, tall enough
+/// to push the build-variant row and the update button off the screen. #463.
+///
+/// So the row is kept only while both strings fit it whole, and below that
+/// the title moves above the dropdown instead. Of the three fixes the issue
+/// weighed, this is the one that keeps both strings intact at every scaler:
+/// ellipsising the value would bring the #425 trap here - a cut value that
+/// cannot be told from another cut value, which in #425 was the bottom bar
+/// drawing "Syncing" and "Synced" as the same word - and clamping the title
+/// to two lines leaves the user reading "Кан..." for the setting they are
+/// changing.
+///
+/// ## A `Wrap`, and not a measurement
+///
+/// The arrangement is the layout's own decision. A `Wrap` puts a child on a
+/// new run when the run it is on cannot hold it with [_gap] to spare, which
+/// is this rule exactly, and `spaceBetween` keeps the dropdown against the
+/// trailing edge while the two share a run. Two children, no arithmetic.
+///
+/// The draft before this one computed it instead, with a `TextPainter` over
+/// each string and a constant for the dropdown's chrome. It worked, and every
+/// defect available to it was in the model rather than in the layout: the
+/// chrome constant left out the `Border.all` pixel `Container` adds outside
+/// its padding on each side, which is nothing anywhere except at the width
+/// where the decision is made; `Text` merges `FontWeight.bold` over its style
+/// under the system bold-text setting, so a probe reading `w500` measures a
+/// paragraph drawn at `w700`; and a `MediaQuery` letter- or word-spacing
+/// override is applied by `Text` to the *span* rather than to the style, so a
+/// probe could not see it at all. `TabLabel` in `lib/app/nav_bar.dart` records
+/// the same three for the same reason - it retired a two-probe fit in favour
+/// of a `FittedBox` - and this is that note taken rather than re-learned.
+///
+/// On the channel row the value is **server data**, which is why no width
+/// threshold would have done either: a channel's title comes from the
+/// firmware directory (`directory.dart`'s `_presentation(json, 'title')`), so
+/// nothing picked here and no ARB kept short survives a longer channel title
+/// shipping upstream. The variant row's three values and both placeholders
+/// are ARB strings, and a translator can lengthen those just as freely.
+///
+/// ## It wants a bounded width, as the `Expanded` it replaces did
+///
+/// Because it claims the whole of it: a `Wrap` is as wide as its children, and
+/// the `Column` these sit in centres anything narrower than itself, so without
+/// `width: double.infinity` the two rows would hug their content and drift to
+/// the middle of the card. An infinite width then makes that `SizedBox`
+/// infinite, which is an assertion of its own - the old row's was the
+/// `RenderFlex` one, since `Expanded` is `FlexFit.tight`.
+///
+/// What bounds it is the call site and nothing here: both of these are built
+/// by `_FirmwareControls`, inside `FlipperPageCard`, inside the device page's
+/// `ListView`. The card's own `Container(width: double.infinity)` is **not**
+/// what does it - that propagates an incoming bound and forces infinity where
+/// there is none.
+///
+/// A case pins the full width rather than the bound, because filling the card
+/// is the part a caller depends on.
+///
+/// `@visibleForTesting` so `test/firmware_dropdown_fit_test.dart` can drive
+/// the contract at a scaler; nothing outside this file builds one.
+@visibleForTesting
+class SettingsDropdown<T> extends StatelessWidget {
+  const SettingsDropdown({
+    super.key,
     required this.title,
     required this.value,
     required this.items,
@@ -539,15 +639,34 @@ class _SettingsDropdown<T> extends StatelessWidget {
   final String placeholder;
   final ValueChanged<T> onChanged;
 
+  /// The gap the title keeps from the dropdown beside it.
+  ///
+  /// `Wrap.spacing` is both the gap it draws and the room it insists on
+  /// before it will keep two children on one run, so "fits" is "fits with
+  /// room to read" rather than "the two strings touch" - and the two cannot
+  /// disagree, because they are the same number read once.
+  static const double _gap = 8;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
+      // Fills the card rather than hugging its text; the class doc has why a
+      // `Wrap` needs saying so where the `Row` did not.
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          // Holds the dropdown against the trailing edge while the two share a
+          // run, which is what the `Expanded` used to do. With one child on a
+          // run there is nothing to space, so a stacked title sits at the
+          // leading edge.
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: _gap,
+          runSpacing: 6,
+          children: [
+            Text(
               title,
               style: TextStyle(
                 fontSize: 14,
@@ -555,46 +674,50 @@ class _SettingsDropdown<T> extends StatelessWidget {
                 color: colors.textPrimary,
               ),
             ),
+            _dropdown(context, colors),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dropdown(BuildContext context, QAppColors colors) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: items.isEmpty ? null : () => _showPicker(context, colors),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.divider),
+            borderRadius: BorderRadius.circular(12),
           ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: items.isEmpty ? null : () => _showPicker(context, colors),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: colors.divider),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      value == null ? placeholder : labelOf(value as T),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: value == null ? colors.textMuted : accent,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.expand_more,
-                      size: 18,
-                      color: value == null
-                          ? colors.textMuted
-                          : colors.textSecondary,
-                    ),
-                  ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // `Flexible`, so a value too long for the card wraps inside the
+              // dropdown rather than overflowing it: `Wrap` hands each child
+              // its own maxWidth, which here is the card's width.
+              Flexible(
+                child: Text(
+                  value == null ? placeholder : labelOf(value as T),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: value == null ? colors.textMuted : accent,
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.expand_more,
+                size: 18,
+                color: value == null ? colors.textMuted : colors.textSecondary,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

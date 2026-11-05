@@ -47,6 +47,35 @@
 // `unawaited()` added where a future is dropped, and says nothing about
 // whether the one inside it has a handler. #23's second box turns that on once
 // this number is down.
+// #351 added five sites across four areas, and all five are the case this
+// header's last bullet describes: the callee cannot reject, and the call site
+// says so.
+//
+// Four of them call `openPermissionSettings` (`components/permission_notice.dart`),
+// which is `guarded` plus an `onFailure` that tells the user — so the future
+// it returns is one `guarded` has already made non-rejecting, and wrapping it
+// again would be a layer that can never fire. They are counted anyway,
+// because this file counts at the call site on purpose.
+//
+// The fifth is `permissions/center.dart`'s `_clearDismissal`, which drops a
+// `persistSetting` future. `persistSetting` never throws — that is its whole
+// documented contract, and it logs when the store refuses the write.
+//
+// Three more are the storage notice's action on Archive, Settings →
+// Storage and the infrared page. `promptStorageAccess` wraps its whole
+// body in `guarded`, for this reason and under this rule, so the future
+// those three drop cannot reject either.
+// **What this number is not is the count of dropped futures.** It counts
+// `unawaited(...)` call sites, so it sees only the ones somebody marked. A
+// bare expression statement whose value is a Future is invisible here, and
+// `unawaited_futures` does not catch those either: that lint fires only
+// inside an `async` body, so a future dropped from a synchronous callback is
+// seen by neither. `notification.dart`'s tap-to-copy sat in exactly that
+// blind spot and dropped a `Clipboard.setData` from an `InkWell.onTap` for
+// as long as the component existed - a refused write reached the zone as an
+// unlabelled `[uncaught]` while the toast closed as if it had worked. It goes
+// through `guarded` now, which this file exempts, so fixing it moved the
+// number not at all. Treat the budget as a floor.
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,7 +108,7 @@ const Map<String, int> kBudget = {
   //    because the rule reads only the outermost call and that one is
   //    `whenComplete`, which this header lists as something it cannot see
   //    through.
-  'pages/tools': 9,
+  'pages/tools': 10,
   // Read through. Was 23. The favourites and device-name writes were the
   // settings-write shape #202 settled - the control has already applied the
   // choice on screen, so a write that will not persist is worth a line in the
@@ -96,14 +125,17 @@ const Map<String, int> kBudget = {
   // route nobody registered, and the future it returns resolves when the pushed
   // route is popped. Four of the six sit in a `try` that would catch that throw
   // anyway.
-  'pages/archive': 6,
+  'pages/archive': 7,
   // Read through. Was 10, and nine were a settings page starting a load in
   // `initState` or a tap persisting a choice - no caller, so `guarded` is the
   // whole fix. The one left is `storage.dart`'s `_sizeArea`, which already
   // catches everything it can throw and logs at error with the area's name:
   // better than what wrapping the call site would say, and a second layer
   // there could never fire.
-  'pages/option': 1,
+  // Was 1. Two more from #351: the Settings -> Push and Settings -> Device
+  // notices routing to system settings through `openPermissionSettings`.
+  // See the note at the top of this file.
+  'pages/option': 4,
   // Read through, and none of the three should change.
   //
   // `icon.dart` and `remote_image.dart` both `unawaited(_map.remove(key))` in
@@ -115,15 +147,17 @@ const Map<String, int> kBudget = {
   // `notification.dart` forwards an AnimationController. A plain TickerFuture
   // completes normally when its ticker is cancelled; only `.orCancel` rejects,
   // and this is not that.
-  'components': 3,
-  // Read through. Was 3: `_saveLastFolder` and `_rememberSource` are named
-  // through `guarded` now, the second because it sits inside a `try` whose
-  // catch could never have seen it. What is left is
-  // `project/page.dart`'s `openRoute`, which #23 calls deliberate and is: the
-  // only throw in `openRoute` is the synchronous StateError for an
-  // unregistered route, which the surrounding try does catch, and the pushed
-  // route's future resolves when it is popped.
-  'pages/flibler': 1,
+  // Was 3. One more from #351: the device picker's Bluetooth notice routing
+  // to system settings through `openPermissionSettings`. See the note at the
+  // top of this file.
+  'components': 4,
+  // Was 3, then 1, now none. `_saveLastFolder` and `_rememberSource` are named
+  // through `guarded`; the last one was `project/page.dart`'s `openRoute`,
+  // which went when `_openOnDevice` started handing the launch to `launchApp`
+  // rather than writing out the push and the busy dialog itself (#244). The
+  // entry stays at 0 rather than being deleted, because an area with no
+  // budget line is one nobody has looked at.
+  'pages/flibler': 0,
   // Read through. Was 34. Three were the pull-to-refresh handlers, the one
   // place here where the bare shape was a defect a user felt rather than a
   // missing label - see `test/apps_pull_to_refresh_test.dart`. The other thirty
@@ -143,13 +177,20 @@ const Map<String, int> kBudget = {
   // `emulate/service.dart`: the APP_CLOSED wait now attaches its handler at
   // creation rather than across `_safeExit`, and the connection subscription
   // is read into a local before the field is cleared.
-  'services': 0,
+  // Was empty, now one: `permissions/center.dart`'s `_clearDismissal` drops a
+  // `persistSetting` future, whose contract is that it never throws. See the
+  // note at the top of this file.
+  'services': 1,
   // Read through, and empty. Was 4: two `UpdateSettingsStore.remember` calls
   // whose store does catch its own write but said nothing at the call site,
   // the `_restore()` in the constructor, and the subscription teardown in
   // `installer.dart` - whose comment explains why it is not awaited and is
   // kept, with the failure now carrying the operation's name.
   'pages/devices': 0,
+  // New with #351: the Tier 1 permission gate in `app/shell.dart` routing to
+  // system settings through `openPermissionSettings`. See the note at the
+  // top of this file.
+  'app': 1,
 };
 
 const String kAdr =

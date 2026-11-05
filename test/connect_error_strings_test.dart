@@ -61,6 +61,84 @@ void main() {
     });
   });
 
+  // The app half of why `servicesMissing` is a kind of its own, and the only
+  // half there is: flipperlib asserts that the strings classify, and it
+  // deliberately stopped asserting that these kinds stay apart - two cases
+  // doing that were deleted there for passing whether the kind existed or
+  // not, with a note saying the distinction belongs where it can fail. This
+  // is where. A kind sharing a neighbour's words is #120 with extra steps,
+  // and both neighbours would send somebody after the wrong thing: the device
+  // answered, so "move it closer" is wrong, and the bond is intact, so
+  // "forget it" is premature. QUNLEASHED-Y.
+  group('a device with no Flipper service', () {
+    for (final (name, other) in [
+      ('the unreachable one', FlipperConnectErrorKind.deviceUnreachable),
+      ('a stale pairing', FlipperConnectErrorKind.stalePairing),
+    ]) {
+      test('does not share its sentences with $name', () {
+        // Both sides resolved in the body rather than one of them hoisted
+        // into the group. Under an `isNot`, any difference between two
+        // evaluation contexts satisfies the assertion - two identical
+        // sentences resolved in different locales among them - so hoisting
+        // one side would let this pass for a reason that has nothing to do
+        // with the kinds. The sibling case above resolves both in the body.
+        final missing = describeConnectError(
+          FlipperConnectErrorKind.servicesMissing,
+          isBle: true,
+        );
+        final neighbour = describeConnectError(other, isBle: true);
+
+        expect(missing.$1, isNot(neighbour.$1));
+        expect(missing.$2, isNot(neighbour.$2));
+      });
+    }
+  });
+
+  // qUnleashed#436, and the reason this kind exists at all. `unknown` is not
+  // silence: its sentence sends the user to the Flipper's own Bluetooth menu,
+  // which is an invention when the fault is in the handset's software.
+  group('a platform that fell over', () {
+    test('does not send the user to the Flipper', () async {
+      final (title, body) = describeConnectError(
+        FlipperConnectErrorKind.platformFault,
+        isBle: true,
+      );
+
+      expect(title, l10n.connectPlatformFaultTitle);
+      expect(body, l10n.connectPlatformFaultBody);
+      // The three things every other message in this dialog offers, and the
+      // three this one must not: there is nothing in the settings, nothing
+      // about range, and nothing the Flipper did.
+      expect(body.toLowerCase(), isNot(contains('system menu')));
+      expect(body.toLowerCase(), isNot(contains('closer')));
+      expect(
+        body,
+        isNot(l10n.connectFailedBleBody),
+        reason: 'the kind exists to stop saying exactly this',
+      );
+    });
+
+    test('says the same thing over a cable', () async {
+      // One body where `deviceUnreachable` and `unknown` each have two. The
+      // fault is in the handset rather than in the link, so there is nothing
+      // transport-specific to say - and the needle behind this kind reads a
+      // Java throwable, which the Android *USB* path can surface too. A
+      // sentence named for Bluetooth, reached from a cable, is the collision
+      // `connect_error.dart`'s `permission denied` comment is about.
+      final ble = describeConnectError(
+        FlipperConnectErrorKind.platformFault,
+        isBle: true,
+      );
+      final usb = describeConnectError(
+        FlipperConnectErrorKind.platformFault,
+        isBle: false,
+      );
+
+      expect(usb, ble);
+      expect(ble.$2.toLowerCase(), isNot(contains('bluetooth')));
+    });
+  });
+
   group('every kind', () {
     for (final kind in FlipperConnectErrorKind.values) {
       test('has something to say: $kind', () {

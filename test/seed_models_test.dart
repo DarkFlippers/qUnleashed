@@ -1,20 +1,22 @@
 // The manufacturers the tool claims to handle, against the ones it handles.
 //
-// `SeedManufacturer.advertised` and the sentence in `toolSeedRecoverySubtitle`
-// are two statements of one decision, and only one of them is read by the code.
-// BFT is solved by the engine and deliberately left out of the subtitle,
-// because the firmware recovers those itself - so "the subtitle lists all of
-// them" is not the rule, and a plain completeness check would be wrong.
+// `SeedManufacturer` and the sentence in `toolSeedRecoverySubtitle` are two
+// statements of one list, written in two files by two different people - the
+// enum by whoever adds a mode, the sentence by whoever edits `app_en.arb`.
+// Nothing derives either from the other, and until this file nothing compared
+// them: the rule lived in the ARB description as prose, "BFT is solved but not
+// listed", which nothing enforced.
 //
-// Without this, the ARB description carried the rule as the words "Do not add
-// it back", which nothing enforces. Re-advertising BFT is a one-word edit in a
-// file translators also touch.
+// What it catches is a manufacturer added to the enum without the sentence
+// gaining it, and the reverse - a name left in the sentence that no enum value
+// solves, which is the likelier mistake because the sentence is in a file
+// translators also touch.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 
-const _arbPath = 'translations/app_en.arb';
+import 'arb.dart';
 
 /// The English subtitle, read out of the ARB rather than the generated class.
 ///
@@ -22,14 +24,20 @@ const _arbPath = 'translations/app_en.arb';
 /// asserting against something a clean checkout has to build first. The ARB is
 /// the source the Crowdin guard protects, and the only file this change may
 /// hand-edit.
+///
+/// Through [arbStrings] rather than a regex of its own: that is where the
+/// metadata rule lives, and a decoded string is the whole value. A pattern
+/// stopping at the first `"` would read a reworded sentence containing an
+/// escaped quote back truncated, and this test would then pass on a shorter
+/// sentence than the app shows.
 String _subtitle() {
-  final arb = File(_arbPath).readAsStringSync();
-  final match = RegExp(r'"toolSeedRecoverySubtitle": "([^"]*)"')
-      .firstMatch(arb);
-  if (match == null) {
-    throw StateError('toolSeedRecoverySubtitle is not in $_arbPath');
+  final subtitle = arbStrings(
+    File('$kArbDir/app_en.arb'),
+  )['toolSeedRecoverySubtitle'];
+  if (subtitle == null) {
+    throw StateError('toolSeedRecoverySubtitle is not in $kArbDir/app_en.arb');
   }
-  return match.group(1)!;
+  return subtitle;
 }
 
 /// How a manufacturer's name appears in a prose list.
@@ -39,48 +47,43 @@ String _subtitle() {
 /// protocol variant the capture file spells.
 String _inProse(SeedManufacturer m) => m.label.split(' ').first;
 
+/// The sentence the enum implies, which is what the ARB must hold.
+///
+/// Built from the enum rather than matched against it word by word: harvesting
+/// capitalised words needed a regex plus a hand-kept list of the sentence's own
+/// non-names, and the documented way out of a failure was to add a word to that
+/// list - which is also how a real failure gets silenced. Rendering the
+/// sentence instead makes both directions one string comparison, and pins the
+/// order the engine numbers them in for free.
+///
+/// The cost is that rewording the English fails this test. That is the right
+/// cost: the failure prints both sentences, and the fix is to reword the
+/// template here too.
+String _impliedSubtitle() {
+  final names = SeedManufacturer.values.map(_inProse).toList();
+  final list = '${names.take(names.length - 1).join(', ')} and ${names.last}';
+  return 'Recover $list remotes';
+}
+
 void main() {
-  test('every advertised manufacturer is named in the subtitle', () {
-    final subtitle = _subtitle();
-    final advertised = SeedManufacturer.values.where((m) => m.advertised);
-    expect(advertised, isNotEmpty, reason: 'the tool offers something');
-    for (final manufacturer in advertised) {
-      expect(
-        subtitle,
-        contains(_inProse(manufacturer)),
-        reason:
-            '${manufacturer.name} is advertised but the subtitle does not say '
-            'so, so the tool lists fewer remotes than it solves',
-      );
-    }
-  });
-
-  test('no unadvertised manufacturer is named in the subtitle', () {
-    final subtitle = _subtitle();
-    final hidden = SeedManufacturer.values.where((m) => !m.advertised);
+  test('the subtitle names exactly the manufacturers the tool solves', () {
     expect(
-      hidden,
-      isNotEmpty,
+      _subtitle(),
+      _impliedSubtitle(),
       reason:
-          'if nothing is hidden any more, this file and the `advertised` field '
-          'have no job - delete both rather than leaving a test that cannot '
-          'fail',
+          'the subtitle and SeedManufacturer disagree about which remotes this '
+          'tool recovers. A name only the enum has means the tool lists fewer '
+          'than it solves; a name only the sentence has means it offers a '
+          'recovery that comes back as a manufacturer this build has no key for',
     );
-    for (final manufacturer in hidden) {
-      expect(
-        subtitle,
-        isNot(contains(_inProse(manufacturer))),
-        reason:
-            '${manufacturer.name} is in the subtitle but is not advertised. '
-            'The firmware already recovers it; see the note on the enum value.',
-      );
-    }
   });
 
-  test('a capture naming an unadvertised manufacturer still resolves', () {
-    // The whole reason the enum value stays. `fromLabel` returning null makes
-    // the parser refuse the capture as a manufacturer this build has no key
-    // for, which would be a lie.
+  test('a capture naming any of them resolves', () {
+    // Narrow: what this can fail on is a fifth value whose label normalises to
+    // the same thing as an existing one, which would make `fromLabel` return
+    // the wrong manufacturer and pick the wrong manufacture key. The
+    // normalisation itself - `faac_slh`, `FaacSlh` - is covered in
+    // `test/seed_capture_format_test.dart`.
     for (final manufacturer in SeedManufacturer.values) {
       expect(
         SeedManufacturer.fromLabel(manufacturer.label),

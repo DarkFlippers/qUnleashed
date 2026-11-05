@@ -233,9 +233,20 @@ console.
 everywhere else. `Telemetry.start` is awaited in `_initCore` on both entry
 points and never throws; it sends nothing unless a DSN was compiled in and the
 Diagnostics switch is on. `telemetry/scrub.dart` owns one level of redaction,
-`Scrub.outbound`: home directories, filenames, hex runs, coordinates, query
-strings and learned device names, taken out of everything that leaves. It runs
+`Scrub.outbound`: home directories, filenames, coordinates and query strings,
+taken out of everything that leaves. Hex runs and learned device names were
+rules here too and were removed deliberately - ADR 0013 §6.2. It runs
 in the sinks and not in `_emit`, so the console keeps the real path. ADR 0013.
+
+Of the five hooks `Telemetry` installs, `connectFailureSink`
+(`lib/services/connection/connect_report.dart`) is the newest: a connect
+attempt that failed — but was not cancelled by the user — is classified by
+flipperlib's `classifyConnectError`, the kinds it recognises become a
+`device.connect.failed` counter and a breadcrumb, and an unrecognised string
+over BLE becomes an issue grouped on that string. Over USB an unrecognised
+string is counted rather than raised: the classifier's needles were written
+against BLE stacks, so there is no USB vocabulary for such an issue to feed
+back into. That counter is the only metric the app emits.
 
 ## 9. Models and serialization
 

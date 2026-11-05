@@ -1,9 +1,12 @@
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/app/app.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 import 'package:qunleashed/pages/devices/device_scope.dart';
 import 'package:qunleashed/pages/option/diagnostics_scope.dart';
+import 'package:qunleashed/services/permissions/center.dart';
+import 'package:qunleashed/services/permissions/scope.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
 import 'firmware_fixture.dart';
@@ -26,6 +29,15 @@ import 'firmware_fixture.dart';
 /// reached by a push through the `AppRoute` registry - so it is one of the 25
 /// that the first shape above would have left outside.
 ///
+/// `PermissionScope` joins them for a third version of the same reason, and
+/// it is the one with the sharpest failure. Every surface that draws a
+/// permission notice is reached by a push - Settings → Storage, Settings →
+/// Push, the IR library dialog - and a notice outside the scope draws
+/// *nothing at all* rather than throwing, because `maybeOf` returning null
+/// is the same silence an ungranted permission produces. That is precisely
+/// the failure #351 exists to end, so it is pinned here rather than left to
+/// be noticed on a device.
+///
 /// Both end with [closeDevice]. `mountedDevice` builds a real
 /// `DeviceController`, which starts a DFU detector that polls on a one-second
 /// timer wherever libusb is present - Linux CI, not a Windows dev box. The
@@ -43,6 +55,20 @@ void main() {
     return context.dependOnInheritedWidgetOfExactType<DeviceScope>()?.notifier;
   }
 
+  /// The client [DeviceScope.clientOf] finds at [key]'s context.
+  ///
+  /// The reach above is asserted through `dependOn...`, which is what `of`
+  /// uses. Since #344 the thirty client-only sites go through `clientOf` and
+  /// its `getInheritedWidgetOfExactType` instead, so the accessor most of
+  /// `lib/` now depends on is checked here too. The two resolve through the
+  /// same `_inheritedElements` map, which is the reason this is one line
+  /// rather than a case of its own.
+  FlipperClient? clientReachedFrom(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return null;
+    return DeviceScope.clientOf(context);
+  }
+
   /// The reporting switch found at [key]'s context, or null if there is no
   /// scope.
   DiagnosticsSettings? switchReachedFrom(GlobalKey key) {
@@ -53,15 +79,31 @@ void main() {
         ?.notifier;
   }
 
+  /// The permission record found at [key]'s context, or null if there is
+  /// no scope.
+  PermissionCenter? permissionsReachedFrom(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return null;
+    return context
+        .dependOnInheritedWidgetOfExactType<PermissionScope>()
+        ?.notifier;
+  }
+
   testWidgets('a route pushed over the app is inside the scope', (
     tester,
   ) async {
     final (device, client) = mountedDevice();
     final key = GlobalKey();
     final diagnostics = DiagnosticsSettings();
+    final permissions = PermissionCenter();
 
     await tester.pumpWidget(
-      QUnleashedApp(client: client, diagnostics: diagnostics, device: device),
+      QUnleashedApp(
+        client: client,
+        diagnostics: diagnostics,
+        permissions: permissions,
+        device: device,
+      ),
     );
     await tester.pump();
 
@@ -72,7 +114,9 @@ void main() {
     // Read before the tree goes, asserted after: `closeDevice` has to run
     // whatever this says, or a failure here is reported as a pending timer.
     final reached = reachedFrom(key);
+    final reachedClient = clientReachedFrom(key);
     final reachedSwitch = switchReachedFrom(key);
+    final reachedPermissions = permissionsReachedFrom(key);
     await closeDevice(tester, device);
 
     expect(
@@ -81,9 +125,21 @@ void main() {
       reason: 'the same controller the shell reads, not a second one',
     );
     expect(
+      reachedClient,
+      same(client),
+      reason: 'and the accessor the thirty converted sites use finds it too',
+    );
+    expect(
       reachedSwitch,
       same(diagnostics),
       reason: 'the same switch Telemetry follows, not a second one',
+    );
+    expect(
+      reachedPermissions,
+      same(permissions),
+      reason:
+          'the same record the storage path writes to, not a second '
+          'one - a notice reading an empty copy draws nothing',
     );
   });
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../../services/localization/l10n.dart';
 import '../../../services/guarded.dart';
+import '../../../services/logging.dart';
 
 import 'dart:typed_data';
 
@@ -10,12 +11,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../components/navigation.dart';
+import '../../../components/dialogs/name.dart';
+import '../../../components/name_rule.dart';
 import '../../../theme/theme.dart';
 
 import 'package:flipperlib/flipperlib.dart';
 
 import '../../../services/storage/fap_icons.dart' as icon_repo;
+import '../../../components/folder_pick.dart';
 import '../../../components/notification.dart';
+import '../../../components/selection.dart';
 import '../../../components/codec/fap/icon.dart';
 import '../emulate/page.dart';
 import '../../../components/archive/category.dart';
@@ -77,15 +82,13 @@ class FileManagerPage extends StatefulWidget {
   State<FileManagerPage> createState() => _FileManagerPageState();
 }
 
-class _FileManagerPageState extends State<FileManagerPage> {
+class _FileManagerPageState extends State<FileManagerPage>
+    with ListSelection<FileManagerPage> {
   late final FileManagerController _ctrl;
   _Clipboard? _clipboard;
 
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   /// Name of the entry whose row should open in inline rename mode.
   String? _pendingRenameName;
@@ -145,8 +148,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _onEntryTap(RemoteEntry e) async {
-    if (_selectionMode) {
-      _toggleSelect(e);
+    if (selectionMode) {
+      toggleSelect(e.name);
       return;
     }
     if (e.isDir) {
@@ -161,13 +164,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _navigateTo(String path) async {
-    _exitSelection();
+    exitSelection();
     await _ctrl.open(path);
   }
 
   Future<bool> _handleBack() async {
-    if (_selectionMode) {
-      _exitSelection();
+    if (selectionMode) {
+      exitSelection();
       return false;
     }
     if (_ctrl.isSearching) {
@@ -181,49 +184,51 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return true;
   }
 
-  void _enterSelection(RemoteEntry e) {
-    setState(() {
-      _selectionMode = true;
-      _selected
-        ..clear()
-        ..add(e.name);
-    });
-  }
+  /// Which of [entries] a selection can hold.
+  ///
+  /// A pending entry - a row standing in for an upload still on its way - is
+  /// left out: nothing in the bulk actions can act on a file the device does
+  /// not have yet, and `_selectAll` has always skipped them. The app bar's
+  /// toggle reads the same list, which it did not before: it asked whether
+  /// *every* row was selected, so with an upload in flight it offered "select
+  /// all" while the tap it labelled would deselect.
+  ///
+  /// Takes the list rather than reading `_ctrl.entries` itself, because
+  /// `entries` filters, concatenates and sorts on every call and `build`
+  /// already holds the answer. Lazy for the same reason: `allSelected` stops
+  /// at the first row that is not selected, which is the first one while
+  /// browsing, and a materialised list would pay for every row before the
+  /// question was asked.
+  static Iterable<String> _selectableNames(List<RemoteEntry> entries) =>
+      entries.where((e) => !e.pending).map((e) => e.name);
 
-  void _toggleSelect(RemoteEntry e) {
-    setState(() {
-      if (!_selected.add(e.name)) _selected.remove(e.name);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    if (!_selectionMode && _selected.isEmpty) return;
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
+  /// Selects everything selectable, or clears the selection if it already is.
+  ///
+  /// The off direction is [exitSelection] rather than a remove of the same
+  /// ids, so a name that has since left the listing cannot keep the toolbar up
+  /// with nothing visible under it.
   void _selectAll() {
-    final all = _ctrl.entries
-        .where((e) => !e.pending)
-        .map((e) => e.name)
-        .toSet();
-    setState(() {
-      if (_selected.length == all.length) {
-        _selected.clear();
-        _selectionMode = false;
-      } else {
-        _selected
-          ..clear()
-          ..addAll(all);
-      }
-    });
+    // Read twice below, so this one is a list.
+    final names = _selectableNames(_ctrl.entries).toList();
+    if (allSelected(names)) {
+      exitSelection();
+    } else {
+      setAllSelected(names, selected: true);
+    }
   }
 
+  /// The selected rows a bulk action runs over.
+  ///
+  /// `!e.pending` as well as the selection, so a file the device is still
+  /// being written cannot be deleted or downloaded from under the transfer.
+  /// Two things would have to go wrong for that to be reachable - a selected
+  /// name would have to become pending, which needs the file to leave the
+  /// listing mid-selection - and the rows already refuse the gesture
+  /// (`file_table.dart` and `file_row.dart` null `onTap` and `onLongPress`
+  /// while pending). This is the layer that makes it true of the *action*
+  /// rather than of the gesture.
   List<RemoteEntry> get _selectedEntries =>
-      _ctrl.entries.where((e) => _selected.contains(e.name)).toList();
+      _ctrl.entries.where((e) => !e.pending && isSelected(e.name)).toList();
 
   void _stopSearch() {
     _searchCtrl.clear();
@@ -290,7 +295,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       download: () => _ctrl.downloadTo(remotePath, expectedSize: e.size),
       upload: (bytes) => _ctrl.writeBytes(remotePath, bytes),
       failureReason: () => _ctrl.lastFailure,
-      cancelledMessage: _cancelledMessage,
+      cancelAcknowledged: _ctrl.cancelAcknowledged,
       onRun: e.extension == 'js'
           ? () => _emulateEntry(e, ArchiveCategory.javascript)
           : null,
@@ -323,30 +328,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
       extension: e.extension,
       remotePath: remotePath,
     );
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => EmulatePage(flipperKey: key, client: client),
       ),
     );
-  }
-
-  /// Opens the system folder picker and returns the chosen directory, or null
-  /// if the user cancels or the platform has no directory picker.
-  Future<String?> _pickDestinationDir() async {
-    try {
-      return await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.fmChooseDownloadLocation,
-      );
-    } catch (e) {
-      if (mounted) {
-        context.showNotification(
-          context.l10n.fmFolderPickUnsupported,
-          type: QNotificationType.error,
-        );
-      }
-      return null;
-    }
   }
 
   /// Downloads [entries] (files and/or whole directory trees) into a folder the
@@ -360,7 +347,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
       return;
     }
     if (!_mayDownload(entries)) return;
-    final destDir = await _pickDestinationDir();
+    // Null is a cancellation *or* a failure, and the two do not need telling
+    // apart here: [pickFolder] reports the failure itself, cause and all,
+    // before answering. Both of this page's folder picks used to say
+    // `fmFolderPickUnsupported` ("Choosing a folder is not supported on this
+    // platform") for every throw and record nothing, which was the wrong
+    // sentence for all but one of them - a platform with no picker is a
+    // `MissingPluginException`, and that is the one the shim still says it
+    // for. #353.
+    final destDir = await pickFolder(
+      context,
+      what: '[FileManager] the download folder pick',
+      dialogTitle: context.l10n.fmChooseDownloadLocation,
+    );
     if (!mounted || destDir == null || !_mayDownload(entries)) return;
 
     final int failures;
@@ -462,11 +461,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return true;
   }
 
-  /// True when every selected entry is a `.fap`, which is the only case where
+  /// True when every one of [items] is a `.fap`, which is the only case where
   /// batch icon indexing makes sense.
-  bool get _selectionAllFap =>
-      _selected.isNotEmpty &&
-      _selectedEntries.every((e) => !e.isDir && e.extension == 'fap');
+  ///
+  /// Asks about the list the sheet is built from rather than about the
+  /// selection: `_selectedEntries` drops a pending row, so a selection of one
+  /// can arrive here empty - and `every` over nothing is true, which would put
+  /// the entry in the sheet over no files at all.
+  static bool _allFap(List<RemoteEntry> items) =>
+      items.isNotEmpty && items.every((e) => !e.isDir && e.extension == 'fap');
 
   Future<void> _indexFapIconsSelected() async {
     final items = _selectedEntries;
@@ -477,7 +480,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       if (await _indexFapIcon(e, silent: true)) indexed++;
       if (!mounted) return;
     }
-    _exitSelection();
+    exitSelection();
     context.showNotification(
       indexed == items.length
           ? context.l10n.fmIndexedIcons(indexed)
@@ -516,7 +519,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       if (!done) failures++;
     }
-    _exitSelection();
+    exitSelection();
     await _ctrl.refresh();
     if (!mounted) return;
     context.showNotification(
@@ -528,16 +531,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _downloadSelected() async {
-    final items = _selectedEntries.toList();
+    final items = _selectedEntries;
     await _downloadEntries(items);
-    if (mounted) _exitSelection();
+    exitSelection();
   }
 
   void _renameSelected() {
     final items = _selectedEntries;
     if (items.length != 1) return;
     final name = items.first.name;
-    _exitSelection();
+    exitSelection();
     setState(() => _pendingRenameName = name);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pendingRenameName = null;
@@ -563,6 +566,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   /// Picks a free name based on [base] (e.g. `new.txt`, `new1.txt`, …) within
   /// the current directory so creating a file never clobbers an existing one.
+  ///
+  /// [base] has to be a name `deviceNameRule` already accepts: this appends a
+  /// counter and nothing more, so a base the Flipper refuses stays refused.
+  /// Every caller passes a literal, which is why that is a note and not a
+  /// check.
   String _uniqueName(String base) {
     final taken = _ctrl.entries.map((e) => e.name).toSet();
     if (!taken.contains(base)) return base;
@@ -617,12 +625,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   void _copySelected() {
     _setClipboard(_selectedEntries, isCut: false);
-    _exitSelection();
+    exitSelection();
   }
 
   void _moveSelected() {
     _setClipboard(_selectedEntries, isCut: true);
-    _exitSelection();
+    exitSelection();
   }
 
   Future<void> _paste() async {
@@ -680,12 +688,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _createFolder() async {
-    final name = await _promptText(
-      context.l10n.fmNewFolder,
+    // QNameDialog rather than the hand-rolled prompt this had: that one
+    // validated nothing, so `gate/one` went to `mkdir` and came back as
+    // "Create folder failed" with no cause named. #277
+    final name = await QNameDialog.show(
+      context,
+      title: context.l10n.fmNewFolder,
+      // A folder name, so nothing is appended to it: the volume's own rule.
+      rule: deviceNameRule,
+      // The collision, which is this prompt's own business rather than the
+      // storage's - and the last place in #277's list that still answered a
+      // name it could not use with a failure naming no cause. `mkdir` onto an
+      // existing folder fails, and this call site does not read the reason.
+      validate: (value) => _ctrl.entries.any((e) => e.name == value.trim())
+          ? context.l10n.fmConflictRenameTaken
+          : null,
       hintText: context.l10n.fmFolderName,
+      confirmLabel: context.l10n.fmCreate,
     );
-    if (name == null || name.trim().isEmpty) return;
-    final ok = await _ctrl.mkdir(name.trim());
+    // Null is a dismissal. The dialog cannot answer with an empty name, so
+    // nothing here checks for one.
+    if (name == null) return;
+    final ok = await _ctrl.mkdir(name);
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
@@ -696,34 +720,92 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
   }
 
+  /// Picks files and uploads them, reporting a refused pick.
+  ///
+  /// **Reached through `guarded`, not a bare call**, like `_onEntryTap` and
+  /// `_openFile` on this page. The pick catches for itself now, but the upload
+  /// behind it does not: `_upload` catches only `FlipperCancelledException`,
+  /// and `uploadLocal`'s planning pass stats every chosen path and lists the
+  /// folder with nothing around either. A cache copy evicted between the pick
+  /// and the stat - the same provider misbehaviour that produced
+  /// QUNLEASHED-K's `unknown_path` - rejects out of here, and from a bare call
+  /// that reaches the zone as a fatal naming nothing.
+  ///
+  /// CLAUDE.md names that shape, and **nothing mechanical holds it**:
+  /// `unawaited_budget_test.dart` counts the literal `unawaited(...)` and
+  /// lists a future dropped without one under what it cannot see, on the
+  /// grounds that `unawaited_futures` covers it - and that lint fires only in
+  /// an `async` body, which a tap closure is not. #23 has the gap.
   Future<void> _uploadFromPath() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: false,
-      withReadStream: false,
-    );
-    if (result == null || result.files.isEmpty) return;
+    final FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: false,
+        withReadStream: false,
+      );
+    } catch (e, st) {
+      // The pick rejects rather than answering, and this is reached from a
+      // `ListTile.onTap` - so before this catch the rejection had no listener
+      // anywhere, reached the zone as a fatal uncaught error, and the app died
+      // behind the picker the user was still looking at.
+      //
+      // QUNLEASHED-K was Android's `unknown_path`, and only the single-
+      // selection branch of it: `FileUtils.openFileStream` answered null for
+      // the chosen item, so `FilePickerDelegate` failed the whole call. This
+      // pick passes `allowMultiple: true`, where the same delegate drops the
+      // unreadable item and reports success instead - so a multi-select never
+      // arrives here, and `skipped` below cannot see it either, because what
+      // it counts is a file returned with a null path.
+      //
+      // The all-dropped case is answered below. A *partial* drop is not, and
+      // cannot be from this side: the chosen count never crosses the method
+      // channel, so nothing here can subtract. #354 keeps that half, which
+      // wants the delegate to report selected-versus-returned.
+      _pickFailed('the file pick failed: ${LogService.describe(e, st)}');
+      return;
+    }
+    if (result == null) return;
+    // Not a cancellation, whatever it looks like. A cancelled pick is null on
+    // both platforms that can drop an item - Android's delegate answers
+    // `finishWithSuccess(null)` for `RESULT_CANCELED`
+    // (`FilePickerDelegate.java:207`) and iOS calls `_result(nil)` from
+    // `documentPickerWasCancelled` - so a non-null result carrying no files is
+    // a pick where every chosen item was dropped. `finishWithSuccess(files)`
+    // runs on an empty list all the same, and `files.isEmpty` used to return
+    // from here beside the cancel, which is what made it silent. #354.
+    if (result.files.isEmpty) {
+      _pickFailed('the file pick returned none of the chosen files');
+      return;
+    }
     await _upload([
       for (final f in result.files)
         if (f.path != null) f.path!,
     ], skipped: result.files.where((f) => f.path == null).length);
   }
 
-  Future<void> _uploadFolder() async {
-    String? dir;
-    try {
-      dir = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.fmChooseFolderToUpload,
+  /// Records [line] and tells the user the pick failed.
+  ///
+  /// The two ways a file pick comes back with nothing - a rejection and a
+  /// result the platform emptied - report the same way, and the shim one file
+  /// over does the same thing for the folder picks. The sentence carries no
+  /// cause, so [line] is what tells the two apart in a report.
+  void _pickFailed(String line) {
+    LogService.caught('[FileManager] $line');
+    if (mounted) {
+      context.showNotification(
+        context.l10n.commonPickFailed,
+        type: QNotificationType.error,
       );
-    } catch (e) {
-      if (mounted) {
-        context.showNotification(
-          context.l10n.fmFolderPickUnsupported,
-          type: QNotificationType.error,
-        );
-      }
-      return;
     }
+  }
+
+  Future<void> _uploadFolder() async {
+    final dir = await pickFolder(
+      context,
+      what: '[FileManager] the upload folder pick',
+      dialogTitle: context.l10n.fmChooseFolderToUpload,
+    );
     if (!mounted || dir == null) return;
     await _upload([dir]);
   }
@@ -794,42 +876,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
         ) ??
         false;
-  }
-
-  Future<String?> _promptText(
-    String title, {
-    String? initialValue,
-    String? hintText,
-  }) {
-    final controller = TextEditingController(text: initialValue);
-    final colors = context.appColors;
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(title, style: TextStyle(color: colors.dialogText)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: hintText,
-            hintStyle: TextStyle(color: colors.dialogMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(context.l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: Text(context.l10n.fmCreate),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showSortSheet() {
@@ -927,7 +973,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _createEmptyFile();
+                guarded('[FileManager] creating a file', _createEmptyFile);
               },
             ),
             ListTile(
@@ -946,7 +992,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _createFolder();
+                guarded('[FileManager] creating a folder', _createFolder);
               },
             ),
             ListTile(
@@ -965,7 +1011,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _uploadFromPath();
+                guarded(
+                  '[FileManager] uploading picked files',
+                  _uploadFromPath,
+                );
               },
             ),
             ListTile(
@@ -979,7 +1028,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _uploadFolder();
+                guarded(
+                  '[FileManager] uploading a picked folder',
+                  _uploadFolder,
+                );
               },
             ),
             const SizedBox(height: 8),
@@ -1020,18 +1072,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
         animation: _ctrl,
         builder: (context, _) {
           final entries = _ctrl.entries;
-          final allSelected =
-              entries.isNotEmpty &&
-              entries.every((e) => _selected.contains(e.name));
+          // Gated on the mode: the toolbar that reads this is only built
+          // while selecting, and the walk is the whole folder.
+          final allPicked =
+              selectionMode && allSelected(_selectableNames(entries));
           final canDismiss =
               ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
           final portrait =
               MediaQuery.orientationOf(context) == Orientation.portrait;
           final showLeading =
-              _selectionMode ||
-              _ctrl.isSearching ||
-              _ctrl.canGoUp ||
-              canDismiss;
+              selectionMode || _ctrl.isSearching || _ctrl.canGoUp || canDismiss;
           return Scaffold(
             backgroundColor: colors.background,
             appBar: AppBar(
@@ -1044,28 +1094,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
               automaticallyImplyLeading: false,
               leading: !showLeading
                   ? null
-                  : _selectionMode
+                  : selectionMode
                   ? IconButton(
                       icon: const Icon(Icons.close),
-                      onPressed: _exitSelection,
+                      onPressed: exitSelection,
                     )
                   : BackButton(onPressed: _handleBackButton),
-              title: _selectionMode
+              title: selectionMode
                   ? Text(
-                      context.l10n.selectedCount(_selected.length),
+                      context.l10n.selectedCount(selectedCount),
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
                       ),
                     )
                   : _buildSearchField(colors),
-              actions: _selectionMode
+              actions: selectionMode
                   ? [
                       _BarButton(
-                        icon: allSelected
+                        icon: allPicked
                             ? Icons.deselect_rounded
                             : Icons.select_all_rounded,
-                        label: allSelected
+                        label: allPicked
                             ? context.l10n.selectNone
                             : context.l10n.selectAll,
                         onTap: _selectAll,
@@ -1073,7 +1123,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       _BarButton(
                         icon: Icons.more_horiz_rounded,
                         tooltip: context.l10n.fmMoreActions,
-                        onTap: _selected.isEmpty ? null : _showSelectionActions,
+                        // Never disabled: this whole list is built only while
+                        // selecting, and selecting means something is
+                        // selected. It read `_selected.isEmpty ? null` while
+                        // the flag beside the set could disagree with it.
+                        onTap: _showSelectionActions,
                       ),
                       const SizedBox(width: 8),
                     ]
@@ -1130,7 +1184,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ],
               ),
             ),
-            floatingActionButton: _selectionMode
+            floatingActionButton: selectionMode
                 ? null
                 : FloatingActionButton.small(
                     backgroundColor: accent,
@@ -1235,7 +1289,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
         label: context.l10n.fmMove,
         onTap: _moveSelected,
       ),
-      if (_selectionAllFap)
+      if (_allFap(items))
         ActionItem(
           icon: Icons.image_outlined,
           label: items.length == 1
@@ -1441,7 +1495,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       fileColumns(),
       constraints.maxWidth -
           kFileTrailingWidth -
-          (_selectionMode ? kFileSelectionWidth : 0),
+          (selectionMode ? kFileSelectionWidth : 0),
       entries,
     );
     return Column(
@@ -1451,7 +1505,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           sortKey: _sortKey,
           sortAsc: _ctrl.sortAscending,
           onSort: _onSort,
-          selectionMode: _selectionMode,
+          selectionMode: selectionMode,
         ),
         Expanded(
           child: ListView.builder(
@@ -1469,8 +1523,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   entry: e,
                   cols: cols,
                   actions: _actionsFor(e),
-                  selectionMode: _selectionMode,
-                  selected: _selected.contains(e.name),
+                  selectionMode: selectionMode,
+                  selected: isSelected(e.name),
                   progress: _ctrl.entryProgress(e.name),
                   onCancel: _cancelFor(e),
                   autoEdit: e.name == _pendingRenameName,
@@ -1480,7 +1534,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       () => _onEntryTap(e),
                     ),
                   ),
-                  onLongPress: () => _enterSelection(e),
+                  onLongPress: () => enterSelection(e.name),
                 ),
               );
             },
@@ -1511,14 +1565,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
             key: ValueKey('${e.isDir}:${e.name}'),
             entry: e,
             actions: _actionsFor(e),
-            selectionMode: _selectionMode,
-            selected: _selected.contains(e.name),
+            selectionMode: selectionMode,
+            selected: isSelected(e.name),
             progress: _ctrl.entryProgress(e.name),
             onCancel: _cancelFor(e),
             onTap: () => unawaited(
               guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
             ),
-            onLongPress: () => _enterSelection(e),
+            onLongPress: () => enterSelection(e.name),
           ),
         );
       },
@@ -1556,23 +1610,18 @@ class _FileManagerPageState extends State<FileManagerPage> {
   /// part of it. Folders and rows still arriving stay put.
   Widget _dragSource(RemoteEntry e, Widget child) {
     if (e.isDir || e.pending) return child;
-    final selected = _selectionMode && _selected.contains(e.name);
-    final draggable = _ctrl.canDownload(selected ? _selectedEntries : [e]);
-    if (!draggable) return child;
+    final selected = isSelected(e.name);
     return FileDragSource(
       key: ValueKey('${e.isDir}:${e.name}'),
       file: _dragFile(e),
       group: selected
           ? () => [
               for (final s in _selectedEntries)
-                if (!s.isDir && !s.pending) _dragFile(s),
+                if (!s.isDir) _dragFile(s),
             ]
           : null,
-      onDropped: selected
-          ? () {
-              if (mounted) _exitSelection();
-            }
-          : null,
+      canStart: () => _mayDownload(selected ? _selectedEntries : [e]),
+      onDropped: selected ? exitSelection : null,
       child: child,
     );
   }

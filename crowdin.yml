@@ -2,6 +2,9 @@
 "api_token_env": "CROWDIN_PERSONAL_TOKEN"
 "preserve_hierarchy": true
 
+# Every hyphenated code here also needs the post-export app that normalises
+# `@@locale` - .github/crowdin/normalise_locale.js, and 0016 for why.
+#
 # gen-l10n refuses a country-coded ARB unless the base file for that language
 # sits next to it, so the main variant of every family keeps the bare code and
 # only the second one carries a country. Adding zh-TW therefore also needs

@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 
 import '../../guarded.dart';
+import '../../logging.dart';
 import 'gnss_satellites.dart';
 import 'gps_responder.dart';
 
@@ -40,6 +41,38 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
       return GpsReadiness.notSupported;
     } on UnimplementedError {
       return GpsReadiness.notSupported;
+    } on PlatformException catch (e, st) {
+      // An error this layer cannot interpret, so it answers the readiness
+      // that means exactly that - from any of the platform calls above, not
+      // only `checkPermission`.
+      //
+      // What makes that safe rather than a shrug is the carve-out:
+      // `MethodChannelGeolocator` converts every code it recognises into a
+      // typed exception, none of which is a `PlatformException`, so the one
+      // failure here that is *our* bug - a missing capability, arriving as
+      // `PermissionDefinitionsNotFoundException` - keeps escaping to be
+      // reported. That rests on the package's type hierarchy, so
+      // `gps_readiness_test.dart` pins it against the real channel.
+      //
+      // A readiness and not a throw, because the Flipper is told the same
+      // either way: `FlipperGpsResponder._ensureReady` already mapped any
+      // throw to this. What changes is the desktop pre-warm, which ran this
+      // through `guarded` and so filed an issue and an error log on every
+      // launch. QUNLEASHED-B, where Windows raised `UNKNOWN_ERROR` with the
+      // plugin's hard-coded `RequestAccess failed. Check the Geolocation
+      // Service is running.` - not a finding, just what it prints for
+      // anything it cannot identify, on a machine whose service read had
+      // already said yes one line earlier.
+      //
+      // `caught` rather than `warn` for the reason the budget file holds.
+      // `describe` like the permission probes that absorb the same shape:
+      // the trace is what names which of the awaited platform calls threw,
+      // and it appends only when there is one.
+      LogService.caught(
+        '[GPS] readiness unavailable on this platform: '
+        '${LogService.describe(e, st)}',
+      );
+      return GpsReadiness.unknown;
     }
   }
 

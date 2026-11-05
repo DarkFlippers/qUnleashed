@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
+import 'package:flipperlib/flipperlib.dart' as fl show File;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/config.dart';
@@ -14,9 +15,9 @@ import 'package:qunleashed/services/notifications/push_service.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'archive_fakes.dart';
+import 'fake_device.dart';
 import 'kept_lines.dart';
-
-import 'quiet_device_title.dart';
 
 /// What a firmware test needs to keep itself off the network and out of the
 /// previous test's state.
@@ -116,6 +117,15 @@ void feedFails([Object error = const SocketException('down')]) =>
 ///
 /// `flutter_test` answers an unreplaced request with a 400, so without the
 /// last line an unseeded firmware records a failure and logs a line per run.
+///
+/// **One consequence reaches past the firmware tests**, and it is worth
+/// knowing in all fourteen callers: the empty `SharedPreferences` mock below
+/// lets `DiagnosticsSettings.load()` complete with `noticeShown` false, so any
+/// `QUnleashedApp` pumped under this raises ADR 0013 §1's notice sheet over
+/// itself from the first frame. Harmless for a case that reads its witness off
+/// a widget; not harmless at a short height, where
+/// `pages/option/diagnostics_notice.dart` records that this sheet overflowed
+/// and "took two unrelated tests down with it".
 void resetFirmwareState() {
   // Installs the recorder as well as emptying it. **Call this from `setUp`,
   // not `setUpAll`**: `recordKeptLines` registers an `addTearDown`, which
@@ -149,21 +159,87 @@ void resetFirmwareState() {
 List<String> keptAbout(String fragment) =>
     keptLines.where((l) => l.contains(fragment)).toList();
 
-/// Only the connection half of a client.
+/// The connection half of a client, and - since #413 - a Flipper that can
+/// actually be connected, with storage behind it.
 ///
 /// Everything else throws through [noSuchMethod], so a caller that starts
 /// reaching for something new fails here rather than quietly reading a null.
-class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
+///
+/// ## What "connected" needs, and why it took a change
+///
+/// [arrive] has always put a connection event on the stream, but it carries
+/// `device: null`, so `DeviceController._onConnectionState` leaves `_device`
+/// null - and `isConnected` is `_device != null && !_deviceDisconnected`.
+/// `connected` was therefore the one state no whole-app test could observe.
+/// The others were all reachable: `connecting` off the [connecting] field,
+/// `dfu` and `recovering` off the controller's own setters, and both readings
+/// of `disconnected`. [arriveWithDevice] carries a device, and that is the
+/// whole of the difference.
+///
+/// Two things follow from it that a caller has to know:
+///
+///  * **`deviceLoading` is true until device info arrives.** A connection
+///    event runs `_ensureDataLoading`, which sets the flag and subscribes to
+///    [deviceInfoUpdates]. On the stay-connected path nothing clears it but a
+///    non-empty event - a disconnect and a session reset clear it too, and
+///    both are reachable from here through [stir], but neither leaves the
+///    controller connected. The bottom bar reads "Syncing" the whole time,
+///    which is not the state most cases are after - so [arriveWithDevice]
+///    takes an `info` map and publishes it; a caller who wants the loading
+///    state passes `info: const {}`.
+///  * **`connectedDevice` stays null on purpose.** It is what
+///    `DeviceInfoWatchService._runCollection` reads on its first line, and a
+///    null parks the whole collection cycle there - no RPC burst, no battery
+///    timer, nothing for the binding's pending-timer check to find. The
+///    device the controller holds comes off the event instead.
+///
+///    Two things cannot be reached because of it, and the second is the one
+///    worth knowing: the watch service itself, and `DeviceController`'s
+///    **constructor** path - `_device = _client.connectedDevice` with the
+///    `_ensureDataLoading()` that follows it, which is the warm session a
+///    home-screen widget leaves behind. A client that is already connected
+///    when the controller is built cannot be made here at all.
+class FakeFlipperClient with FlipperRpcFake implements FlipperClient {
   final _connection = StreamController<FlipperConnectionState>.broadcast();
   final _sessions = StreamController<List<FlipperSessionInfo>>.broadcast();
+  final _info = StreamController<Map<String, String>>.broadcast();
 
   bool _connected = false;
+
+  /// Directory path -> the entries a list of it returns.
+  ///
+  /// Empty is a Flipper with nothing on its SD card, which is what an archive
+  /// sync over this fake walks unless a case seeds it.
+  final Map<String, List<fl.File>> tree = {};
+
+  /// Remote path -> the bytes a read of it returns.
+  final Map<String, String> bodies = {};
+
+  /// Every request this has been asked for, by its `whichContent()`.
+  final List<String> requests = [];
+
+  /// What [getName] answers: null until a device arrives with a hardware
+  /// name, and settable by a case that wants one sooner.
+  ///
+  /// The least of the three places `ArchiveController._deviceName` comes
+  /// from. `initialize()` reads `getName()` before any device has arrived,
+  /// falls back to `.last_device` on disk, and then takes the `hardware_name`
+  /// off the next info patch - which is the route that names a sync here.
+  String? name;
 
   /// The device coming back: the flag flips and the stream says so.
   ///
   /// Shaped to what the recovery wait reads rather than to what the real
   /// client emits: it consults `isConnected` and ignores the event's
   /// contents, so the device this carries is left null.
+  ///
+  /// **Also the stand-in for the five-second device-info poll.**
+  /// `DeviceController` turns this into the same `notifyListeners` that
+  /// `services/connection/device_info_watch.dart` produces, and the poll
+  /// itself cannot be driven from here - the watch service is parked, for the
+  /// reason this class's doc gives. Every test that asserts something does
+  /// or does not rebuild on the poll fires this instead, and the scope does
+  /// not care which of the two it was.
   void arrive() {
     _connected = true;
     _connection.add(
@@ -174,6 +250,70 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
       ),
     );
   }
+
+  /// A Flipper arriving **with a device**, which is what makes the controller
+  /// read as connected.
+  ///
+  /// [info] is published straight after, because a connection event on its own
+  /// leaves `deviceLoading` true - see the note on this class. The default
+  /// carries a hardware name, since that is what the device screen's title and
+  /// the archive's folder are both read from.
+  void arriveWithDevice({
+    FlipperDevice? device,
+    Map<String, String> info = const {
+      'hardware_name': archiveTestDevice,
+      'firmware_version': '1.3.4',
+    },
+  }) {
+    _connected = true;
+    if (info.containsKey('hardware_name')) name = info['hardware_name'];
+    _connection.add(
+      FlipperConnectionState(
+        mode: FlipperMode.rpc,
+        device: device ?? flipperDevice('fake', archiveTestDevice),
+        connected: true,
+      ),
+    );
+    // **After the connection event has been delivered, not with it.**
+    // `DeviceController` subscribes to `deviceInfoUpdates` from inside its
+    // connection handler - `_ensureDataLoading` is what opens it - and a
+    // broadcast stream delivers an event only to the listeners it had when
+    // the event was added. Published in line, the patch lands before that
+    // subscription exists and is dropped on the floor, which leaves
+    // `deviceLoading` true for ever and the bottom bar reading "syncing" in
+    // a case that is about anything else. One microtask is the whole of the
+    // ordering: the `add` above queues the delivery, and this queues behind
+    // it.
+    if (info.isNotEmpty) scheduleMicrotask(() => publish(info));
+  }
+
+  /// A device-info patch, as the watch service's collection cycle would
+  /// publish one.
+  ///
+  /// `DeviceController` drops an empty map, so this is also the only way to
+  /// move `deviceLoading` to false.
+  ///
+  /// Accumulated as well as broadcast, because the real session does both
+  /// (`session.dart`'s `_deviceInfoWatchSnapshot`), and the archive's storage
+  /// cards seed from the snapshot on subscribe rather than waiting for a
+  /// patch - so [deviceInfoWatchSnapshot] existing is not optional. The first
+  /// run of `shell_device_label_test.dart` threw
+  /// `has no instance getter 'deviceInfoWatchSnapshot'` out of a card
+  /// rebuild. Nothing yet distinguishes accumulating from answering
+  /// `const {}`.
+  final Map<String, String> _watchSnapshot = {};
+
+  void publish(Map<String, String> info) {
+    _watchSnapshot.addAll(info);
+    _info.add(info);
+  }
+
+  @override
+  Map<String, String> get deviceInfoWatchSnapshot =>
+      Map.unmodifiable(_watchSnapshot);
+
+  @override
+  Stream<Map<String, String>> get deviceInfoUpdates => _info.stream;
 
   /// Connected, with nothing said on the stream.
   void arriveQuietly() => _connected = true;
@@ -199,6 +339,52 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   Future<void> close() async {
     await _sessions.close();
     await _connection.close();
+    await _info.close();
+  }
+
+  @override
+  String? getName() => name;
+
+  @override
+  Future<String> awaitName() async => name ?? '';
+
+  /// Device paths whose read throws instead of answering.
+  ///
+  /// The seam for a sync that finishes with files missing rather than one
+  /// that dies: `_readRemoteBytes` catches per file, so the walk completes,
+  /// counts the failure and leaves `lastError` set - which is the difference
+  /// between `ArchiveSyncStatus.idle` and `synced` at the end of a sync, and
+  /// since #420 the difference between two strings on the bottom bar.
+  ///
+  /// A `bodies` entry that is simply absent is **not** this: it reads as an
+  /// empty file and saves successfully.
+  ///
+  /// A `StateError` carrying the firmware's own status name, which is what
+  /// `archive_failure_reason_test.dart` refuses with: the sync keys its
+  /// per-cause tally on `'$error'`, so the shape of the throw is what a
+  /// reader of that summary sees.
+  final Set<String> readFailures = <String>{};
+
+  /// Storage answers out of [tree], [bodies] and [readFailures].
+  ///
+  /// Only the two requests an archive sync makes - a directory listing and a
+  /// file read. Anything else is recorded in [requests] and answered with
+  /// nothing, which is how a sync over an empty tree walks to completion
+  /// rather than throwing.
+  @override
+  List<Main> framesFor(Main request) {
+    requests.add(request.whichContent().toString());
+    if (request.hasStorageListRequest()) {
+      return [listingOf(tree, request.storageListRequest.path)];
+    }
+    if (request.hasStorageReadRequest()) {
+      final path = request.storageReadRequest.path;
+      if (readFailures.contains(path)) {
+        throw StateError('ERROR_STORAGE_DENIED');
+      }
+      return [contentsOf(bodies[path] ?? '')];
+    }
+    return const [];
   }
 
   /// Whether anything is still listening.
@@ -229,9 +415,10 @@ class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   @override
   String? get scopedDeviceId => 'fake';
 
-  /// Nothing connected at construction. `DeviceController` reads this once in
-  /// its constructor, and a null keeps it out of `_ensureDataLoading`, which
-  /// would reach for `deviceInfoUpdates` this does not answer.
+  /// Nothing connected at construction, which is load-bearing twice over:
+  /// `DeviceController` reads it once in its constructor, and
+  /// `DeviceInfoWatchService` reads it on the first line of its collection
+  /// cycle. See this class's doc for what that buys and what it costs.
   @override
   FlipperDevice? get connectedDevice => null;
 
@@ -290,8 +477,18 @@ Future<void> closeDevice(WidgetTester tester, DeviceController device) async {
 }
 
 /// A tree a firmware widget can be built in.
-Widget wrapWithDevice(Widget child, DeviceController device) => MaterialApp(
-  theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+///
+/// [seed] is the theme's, and it is a parameter for one caller:
+/// `license_page_test.dart` changes the theme to make a page rebuild without
+/// remounting it, which is that file's whole stimulus. Twenty-two other call
+/// sites take the default and are untouched by it - which is the reason this
+/// grew a parameter rather than that file growing a copy of this function.
+Widget wrapWithDevice(
+  Widget child,
+  DeviceController device, {
+  Color seed = const Color(0xFFCC241D),
+}) => MaterialApp(
+  theme: buildAppTheme(Brightness.dark, seed),
   // Through `builder` rather than around `home`, because that is where the
   // app puts it - above the Navigator, so a pushed route is inside it too
   // (ADR 0011). Wrapping `home` instead would leave every case that opens a
@@ -300,3 +497,32 @@ Widget wrapWithDevice(Widget child, DeviceController device) => MaterialApp(
       DeviceScope(notifier: device, child: navigator!),
   home: child,
 );
+
+/// A widget that depends on [DeviceScope] the listening way and counts its
+/// builds.
+///
+/// The control in a **pair assertion**: "nothing rebuilt" also passes when the
+/// notification never arrived, so a case that claims a widget ignores the
+/// device-info poll has to show the poll reached the scope's dependents at
+/// all. This rebuilds whenever the scope notifies, whatever the subject under
+/// test depends on - which is exactly why it has to be a separate widget. A
+/// subject that both reads the scope and witnesses the notification is the
+/// thing being tested, so it cannot also be the control.
+///
+/// It lives here rather than in either test because both wanted it byte for
+/// byte: `app_detail_rebuild_scope_test.dart` (where it started, as
+/// `_ScopeProbe`) and `device_scope_client_of_test.dart`. Both already import
+/// this file for [mountedDevice], [wrapWithDevice] and [closeDevice], so
+/// sharing it costs no new import anywhere.
+class DeviceScopeProbe extends StatelessWidget {
+  const DeviceScopeProbe({super.key, required this.onBuild});
+
+  final VoidCallback onBuild;
+
+  @override
+  Widget build(BuildContext context) {
+    DeviceScope.of(context);
+    onBuild();
+    return const SizedBox.shrink();
+  }
+}

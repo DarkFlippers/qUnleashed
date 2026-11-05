@@ -37,3 +37,17 @@ tar -xzf "$tmp/$ARCHIVE" -C "$tmp" actionlint
 # shellcheck is not installed on the runner by default; actionlint skips it and
 # says so. Workflow-level checks are the point here.
 "$tmp/actionlint" -color
+
+# actionlint type-checks expressions but not their truthiness, and GitHub's
+# `&&`/`||` yield operand values rather than booleans: `cond && 0 || 1` is
+# always 1, because 0 is falsy. The release workflow shipped exactly that for
+# `fetch-depth` in #292 and every dispatch died in `guard` until the first one
+# ran. Nothing else can catch it - the expression is valid, the YAML is valid,
+# and the wrong value is a plausible one.
+#
+# Only the literals that are falsy in GitHub expressions: 0, false, and the
+# empty string. `cond && 1 || 90` is the same idiom and is fine.
+if grep -nE "&& *(0|false|'') *\|\|" .github/workflows/*.yml .github/actions/*/action.yml; then
+  echo "::error::A GitHub expression yields a falsy literal before ||, so the || branch always wins. Quote it ('0') or invert the condition." >&2
+  exit 1
+fi

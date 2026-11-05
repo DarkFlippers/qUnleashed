@@ -1,6 +1,5 @@
 import '../../../services/localization/l10n.dart';
 
-import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -82,7 +81,25 @@ class RecoverController extends ChangeNotifier {
   // _emit and _tick check only _disposed, because a cancelled run still has a
   // page to report what it managed to. See _stopping.
   bool _cancelled = false;
-  final List<RecoverEntry> _entries = [];
+  // A notifier holding an unmodifiable list, rather than a mutable list beside
+  // a "something changed" flag: the value is replaced to change it, so a
+  // mutation that forgot to notify is not a mistake that can be made - an
+  // in-place add throws instead of silently freezing every row on screen.
+  // Same shape as `fapIconRevision` in services/storage/fap_icons.dart.
+  final ValueNotifier<List<RecoverEntry>> _entries = ValueNotifier(const []);
+
+  void _addEntry(RecoverEntry entry) {
+    // A run outlives the page that started it, and _entries is disposed with
+    // the page. The same check _emit and _tick make, for the same reason.
+    if (_disposed) return;
+    _entries.value = List.unmodifiable([..._entries.value, entry]);
+  }
+
+  void _clearEntries() {
+    if (_disposed) return;
+    _entries.value = const [];
+  }
+
   // Set true once a per-card static-encrypted candidate dictionary is actually
   // written, so the summary can distinguish "candidates saved" from "nothing".
   bool _wroteCandidates = false;
@@ -165,7 +182,19 @@ class RecoverController extends ChangeNotifier {
   bool get _stopping => _disposed || _cancelled;
 
   /// Every recovery result gathered this run, in completion order.
-  List<RecoverEntry> get entries => UnmodifiableListView(_entries);
+  ///
+  /// A snapshot, not a view: it stops at the value it was read at. Every
+  /// reader is synchronous, so that is the same list they saw before.
+  List<RecoverEntry> get entries => _entries.value;
+
+  /// Fires when [entries] changes, and at no other time.
+  ///
+  /// The page builds its rows off this rather than off [notifyListeners], so
+  /// the [RecoverCalculating] a hardnested attack emits - up to twice a
+  /// second, for the hours its brute force runs - leaves them alone. Sentry
+  /// QUNLEASHED-H caught the whole page rebuilding on every one of those as a
+  /// hang of at least 2 s on the macOS main thread.
+  Listenable get entriesChanged => _entries;
 
   /// Total recovery units this run (reader keys + weak/static pairs + hardnested
   /// groups + one for the static-encrypted batch). Drives the "N of M" readout.
@@ -192,6 +221,7 @@ class RecoverController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _known.dispose();
+    _entries.dispose();
     super.dispose();
   }
 
@@ -241,7 +271,7 @@ class RecoverController extends ChangeNotifier {
   }
 
   Future<void> _run(TraceScope trace) async {
-    _entries.clear();
+    _clearEntries();
     _wroteCandidates = false;
     _hadFailure = false;
     // Cleared here, not in stop(): a Stop from the previous run must not end
@@ -663,7 +693,7 @@ class RecoverController extends ChangeNotifier {
     final dropped = log.droppedLines;
     LogService.error('[Recover] dropped $dropped corrupt .nested.log line(s)');
     _hadFailure = true;
-    _entries.add(
+    _addEntry(
       RecoverEntry(
         source: RecoverSource.tag,
         kind: RecoverKind.corruptLog,
@@ -679,7 +709,7 @@ class RecoverController extends ChangeNotifier {
   /// Every static-encrypted row shares its source and kind; only the cuid, the
   /// count and the note vary, so those are what a reader should see.
   void _addStaticEntry({int? cuid, int? candidateCount, String? note}) =>
-      _entries.add(
+      _addEntry(
         RecoverEntry(
           source: RecoverSource.tag,
           kind: RecoverKind.staticEncrypted,
@@ -873,7 +903,7 @@ class RecoverController extends ChangeNotifier {
   }) {
     final keyHex = key == null ? null : formatMifareKey(key.toInt());
     final isNew = keyHex == null ? null : _storage.registerKey(keyHex);
-    _entries.add(
+    _addEntry(
       RecoverEntry(
         source: source,
         kind: kind,

@@ -6,6 +6,8 @@ import 'package:qunleashed/pages/apps/data/catalog_mode.dart';
 import 'package:qunleashed/pages/option/pages/apps.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'view_size.dart';
+
 Widget _wrap(Widget child) => MaterialApp(
   theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
   home: child,
@@ -21,11 +23,8 @@ Future<void> _drainCatalog(WidgetTester tester) =>
 
 Future<void> _open(WidgetTester tester, Size size) async {
   SharedPreferences.setMockInitialValues(const {});
-  // The window itself, not just the surface: the page reads its width from
-  // MediaQuery to tell a phone from a desktop.
-  tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = size;
-  addTearDown(tester.view.reset);
+  // The page reads its width from MediaQuery to tell a phone from a desktop.
+  sizeView(tester, size);
   // The catalog is unreachable from a test, so the resolution has to run
   // outside the fake async zone to reach its manager-only verdict.
   await tester.runAsync(() => AppsBackend.instance.resolveMode(force: true));

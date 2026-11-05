@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/dialogs/connection_error.dart';
 import 'package:qunleashed/pages/devices/widgets/cards/auto_connect_hint.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
-import 'package:qunleashed/services/connection/known_devices.dart';
 import 'package:qunleashed/services/connection/link_service.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
@@ -52,7 +51,6 @@ void main() {
       final settings = DeviceSettings.instance..reset();
       await settings.load();
       await settings.setAutoConnectUsb(refusedWith != null);
-      await KnownDevicesStore.instance.load();
 
       links = LinkService.forTest(client);
       if (refusedWith != null) {

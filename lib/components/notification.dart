@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/guarded.dart';
 import '../services/logging.dart';
 import '../theme/colors/status.dart';
 import '../theme/theme.dart';
@@ -17,6 +18,41 @@ class QNotification {
 
   static QNotificationHandle? _current;
 
+  /// How many times [QNotificationHandle.close] has been *asked*, as against
+  /// how many removals it performed.
+  ///
+  /// Test-only, and the difference is the whole reason it exists. The failure
+  /// in QUNLEASHED-S is two asks and two removals; a fix is two asks and one.
+  /// "No exception was thrown" cannot tell either from *one* ask - which is
+  /// what a test gets if the fade-out stops finishing inside its window and
+  /// the auto-close callback silently never runs. That is this repo's
+  /// "passed for a different reason" shape, one edit away, so the count is
+  /// asserted rather than the absence.
+  @visibleForTesting
+  static int debugCloseRequests = 0;
+
+  /// Forget the notification on screen, and the count above.
+  ///
+  /// [_current] is a static that nothing resets by itself, so the last case
+  /// in a file leaves it pointing at a live handle and the next `show()`
+  /// closes an entry belonging to a torn-down tree. Harmless today only
+  /// because `OverlayEntry.remove` returns early on an unmounted overlay -
+  /// which is the framework's guarantee, not this component's, and this is
+  /// cheaper than depending on it.
+  @visibleForTesting
+  static void debugReset() {
+    // Closed and not merely forgotten. Nulling the pointer would leave the
+    // entry of any notification a case left on screen removed-but-undisposed,
+    // which is the very leak `close()` was changed to stop - reintroduced in
+    // the harness, once per test, and invisible until somebody turns leak
+    // tracking on. `close()` bumps the counter, so the zeroing comes after
+    // it, and the explicit null covers a handle that was already spent (which
+    // returns before it reaches its own clearing line).
+    _current?.close();
+    _current = null;
+    debugCloseRequests = 0;
+  }
+
   static QNotificationHandle show(
     BuildContext context, {
     required String message,
@@ -29,9 +65,8 @@ class QNotification {
 
     final overlay = Overlay.of(context, rootOverlay: true);
     final notification = QNotificationHandle._();
-    late final OverlayEntry entry;
 
-    entry = OverlayEntry(
+    final entry = OverlayEntry(
       builder: (overlayContext) {
         return Positioned(
           top: 0,
@@ -42,10 +77,10 @@ class QNotification {
             type: type,
             duration: duration,
             onTap: onTap,
-            onClosed: () {
-              if (entry.mounted) entry.remove();
-              if (identical(_current, notification)) _current = null;
-            },
+            // The handle's own `close` rather than a removal of its own: two
+            // paths that each take the entry off the overlay is the whole of
+            // QUNLEASHED-S. See [QNotificationHandle.close].
+            onClosed: notification.close,
           ),
         );
       },
@@ -89,12 +124,50 @@ class QNotificationHandle {
 
   OverlayEntry? _entry;
 
+  /// Take the notification off the overlay, once, whoever asks.
+  ///
+  /// This field is the record of whether that has already happened, and
+  /// [OverlayEntry.mounted] cannot stand in for it. `remove()` reads the
+  /// entry's own `_overlay` and then nulls it, so it is the *second* call
+  /// that reads `_overlay!` after the first one emptied it, while `mounted`
+  /// tracks the `_OverlayEntryWidget` - which stays up until the overlay
+  /// rebuilds, later in the same frame at the earliest and otherwise in the
+  /// next. In that window `mounted` is still true and that second `remove()`
+  /// throws `Null check operator used on a null value` out of
+  /// `overlay.dart`, in release, where the assertion saying the same thing is
+  /// compiled out.
+  ///
+  /// The window is not hypothetical. `_close` awaits a fade-out whose length
+  /// is proportional to how far the card had faded in, so a notification
+  /// dismissed early finishes closing itself inside the same frame a holder
+  /// of this handle calls `close` in. `pages/archive/map/page.dart` closes its
+  /// notice from `dispose` and again on every change of notice, which is the
+  /// pair that reached a user. QUNLEASHED-S.
+  ///
+  /// Both paths come through here rather than one of them removing the entry
+  /// for itself, because a removal that something else may also perform is
+  /// not idempotent however carefully it is guarded: the callback used to
+  /// remove the entry and leave this field set, which left the handle armed
+  /// over an entry that was already gone.
   void close() {
+    QNotification.debugCloseRequests++;
     final entry = _entry;
-    if (entry?.mounted ?? false) {
-      entry!.remove();
-    }
+    if (entry == null) return;
     _entry = null;
+    if (identical(QNotification._current, this)) QNotification._current = null;
+    // Removed and then discarded, in that order - the order
+    // `OverlayEntry.dispose` asserts, and the one Flutter's own
+    // `_WrappingOverlayState.dispose` uses. Without the second call the
+    // entry's `ValueNotifier` outlives every notification the app has ever
+    // shown; nothing observable goes wrong, which is why it sat here
+    // unnoticed through the bug above. `dispose` copes with being called
+    // while the entry is still mounted by deferring the release to
+    // `_didUnmount`, so this does not have to wait for the overlay to
+    // rebuild - and it is only reachable once, which is what the field above
+    // guarantees and what `dispose` asserts.
+    entry
+      ..remove()
+      ..dispose();
   }
 }
 
@@ -222,7 +295,26 @@ class _QNotificationCard extends StatelessWidget {
           onTap: () {
             final action = onTap;
             if (action == null) {
-              Clipboard.setData(ClipboardData(text: message));
+              // Named rather than dropped. This write was a bare discarded
+              // future, which is worse than the `unawaited` the ratchet
+              // counts: `unawaited_futures` only fires inside an `async`
+              // body and this closure is not one, so nothing saw it. A
+              // refusal reached the zone as an unlabelled `[uncaught]` and
+              // the user saw the toast close as if it had worked - the exact
+              // shape `copyTextToClipboard` was extracted to retire,
+              // surviving in the one place that cannot call it, because that
+              // helper reports through a `BuildContext` and `onClose()` is
+              // about to take this one out of the tree.
+              //
+              // Android carries a clipboard write over a Binder transaction
+              // capped near a megabyte, so the throw is real and arrives
+              // exactly when the message is longest.
+              unawaited(
+                guarded(
+                  '[QNotification] copying a tapped message',
+                  () => Clipboard.setData(ClipboardData(text: message)),
+                ),
+              );
             } else {
               action();
             }

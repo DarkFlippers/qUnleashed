@@ -115,13 +115,10 @@ class KeyActionsSheet {
           icon: Icons.restore,
           label: context.l10n.archiveRestore,
           onTap: () async {
-            if (!connected) {
-              context.showNotification(
-                context.l10n.archiveConnectToRestore,
-                type: QNotificationType.warning,
-              );
-              return;
-            }
+            // No pre-check of its own. The controller refuses a restore with
+            // no device and records that it did (#374); refusing here first
+            // showed the same sentence and kept nothing, which is the gap the
+            // issue is about - on the path a user is most likely to take.
             await controller.restoreKey(k);
             if (!context.mounted) return;
             reportArchiveFailure(
@@ -306,7 +303,7 @@ class KeyActionsSheet {
   /// Opens [k] on the connected Flipper. Public so the file manager can reuse
   /// the exact same emulation entry point for matching files.
   static void emulateOnFlipper(BuildContext context, ArchiveKey k) {
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => EmulatePage(flipperKey: k, client: client),
@@ -486,7 +483,7 @@ class KeyActionsSheet {
   }
 
   static void _openInFileManager(BuildContext context, ArchiveKey k) {
-    final client = DeviceScope.of(context).client;
+    final client = DeviceScope.clientOf(context);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
@@ -501,7 +498,7 @@ class KeyActionsSheet {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FlipperMapPage(
-          client: DeviceScope.of(context).client,
+          client: DeviceScope.clientOf(context),
           focusPinPath: path,
         ),
       ),
@@ -514,7 +511,7 @@ class KeyActionsSheet {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FlipperMapPage(
-          client: DeviceScope.of(context).client,
+          client: DeviceScope.clientOf(context),
           pickLocationFor: MapPickTarget(
             localPath: path,
             remotePath: k.remotePath,

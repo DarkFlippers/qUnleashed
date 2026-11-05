@@ -195,11 +195,15 @@ class FileDragSource extends StatelessWidget {
     required this.file,
     required this.child,
     this.group,
+    this.canStart,
     this.onDropped,
   });
 
   final DragFile file;
   final List<DragFile> Function()? group;
+
+  /// Asked when a drag begins; false leaves the row where it is.
+  final bool Function()? canStart;
 
   /// Called once a receiver has taken the files.
   final VoidCallback? onDropped;
@@ -212,6 +216,7 @@ class FileDragSource extends StatelessWidget {
   ];
 
   Future<DragItem?> _item(DragItemRequest request) async {
+    if (canStart?.call() == false) return null;
     final carried = await request.session.getLocalData() ?? const [];
     if (carried.contains('$_ownPrefix${file.id}')) return null;
     return _dragItem(file);

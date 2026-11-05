@@ -2,14 +2,38 @@ import 'package:flutter/material.dart';
 
 import '../../../../services/localization/l10n.dart';
 import '../../../../components/filelist/columns.dart';
+import '../../../../components/filelist/folder_sort.dart';
 import '../../../../components/filelist/progress_fill.dart';
 import '../../../../components/filelist/table.dart';
+import '../../../../components/filelist/toolbar.dart';
 import '../../../../components/format.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 
-/// The facts every apps table sorts by, whatever the row stands for.
+/// The facts every apps-manager table sorts by, whatever the row stands for.
 typedef AppsRowFacts = ({String name, String folder, int size, String version});
+
+/// What the sort button offers over an apps-manager table.
+///
+/// A fixed list, which is the point: the sheet offers the same four sorts at
+/// every width, so it cannot be derived from the laid-out columns - two of
+/// them are dropped on a phone, and a control that comes and goes with the
+/// window is one a user cannot learn. `sortOptionsFor` is the archive's way
+/// round the same problem and does not fit here: it prepends a folder entry
+/// for a table whose name and folder share one cell, which at the widths
+/// where this table *has* a folder column would offer that sort twice.
+///
+/// The keys are the comparator's own, which is why this list lives beside
+/// it.
+List<SortOption> appsSortOptions() {
+  final s = l10n;
+  return [
+    (key: 'name', label: s.sortByName),
+    (key: 'folder', label: s.sortByFolder),
+    (key: 'version', label: s.colVersion),
+    (key: 'size', label: s.colSize),
+  ];
+}
 
 /// Sort key and direction of an apps table, plus the comparison itself.
 class AppsSortState {
@@ -25,12 +49,43 @@ class AppsSortState {
     }
   }
 
+  /// The toolbar's sort button over this state.
+  ///
+  /// Here rather than at each page so the two apps-manager tables cannot
+  /// drift into offering different sorts, and so what the button offers can
+  /// be read on its own: `AppsManagerPage` reaches `AppsBackend.instance` and
+  /// primes a device and an update registry in `initState`, and the install
+  /// page wants the ATP catalog, so neither is a widget a test pumps for the
+  /// sake of one argument.
+  SortControl control(ValueChanged<String> onSort) =>
+      (key: key, asc: asc, opts: appsSortOptions(), onSort: onSort);
+
   int compare(AppsRowFacts a, AppsRowFacts b) {
+    // Not `asc ? cmp : -cmp` like the rest: a folder sort turned around is
+    // `ORDER BY folder DESC, name ASC`, because the name is a tiebreak nobody
+    // picked a direction for. Negating the pair handed every folder's apps
+    // back in reverse, which also made this table disagree with the archive
+    // about what the same gesture means - #312 settled that for the archive,
+    // #314 is this table catching up.
+    //
+    // `folderSortKey` with it, and that half is **not** a bug being fixed
+    // here: an apps folder is one segment today, because the device walk is
+    // one level only and the install table's folder is a catalog field, and
+    // for a string with no `/` the key only lowercases. What it buys is that
+    // this table stops holding a second answer to a question the shared layer
+    // has already answered - `folder_sort.dart`'s own charter - so a nested
+    // folder could not split a subtree if the walk ever grew one.
+    if (key == 'folder') {
+      return compareFolderThenName(
+        folderSortKey(a.folder),
+        a.name.toLowerCase(),
+        folderSortKey(b.folder),
+        b.name.toLowerCase(),
+        asc,
+      );
+    }
     final int cmp;
     switch (key) {
-      case 'folder':
-        final f = a.folder.toLowerCase().compareTo(b.folder.toLowerCase());
-        cmp = f != 0 ? f : a.name.toLowerCase().compareTo(b.name.toLowerCase());
       case 'size':
         cmp = a.size.compareTo(b.size);
       case 'version':

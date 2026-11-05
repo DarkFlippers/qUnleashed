@@ -1,6 +1,20 @@
+import '../../path.dart';
 import '../category.dart';
 
 enum ArchiveKeyState { local, synced, deleted }
+
+/// [ArchiveKey.id] from the parts, for the caller that has them before the key
+/// holding them exists.
+///
+/// That is `ArchiveController`: ingesting a local file, merging the device's
+/// listing, and composing the *new* id after a rename or a download.
+/// Everywhere else asks a key.
+String archiveKeyId({
+  required String flipperDir,
+  required String name,
+  required String extension,
+  String subFolder = '',
+}) => '$flipperDir/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
 
 class ArchiveKey {
   ArchiveKey({
@@ -50,6 +64,41 @@ class ArchiveKey {
   static const Object _unset = Object();
 
   String get fileName => '$name.$extension';
+
+  /// Which file this is, within one device's archive.
+  ///
+  /// Not [remotePath]: this is the local layout, `flipperDir` and the
+  /// sub-folder as the controller walks them, and it is what the favourites
+  /// store is keyed by - so it has to stay the string it is today. [remotePath]
+  /// maps the dir through [ArchiveCategory.remoteDirOf] and can be overridden
+  /// outright by the file manager, which makes it the wrong thing to identify
+  /// a row by.
+  ///
+  /// The overview pages each composed this inline to key a selection by, and
+  /// the controller again for the favourites and its own `_keys` map (#375) -
+  /// the file browser is the one selection that does not use it, as it keys
+  /// rows by an entry's name. Any of them spelling it differently would be a
+  /// selection that cannot be cleared, or a star that lands on nothing.
+  ///
+  /// Unique within a device's archive, but not by this string alone: `subghz`
+  /// and `wardriving` are separate categories whose dirs nest
+  /// (`subghz/wardriving`), and what keeps their files apart in `_keys` is
+  /// `ignoredSubDirs: ['wardriving']` on `subghz` in `category.dart`.
+  String get id => archiveKeyId(
+    flipperDir: flipperDir,
+    name: name,
+    extension: extension,
+    subFolder: subFolder,
+  );
+
+  /// How many bytes [name] may run to, given what [fileName] adds to it.
+  ///
+  /// Here because this is where the extension is appended: a prompt that
+  /// worked the budget out for itself would be reverse-engineering this
+  /// getter, and the arithmetic would go quietly wrong the day it appends
+  /// anything else. A name approved at the volume's own 255 reaches
+  /// `storageRename` four bytes over it, refused with no cause named - #277.
+  int get nameBudget => deviceNameBudgetFor(extension);
 
   String get remotePath {
     final override = _remotePathOverride;

@@ -67,7 +67,7 @@ rest - #110 and #120 - are closed.
 |---|---|---|
 | Bare `catch (_) {}` in the app's `lib/` | 42 | **24** |
 | `LogService.info` inside a `catch` | 117 | **49** |
-| Tests on `classifyConnectError` | 0 | **19** in flipperlib, 14 here |
+| Tests on `classifyConnectError` | 0 | **69** in flipperlib, 17 here |
 
 Both numbers are ratchets with a per-area budget, and every site left is named
 in the budget map with the reason it earns its place. The ratchet on bare
@@ -95,8 +95,12 @@ boundary where the operation finishes.
 **Classify at the boundary held, and was extended rather than replaced.**
 `FlipperConnectErrorKind` gained `sessionLimit` for this library's own cap on
 held links (dart-flipperlib#9), which had been falling through to `unknown`
-since the cap existed. A sealed hierarchy would not have helped: that one is
-thrown here, but the six around it still come from platform BLE stacks as
+since the cap existed. `servicesMissing` joined it later, for a device that
+answers with no Flipper service on it (QUNLEASHED-Y), and is the one kind read
+by type rather than matched - its sentence stays as the fallback, because
+re-parsing a message this library wrote one frame earlier is not boundary
+classification. A sealed hierarchy would still not have helped: those two are
+thrown here, and the six around them come from platform BLE stacks as
 substrings.
 
 **What is left is not this ADR's subject.** #103 counts 49 `LogService.info`
@@ -136,7 +140,7 @@ it is not growing, and the count was never the problem. The location is.
   true, and nothing anywhere recording why.
 - `classifyConnectError` becomes the named pattern for differentiated failures,
   and it needs tests — it is one of the two modules named in
-  [0003](0003-test-flipperlib-first.md). It has them: 19 in flipperlib, and 14
+  [0003](0003-test-flipperlib-first.md). It has them: 69 in flipperlib, and 17
   here over the strings each kind is shown as, which is the half that had none
   and where a kind had been falling through unnoticed.
 

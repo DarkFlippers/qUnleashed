@@ -4,7 +4,7 @@ env:
   # How long an artifact is kept. A dispatch build carries release filenames and
   # the release key, so it is kept briefly and cannot be mistaken for a
   # published asset. One place rather than the same expression and the same
-  # two-line comment at each of the three upload steps.
+  # two-line comment at each of the upload steps.
   ASSET_RETENTION: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
 
 on:
@@ -74,7 +74,19 @@ jobs:
           # thing on the critical path before the builds - so without the
           # expression a push would pay for a full clone it never looks at.
           # It gets depth 1.
-          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
+          #
+          # Quoted, and that is the whole of why this works. GitHub's `&&`/`||`
+          # yield operand values rather than booleans, and the number 0 is
+          # falsy there - so unquoted, `true && 0` is 0, `0 || 1` is 1, and a
+          # dispatch silently got the depth the push branch asks for. It
+          # shipped that way in #292 and stayed broken until the first dispatch
+          # after it: the tag check right below reads the commit count, and
+          # `derive_version.sh` refuses a shallow one rather than counting
+          # wrong, so the run died in `guard` before any platform built. A
+          # non-empty string is truthy, and checkout parses its inputs as
+          # strings anyway. ASSET_RETENTION above is the same idiom and is
+          # safe only because both of its values happen to be truthy.
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
 
       - name: Cancel outside github.com
         if: ${{ github.server_url != 'https://github.com' }}
@@ -92,8 +104,13 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh --print -- "$RELEASE_TAG"
 
-  build-android-linux:
-    name: Build Android and Linux releases
+  # Android alone. Linux used to build here too and left over #280 - see
+  # build-linux, which owns that story. Two facts belong here: Android does not
+  # care which Ubuntu it is built on, because the NDK brings its own sysroot,
+  # so this job stays on the floating label; and this is the job that publishes
+  # the build identity, which is why the split left it here. See `outputs`.
+  build-android:
+    name: Build Android release
     needs: guard
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
@@ -146,7 +163,10 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # `secrets.SENTRY_DSN`, not `QU_SENTRY_DSN`: the secret is named
+          # for Sentry, the env var for the dart-define that
+          # `Telemetry.compiledDsn` reads. docs/releasing.md says so too.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -171,6 +191,11 @@ jobs:
             printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
           } > android/key.properties
 
+      # No Sentry token here on purpose. R8's mapping is written by this step
+      # and its UUID ships inside these APKs, but the upload is the step below,
+      # where a fault at Sentry costs a warning instead of the release -
+      # `android/app/build.gradle.kts` records why it cannot be the other way
+      # round.
       - name: Build Android release APKs
         run: .github/scripts/build/android.sh
 
@@ -192,14 +217,6 @@ jobs:
       - name: Verify Android APKs
         run: .github/scripts/verify_apks.sh dist
 
-      - name: Install Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev
-
-      - name: Build Linux single-file executable
-        run: .github/scripts/build/linux.sh
-
       # continue-on-error stays on the calling step: it is not a composite
       # action key. This runs after the build and produces nothing a user
       # downloads, so a fault at Sentry must not throw away a release that is
@@ -210,13 +227,124 @@ jobs:
         with:
           auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
-      - name: Upload Android and Linux release assets
+      - name: Upload Android release assets
         uses: actions/upload-artifact@v4
         with:
-          name: release-assets-android-linux
-          path: |
-            dist/qunleashed_*_android_*.apk
-            dist/qunleashed_*_linux_x64
+          name: release-assets-android
+          path: dist/qunleashed_*_android_*.apk
+          if-no-files-found: error
+          retention-days: ${{ env.ASSET_RETENTION }}
+
+  # Pinned, and the pin is the fix for #280. A Flutter Linux app links against
+  # the host's GTK and GLib and ships neither, so the oldest system the binary
+  # can start on is decided by the image it was compiled on - and `ubuntu-latest`
+  # is not a floor, it is whatever GitHub last pointed that label at. It moved
+  # from 22.04 to 24.04 and took the published asset with it.
+  #
+  # 22.04 is the floor because it was the oldest Ubuntu LTS in standard support
+  # when this was pinned, and is the base of Mint 21.x, which is what #280 was
+  # reported on. Debian 12 is at or above it on every library that matters, so
+  # this covers that too.
+  #
+  # Two things will make that stale, on different dates: GitHub retiring this
+  # runner label, and 22.04 leaving standard support in April 2027.
+  # check_linux_abi.sh holds the numbers and lists the ways out;
+  # docs/releasing.md is where the decision goes. Neither is this comment's to
+  # make.
+  build-linux:
+    name: Build Linux release
+    needs: guard
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          # fetch-depth: see build-android.
+          fetch-depth: 0
+
+      # Linux needs one too, for the same reason Windows does and not for
+      # Gradle: `sentry_flutter` pins `jni` to 0.14.2, whose CMake calls
+      # `find_package(JNI REQUIRED COMPONENTS JVM)` on every platform except
+      # Android, and `jni` is in linux/flutter/generated_plugins.cmake. Without
+      # a JDK the configure step fails before anything is compiled. This was
+      # invisible while Linux shared the Android job, which had a JDK for
+      # Gradle - splitting the jobs is what made it this job's problem.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: ./.github/actions/setup-flutter
+
+      - name: Restore Flutter Firebase options
+        env:
+          FIREBASE_OPTIONS_DART_BASE64: ${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}
+        run: .github/scripts/restore_firebase_config.sh dart
+
+      # Derived here rather than taken from build-android's outputs, which is
+      # what Windows and macOS already do. It is the same answer: the number
+      # counts commits and the slot is the run attempt, both of which are
+      # properties of the run rather than of the job. Only `publish` must not
+      # re-derive it - see the comment on build-android's `outputs`.
+      - name: Derive the build identity
+        shell: bash
+        env:
+          QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
+          QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
+          QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          # secrets.SENTRY_DSN rather than QU_SENTRY_DSN: see build-android.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
+
+      # The last two are sentry-native's, which sentry_flutter builds from
+      # source during the Flutter build: libcurl is its Linux transport
+      # (`find_package(CURL REQUIRED)`, which is where this job once stopped),
+      # and crashpad takes zlib from the system on everything but MSVC. The
+      # runner image ships zlib, but an image default is not something a build
+      # should rest on - the same argument the Windows JDK comment makes, and
+      # ADR 0013's Consequences. Not the JDK above, which is a hard
+      # requirement rather than an image default.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev libcurl4-openssl-dev zlib1g-dev
+
+      # Before the build, not after it: this half of the floor is a property of
+      # the image and is knowable the moment pkg-config can see GLib, so a
+      # wrong image should not cost three and a half minutes of compiling
+      # first. It has to come after apt, which is what installs the GLib it
+      # reads.
+      - name: Check the Linux build image
+        run: .github/scripts/check_linux_abi.sh --check-environment
+
+      - name: Build Linux single-file executable
+        run: .github/scripts/build/linux.sh
+
+      # The runner pin above is the fix; this is what notices when the pin
+      # stops holding. Existence was all that was checked before, and #280
+      # built, uploaded and published green.
+      - name: Check the Linux ABI floor
+        run: .github/scripts/check_linux_abi.sh
+
+      # continue-on-error: see build-android.
+      - name: Upload debug symbols to Sentry
+        uses: ./.github/actions/upload-debug-symbols
+        continue-on-error: true
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Upload Linux release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-linux
+          path: dist/qunleashed_*_linux_x64
           if-no-files-found: error
           retention-days: ${{ env.ASSET_RETENTION }}
 
@@ -268,7 +396,10 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # `secrets.SENTRY_DSN`, not `QU_SENTRY_DSN`: the secret is named
+          # for Sentry, the env var for the dart-define that
+          # `Telemetry.compiledDsn` reads. docs/releasing.md says so too.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -346,7 +477,10 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # `secrets.SENTRY_DSN`, not `QU_SENTRY_DSN`: the secret is named
+          # for Sentry, the env var for the dart-define that
+          # `Telemetry.compiledDsn` reads. docs/releasing.md says so too.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -381,8 +515,12 @@ jobs:
 
   publish:
     name: Publish GitHub release
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
     needs:
-      - build-android-linux
+      - build-android
+      - build-linux
       - build-macos
       - build-windows
     # Creates the GitHub release, so only ever for a push - a tag for a release,
@@ -396,12 +534,26 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # A default checkout is enough: the only thing this job asks the script
-      # for is `--print-channel`, which is decided by the trigger and returns
-      # before anything reads git. The version and number come from the build
-      # job's outputs.
+      # `--print-channel` is decided by the trigger and returns before anything
+      # reads git, and the version and number come from build-android's outputs -
+      # so this job needed no history until `release_body.sh` did. It resolves
+      # the `dev` tag and reads the changelog at it, which a depth-1 checkout
+      # has neither; and nothing clears that tag on a release, so the commit it
+      # names can be older than the last release and no fixed depth covers it.
+      #
+      # Fetching the tag shallowly instead does not work, and fails quietly:
+      # `--depth 1` plus a refspec for `dev` resolves the tag and reads the blob,
+      # but `rev-list --count dev..HEAD` then answers 1 for any distance, so the
+      # commit-subject fallback - the usual path - publishes a single line
+      # forever. That fallback needs ancestry between the tag and HEAD, not just
+      # the tag.
+      #
+      # The version and number still come from build-android, not from a
+      # derivation here.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Download release assets
         uses: actions/download-artifact@v4
@@ -415,8 +567,9 @@ jobs:
       # not have to agree; ADR 0014 §4 makes the script the only one. It also
       # means a push to `main`, which has no tag to test, resolves the same way
       # the build jobs do.
-      # The version and number come from the job that built the binaries, not
-      # from a fresh derivation here: on a release the slot is the run attempt,
+      # The version and number come from build-android, which is the one build
+      # job that publishes them, not from a fresh derivation here: on a release
+      # the slot is the run attempt,
       # so re-running only this job would quote a number no artifact carries.
       # The channel is derived, because it depends on the trigger alone and
       # cannot drift between jobs.
@@ -424,8 +577,8 @@ jobs:
         id: channel
         shell: bash
         env:
-          VERSION: ${{ needs.build-android-linux.outputs.version-name }}
-          NUMBER: ${{ needs.build-android-linux.outputs.version-code }}
+          VERSION: ${{ needs.build-android.outputs.version-name }}
+          NUMBER: ${{ needs.build-android.outputs.version-code }}
         run: |
           channel="$(.github/scripts/derive_version.sh --print-channel)"
           version="$VERSION"
@@ -448,6 +601,7 @@ jobs:
 
           {
             echo "release_tag=$release_tag"
+            echo "channel=$channel"
             echo "version=$version"
             echo "number=$number"
             echo "data=$data"
@@ -457,30 +611,63 @@ jobs:
             # The name carries the version, since the tag no longer can - every
             # dev build is tagged `dev`, and §2 gives them all one version name
             # too, so the build number and the commit are what tell them apart.
+            body="version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
             {
               echo "release_name=Development build $version-dev ($number)"
               echo "prerelease=true"
               echo "make_latest=false"
-              # Notes are generated from the previous tag, and the previous
-              # `dev` tag is the one this build is replacing - so they would
-              # describe the gap between two dev builds and get shorter the
-              # more often the build runs. The body below says what matters.
+              # Naming the gap between two dev builds is what the body does
+              # now, and it does it from the changelog - curated prose with a
+              # credit per bullet. A generated list of pull request titles is
+              # the same information worse, and measured against whichever tag
+              # survives rather than the one this build replaces: the clear
+              # step below takes `dev` before `action-gh-release` runs, so the
+              # list would reach back to the last stable release.
               echo "generate_notes=false"
               echo "topic=app_dev"
               echo "title=New qUnleashed app dev build"
-              echo "body=version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
+              echo "body=$body"
             } >> "$GITHUB_OUTPUT"
           else
+            body="version: $version ($number)"
+            # Generated notes list the pull requests since the previous tag,
+            # which against curated prose carrying a credit per bullet is the
+            # same information worse - and with 172 of them since the last
+            # stable release, very much longer. Off, unconditionally; the
+            # warning for a release with nothing written is
+            # `release_body.sh`'s, which is where the changelog is read.
             {
               echo "release_name=${GITHUB_REF_NAME}"
               echo "prerelease=false"
               echo "make_latest=true"
-              echo "generate_notes=true"
+              echo "generate_notes=false"
               echo "topic=app_release"
               echo "title=New qUnleashed app released"
-              echo "body=version: $version ($number)"
+              echo "body=$body"
             } >> "$GITHUB_OUTPUT"
           fi
+
+          # `release_body.sh` owns the body, its shapes and the reasoning, and
+          # has a test suite. It reads the changelog and the `dev` tag itself,
+          # so all it needs from here is the channel and the one-liner.
+          #
+          # `body` stays the one-liner alone, because the push notification
+          # sends it to a phone.
+          body_path="$RUNNER_TEMP/release-body.md"
+          .github/scripts/release_body.sh \
+            --channel "$channel" --summary "$body" >"$body_path"
+          # An EMPTY body_path file is a successful read as far as the
+          # release action is concerned, so it would publish an empty body
+          # rather than falling back to `body`. The script writes the one-liner
+          # on every path it can exit 0 from, so empty here means something went
+          # wrong that nothing else would report - and a release page with no
+          # body is the failure this whole block exists to avoid.
+          if [[ ! -s "$body_path" ]]; then
+            echo "::error::The release body came out empty. Refusing to publish a release page with nothing on it." >&2
+            exit 1
+          fi
+
+          echo "body_path=$body_path" >> "$GITHUB_OUTPUT"
 
       - name: Write SHA256SUMS
         run: .github/scripts/checksums.sh dist
@@ -525,6 +712,7 @@ jobs:
           tag_name: ${{ steps.channel.outputs.release_tag }}
           name: ${{ steps.channel.outputs.release_name }}
           body: ${{ steps.channel.outputs.body }}
+          body_path: ${{ steps.channel.outputs.body_path }}
           prerelease: ${{ steps.channel.outputs.prerelease }}
           make_latest: ${{ steps.channel.outputs.make_latest }}
           generate_release_notes: ${{ steps.channel.outputs.generate_notes }}
@@ -586,3 +774,372 @@ jobs:
         run: |
           echo "::error::Push finished without publishing (publish: ${{ needs.publish.result }})."
           exit 1
+
+      # The same argument one step down, for the three jobs that hang off
+      # `publish` and gate on its `channel` output: `open-next-cycle`,
+      # `close-release-milestone` and `ensure-cycle-milestone`. Each matches
+      # one literal, so a value matching none skips all three on a green run -
+      # and a skipped `open-next-cycle` is the expensive one, leaving `main`
+      # red with no pull request to merge and nothing saying why.
+      #
+      # Not a third channel: `derive_version.sh` refuses any value but `dev`
+      # and `release` before it prints one, and `derive_version_test.sh`
+      # covers it. What this catches is the wiring between the two files
+      # breaking - `id: channel` renamed, the step-output key renamed, the
+      # job-level `outputs:` block dropped. `publish` is green in all of them
+      # and the output is the empty string, which is why the text below says
+      # so rather than quoting a value the reader would go looking for.
+      # Only a consumer can check this: what is being asserted is an agreement
+      # about a name, and a producer cannot see how it is spelled here.
+      - name: Fail on a channel no post-publish job matched
+        if: ${{ needs.publish.outputs.channel != 'dev'
+          && needs.publish.outputs.channel != 'release' }}
+        run: |
+          echo "::error::publish succeeded but its channel output is '${{ needs.publish.outputs.channel }}' - no post-publish job matches it, so the cycle opener and both milestone jobs skipped. The output wiring between derive_version.sh and publish.outputs.channel is broken."
+          exit 1
+
+  # Publishing a release breaks `main` on purpose: until pubspec names a
+  # version that has not been published, every push fails with "Version 0.16.0
+  # has already been published". Two files have to move to clear it, and
+  # `check_changelog.sh` refuses a changelog whose version line disagrees with
+  # pubspec, so they move together.
+  #
+  # This opens a pull request; it does not push to `main`. Three reasons, and
+  # the first is the one that decides it:
+  #
+  #  - the version is a person's call (0014 §2). A minor bump is what this
+  #    project almost always opens, so that is what gets proposed - but a
+  #    proposal in a pull request can be changed to 0.17.0 or 1.0.0 before it
+  #    lands, and a commit pushed straight to `main` cannot.
+  #  - `main` is branch-protected, so pushing would need a bypass or a personal
+  #    token, granted to the workflow that holds the signing keys.
+  #  - a push can race a merge and half-apply, leaving the release published
+  #    and the cycle unopened - the exact state this exists to clear.
+  open-next-cycle:
+    name: Open the next cycle
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'release' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # `main`, not the tag this run was started from: that is where the bump
+      # has to land, and a release is a tag push so the default ref is wrong.
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      # The release published the changelog as it stood at the tag, and this
+      # job works on `main`. Five platform builds take the better part of an
+      # hour, so a bullet merged in between was published in no release and
+      # would then be deleted by the reset - silently, because replacing the
+      # file conflicts with nothing. Refuse instead: `main` stays red, which it
+      # already was, and nobody's credited note is thrown away.
+      - name: Refuse to reset notes that landed after the tag
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git fetch --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
+          if ! git diff --quiet "$TAG" HEAD -- CHANGELOG.md; then
+            echo "::error::CHANGELOG.md on main differs from tag $TAG, so notes landed after the release was cut. They would be lost by the reset - open the next cycle by hand, carrying them over."
+            exit 1
+          fi
+
+      - name: Write the bump and reset the changelog
+        id: cycle
+        shell: bash
+        env:
+          RELEASED: ${{ needs.publish.outputs.version }}
+        run: |
+          next="$(.github/scripts/open_next_cycle.sh "$RELEASED")"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Opening the $next cycle, released $RELEASED."
+
+      # The pull request below carries no checks of its own: GitHub starts no
+      # workflow for an event caused by the repository's own GITHUB_TOKEN. So
+      # the guard runs here, against the files that are about to be committed,
+      # rather than being first trusted after somebody merges them.
+      - name: Check what it wrote
+        run: .github/scripts/check_changelog.sh
+
+      # The commit and pull request bodies go through files. Inlining them as
+      # `-m "..."` across several lines carries the continuation's own
+      # indentation into the message - two leading spaces on the body's first
+      # line, invisible here and permanent in the commit.
+      - name: Open the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.cycle.outputs.next }}
+          RELEASED: ${{ needs.publish.outputs.version }}
+        run: |
+          branch="chore/open-$NEXT"
+
+          cat >"$RUNNER_TEMP/commit-msg.txt" <<EOF
+          Open the $NEXT cycle
+
+          $RELEASED has been released, so every push to main fails until
+          pubspec names a version that has not been. The changelog's notes
+          shipped with it and go back to a skeleton; the guard refuses the two
+          disagreeing, so they move together.
+
+          The version is a minor bump by default, which is what this project
+          almost always opens. Change it here if this cycle is a patch or a
+          major - ADR 0014 keeps that digit for a person, and this is the pull
+          request where it is still a proposal.
+          EOF
+
+          cat >"$RUNNER_TEMP/pr-body.md" <<EOF
+          $RELEASED is out, so \`main\` is red until pubspec names a version that
+          has not been published. This bumps it to **$NEXT** and resets
+          \`CHANGELOG.md\` to its skeleton, in one commit because
+          \`check_changelog.sh\` refuses the two disagreeing.
+
+          **The version is a default, not a decision.** A minor bump is what
+          this project almost always opens; if $RELEASED should be followed by a
+          patch or a major, change the two lines before merging.
+          [ADR 0014](https://github.com/DarkFlippers/qUnleashed/blob/main/docs/adr/0014-build-identity.md)
+          §2 keeps that digit for a person, which is why this is a draft pull
+          request rather than a push to \`main\`: since 0.11.0 the releases have
+          gone four minors and four patches, so a minor is a coin flip, not a
+          safe guess.
+
+          This carries no checks: GitHub starts no workflow for an event the
+          repository's own token caused. The release run checked the changelog
+          against the committed files before opening this.
+
+          Opened by the release run for $RELEASED.
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add pubspec.yaml CHANGELOG.md
+          git commit -F "$RUNNER_TEMP/commit-msg.txt"
+
+          # Checked before anything is pushed, so an open proposal is never
+          # rewritten. This job's one invitation is "change the version before
+          # merging", and the only place to accept it is this branch.
+          existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$existing" ]]; then
+            echo "::notice::Pull request #$existing already opens the $NEXT cycle; leaving it alone."
+            exit 0
+          fi
+
+          # No --force. A re-run of the release would otherwise regenerate the
+          # default minor bump and overwrite a reviewer's edit on this branch,
+          # leaving the pull request open and silently carrying the bot's digit
+          # again. --force-with-lease is not the fix: the job fetches only
+          # `main`, so there is no remote-tracking ref to lease against and the
+          # push is rejected as stale - and fetching the branch first in the
+          # same run makes the lease vacuous and overwrites the commit anyway.
+          # Both were reproduced before settling on this.
+          #
+          # A rejection here means a branch already opens this cycle, which is
+          # not a failure: the content is derived from the released version, so
+          # every attempt writes the same thing.
+          git push origin "$branch" ||
+            echo "::notice::$branch already opens this cycle; leaving it as it stands."
+
+          # No --milestone: $NEXT is a proposal, so the cycle's milestone has
+          # no settled name yet - `ensure-cycle-milestone` creates it from
+          # pubspec once the digit has been merged.
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Open the $NEXT cycle - confirm the digit" \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            --assignee mishamyte \
+            --draft
+
+  # One open milestone per cycle, named after its version, plus `Backlog`. The
+  # convention, its provenance and the lifecycle these two jobs hold up live in
+  # docs/releasing.md#milestones - this is the half a reader of the workflow
+  # needs. Neither job files an item into a milestone, and neither maintains
+  # `Backlog`.
+  #
+  # Milestones are part of the Issues API, so the scope is `issues: write` -
+  # there is nothing named for milestones to grant.
+  close-release-milestone:
+    name: Close the release milestone
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'release' }}
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Close the milestone named after the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          # Stated rather than inherited. `shell: bash` runs as `-eo pipefail`
+          # and a bare `run:` does not, so without this line a failed API call
+          # would leave an empty pipeline for the branches below to read as an
+          # answer - ci.yml has its own note on the same trap.
+          set -euo pipefail
+
+          # `; `-joined, in one pass, without rewriting a `;` that was inside a
+          # title. `--slurp` would do it in jq, but gh refuses it alongside
+          # `--jq`: "the --slurp option is not supported with --jq".
+          join_lines() {
+            awk 'NR > 1 { printf "; " } { printf "%s", $0 } END { if (NR) print "" }'
+          }
+
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::No version from publish; refusing to guess which milestone to close." >&2
+            exit 1
+          fi
+
+          # gojq is what `gh` embeds and it implements `env`, so the title is
+          # compared where the data is. `gh api --jq` has no `--arg`.
+          #
+          # The counts come from this same response: the list endpoint carries
+          # `open_issues` and `closed_issues` on every milestone, so nothing
+          # below has to re-fetch one, and `state` and the counts cannot
+          # disagree with each other.
+          #
+          # `if !` rather than a bare assignment, so "the API could not be
+          # reached" cannot arrive as "there is no such milestone" - the two
+          # take different exits, the way check_linux_abi.sh does it.
+          if ! found="$(gh api "repos/$REPO/milestones?state=all&per_page=100" \
+            --paginate --jq '.[] | select(.title == env.VERSION) | "\(.number) \(.state) \(.open_issues) \(.closed_issues)"')"; then
+            echo "::error::Could not list milestones, so whether $VERSION has one is unknown." >&2
+            exit 1
+          fi
+
+          read -r number state open closed <<<"$found"
+
+          if [[ -z "$number" ]]; then
+            # Not a failure - the binaries are published and this is
+            # bookkeeping, so the run stays green. A warning rather than a
+            # notice, though: by the time a release runs,
+            # `ensure-cycle-milestone` should have created this milestone on
+            # the first dev build of the cycle. Its absence means that never
+            # happened, or somebody renamed or deleted it, and none of those
+            # three is the "nothing to do" a notice would suggest.
+            echo "::warning::No milestone named $VERSION. The cycle had none, or it was renamed or deleted - $VERSION is published either way, only the bookkeeping is missing."
+            exit 0
+          fi
+
+          if [[ "$state" == closed ]]; then
+            echo "::notice::Milestone $VERSION (#$number) was already closed."
+            exit 0
+          fi
+
+          if [[ "$open" != "0" ]]; then
+            # Named, not counted. The moment this closes, they drop out of
+            # every open-milestone view - so a bare count asks for a move whose
+            # subjects the reader then has to go and reconstruct. The step
+            # summary gets the same line, because an annotation on a green run
+            # is out of sight as soon as the next release run exists, and the
+            # summary stays attached to this one.
+            items="$(gh api "repos/$REPO/issues?milestone=$number&state=open&per_page=100" \
+              --paginate --jq '.[] | "#\(.number) \(.title)"' | join_lines)"
+            echo "::warning::Milestone $VERSION still has $open open item(s); closing it anyway - move them to Backlog: $items"
+            echo "Milestone \`$VERSION\` was closed with $open open item(s) still in it: $items" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+          gh api -X PATCH "repos/$REPO/milestones/$number" -f state=closed --silent
+          echo "Closed milestone $VERSION (#$number)."
+
+          # A version retargeted mid-cycle, caught by its signature rather than
+          # by a list of names: what this just closed held nothing at all.
+          #
+          # It is a documented path - the cycle ran toward one version,
+          # releasing.md step 1 says to push the patch digit to `main` before
+          # tagging it, and that push created a second, empty milestone for
+          # this job to close, leaving the cycle's own one open holding
+          # everything that shipped. An exact-match lookup cannot see that, and
+          # the open-items warning above cannot either, since what it closed is
+          # empty.
+          #
+          # Asking "was it empty" rather than "is anything but `Backlog` still
+          # open" is what keeps this quiet in the normal case: a release that
+          # closes a milestone with a cycle's work in it says nothing, and a
+          # second milestone somebody opened early for triage does not make
+          # every release warn for ever.
+          if [[ "$open" == "0" && "$closed" == "0" ]]; then
+            others="$(gh api "repos/$REPO/milestones?state=open&per_page=100" \
+              --paginate --jq '.[] | "\(.title) (#\(.number))"' | join_lines)"
+            echo "::warning::Milestone $VERSION held nothing, so the work released as $VERSION is filed somewhere else - a version retargeted mid-cycle, or a title that does not match. Still open: ${others:-nothing}."
+          fi
+
+  # The cycle's own milestone, created once its version is settled.
+  # `open-next-cycle` cannot do this: the digit it writes is a guess a reviewer
+  # changes in the pull request, so a milestone created there is left behind
+  # whenever the patch digit turned out to be the answer. And open_next_cycle.sh
+  # is pure file-writing with no network and no token, which is what makes it
+  # testable on its own; a `gh` call there would cost that.
+  #
+  # Here the version is pubspec's as merged, so the name is the one the cycle
+  # actually carries. It runs on every dev build that publishes rather than on
+  # the cycle pull request's merge: that costs a job and one lookup per dev
+  # build and buys a cycle opened by hand its milestone too, with nothing kept
+  # between runs.
+  ensure-cycle-milestone:
+    name: Open the cycle milestone
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'dev' }}
+    # See close-release-milestone for why the scope is issues: write.
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create the milestone for the version being built toward
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::No version from publish; refusing to name a milestone." >&2
+            exit 1
+          fi
+
+          # The same lookup as close-release-milestone, deliberately to the
+          # letter: the projection and the `read` below have to stay in step
+          # across the two, so they are easier to compare than to diff.
+          #
+          # state=all, not state=open: a closed milestone for this version is
+          # an answer, not an absence. Guard two in derive_version.sh refuses a
+          # dev build whose version a tag already names, so a closed milestone
+          # reaching this job was closed by hand mid-cycle - recreating it
+          # would quietly undo that. It is said out loud instead: a cycle whose
+          # milestone is closed has nowhere to file its work, which is the
+          # state this job exists to prevent.
+          if ! found="$(gh api "repos/$REPO/milestones?state=all&per_page=100" \
+            --paginate --jq '.[] | select(.title == env.VERSION) | "\(.number) \(.state) \(.open_issues) \(.closed_issues)"')"; then
+            echo "::error::Could not list milestones, so whether $VERSION has one is unknown." >&2
+            exit 1
+          fi
+
+          read -r number state open closed <<<"$found"
+
+          if [[ -n "$number" ]]; then
+            if [[ "$state" == closed ]]; then
+              echo "::warning::Milestone $VERSION (#$number) exists but is closed, with $closed item(s) in it, while this cycle builds toward $VERSION - nothing can be filed in it. Reopen it, or move the cycle on."
+            else
+              echo "Milestone $VERSION already exists (#$number), with $open open and $closed closed."
+            fi
+            exit 0
+          fi
+
+          # No description: the title is the version, and a sentence adds
+          # nothing to it.
+          number="$(gh api -X POST "repos/$REPO/milestones" -f title="$VERSION" --jq .number)"
+          echo "::notice::Created milestone $VERSION (#$number)."

@@ -97,7 +97,6 @@ class ToolsPage extends StatelessWidget {
           title: s.toolMifare,
           description: s.toolMifareSubtitle,
           routeBuilder: _buildRecoverPage,
-          badge: s.toolBadgeBeta,
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/sub.svg',
@@ -202,15 +201,35 @@ class ToolsPage extends StatelessWidget {
     );
   }
 
+  /// One tool page at a time, whichever way the card opens one.
+  ///
+  /// Both branches, because every item here opens a page: the five that
+  /// declare `onTap` push too - the CLI page directly, the rest through
+  /// `openRoute` - and the first draft of this guard sat inside the
+  /// `routeBuilder` branch only, under a comment claiming it covered the card
+  /// list. It covered six of eleven cards, and the five it missed included the
+  /// worst one: `CliPage.initState` kicks `_bootstrap()` behind a per-instance
+  /// `_busy`, so two of them open two CLI channels on one Flipper.
+  ///
+  /// The worst payload among the rest is Recover, which builds its own
+  /// controller in `initState` and calls `start()` - `_running` is per
+  /// instance, so it guards nothing across two stacked pages. Both load the
+  /// user's key dictionary and both write it back, so one run's recovered keys
+  /// are lost. #244.
   VoidCallback? _resolveTap(BuildContext context, ToolItemModel item) {
-    final onTap = item.onTap;
-    if (onTap != null) return () => onTap(context);
     final routeBuilder = item.routeBuilder;
-    if (routeBuilder != null) {
-      return () =>
-          Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
-    }
-    return null;
+    final open =
+        item.onTap ??
+        (routeBuilder == null
+            ? null
+            : (BuildContext c) => pushPage(c, routeBuilder));
+    if (open == null) return null;
+    // One guard over both kinds of item, so the mistake the comment above
+    // describes cannot be made again by adding a branch.
+    return () {
+      if (!isTopRoute(context)) return;
+      open(context);
+    };
   }
 
   @override
@@ -255,10 +274,10 @@ class ToolsPage extends StatelessWidget {
 }
 
 Widget _buildRecoverPage(BuildContext context) =>
-    RecoverPage(client: DeviceScope.of(context).client);
+    RecoverPage(client: DeviceScope.clientOf(context));
 
 Widget _buildSeedPage(BuildContext context) =>
-    SeedPage(client: DeviceScope.of(context).client);
+    SeedPage(client: DeviceScope.clientOf(context));
 
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
@@ -277,17 +296,17 @@ Future<void> _openSettingsPage(BuildContext context) async {
 }
 
 Widget _buildPaintPage(BuildContext context) =>
-    ProjectManagerPage(client: DeviceScope.of(context).client);
+    ProjectManagerPage(client: DeviceScope.clientOf(context));
 
 Future<void> _openFliblerPage(BuildContext context) async {
   await openRoute(context, AppRoute.fliblerProject);
 }
 
 Widget _buildRemoteControlPage(BuildContext context) =>
-    RemoteControlPage(client: DeviceScope.of(context).client);
+    RemoteControlPage(client: DeviceScope.clientOf(context));
 
 Future<void> _openCliPage(BuildContext context) async {
-  final client = DeviceScope.of(context).client;
+  final client = DeviceScope.clientOf(context);
   await Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => CliPage(client: client, links: LinkService.instance),

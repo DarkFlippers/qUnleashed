@@ -167,11 +167,11 @@ class SeedCaptureFormat {
     }
 
     final protocol = fields['Protocol'];
-    if (protocol != null && protocol != manufacturer.protocol) {
+    if (protocol != null && protocol != manufacturer.protocol.inFile) {
       skipped.add(
         'file says Protocol "$protocol" for '
         '${manufacturer.label}, which this build pairs with '
-        '"${manufacturer.protocol}"',
+        '"${manufacturer.protocol.inFile}"',
       );
       return (capture: null, skipped: skipped);
     }

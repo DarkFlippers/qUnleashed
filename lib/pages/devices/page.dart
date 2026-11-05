@@ -25,33 +25,67 @@ import 'widgets/page_header.dart';
 class DeviceTab extends StatelessWidget {
   const DeviceTab({super.key});
 
-  static const double _headerContentHeight = 114;
   static const double _contentMaxWidth = 1120;
 
   @override
   Widget build(BuildContext context) {
     final ctrl = DeviceScope.of(context);
     final topInset = MediaQuery.paddingOf(context).top;
-    final headerHeight = topInset + _headerContentHeight;
     final wide = MediaQuery.sizeOf(context).width >= 560;
     final state = ctrl.connectionState;
     final inDfu =
         state == DeviceConnectionState.dfu ||
         state == DeviceConnectionState.recovering;
 
-    return Stack(
+    // **A column, and the header has no height of its own.** This was a
+    // `Stack` with the header floating over a full-height list, which meant
+    // the page had to tell the header how tall it was: a constant 114, the
+    // mockup's 7+100+7, with nothing in it for the text beside the mockup. A
+    // wrapped title or one more run of hero metadata spilled out of that, and
+    // `Flex.clipBehavior` being `Clip.none`, release painted the surplus over
+    // the list rather than clipping it and reported nothing.
+    //
+    // Scaling that constant by the text scaler was the first fix tried here,
+    // and it is a guess twice over: `TextScaler.scale` is defined for font
+    // sizes rather than box heights, and the hero's metadata is a `Wrap`
+    // whose height steps when a run breaks, which nothing proportional can
+    // track.
+    //
+    // A column needs no number. The header sizes to its content, the list
+    // takes what is left, and all three readers of the old height - the
+    // header's own `height`, the list's top padding and the indicator's
+    // `edgeOffset` - go with it. The header is opaque, so nothing was being
+    // seen through it; what changes is that an overscroll shows at the list's
+    // own top edge rather than behind the header, and a translucent header
+    // would want the `Stack` back. #411.
+    return Column(
       children: [
-        Positioned.fill(
+        DevicePageHeader(
+          topInset: topInset,
+          title: ctrl.deviceName,
+          subtitle: 'Flipper Zero', // !!! тип устройства под именем — не менять
+          active: ctrl.isConnected || inDfu,
+          dfu: inDfu,
+          infoEntries: wide ? ctrl.deviceInfoEntries : const [],
+          deviceInfo: ctrl.info,
+          connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
+          connectionIcon: ctrl.device?.isBle == true
+              ? Icons.bluetooth
+              : Icons.usb,
+          onOpenFullInfo: ctrl.isConnected
+              ? () => _openFullInfo(context)
+              : null,
+        ),
+        Expanded(
           child: ScrollConfiguration(
             behavior: ScrollConfiguration.of(context)
                 .copyWith(scrollbars: false),
             child: RefreshIndicator(
               onRefresh: () => _onRefresh(context),
-              edgeOffset: headerHeight,
               displacement: 28,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
+                padding: const EdgeInsets.only(top: 14, bottom: 14),
                 children: [
                   Center(
                     child: ConstrainedBox(
@@ -84,23 +118,6 @@ class DeviceTab extends StatelessWidget {
             ),
           ),
         ),
-        DevicePageHeader(
-          topInset: topInset,
-          headerHeight: headerHeight,
-          title: ctrl.deviceName,
-          subtitle: 'Flipper Zero', // !!! тип устройства под именем — не менять
-          active: ctrl.isConnected || inDfu,
-          dfu: inDfu,
-          infoEntries: wide ? ctrl.deviceInfoEntries : const [],
-          deviceInfo: ctrl.info,
-          connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
-          connectionIcon: ctrl.device?.isBle == true
-              ? Icons.bluetooth
-              : Icons.usb,
-          onOpenFullInfo: ctrl.isConnected
-              ? () => _openFullInfo(context)
-              : null,
-        ),
       ],
     );
   }
@@ -119,12 +136,26 @@ class DeviceTab extends StatelessWidget {
   }
 
   static Future<void> _onRefresh(BuildContext context) async {
-    DeviceScope.of(context).synchronize();
+    // `notifierOf`: a callback calling a method wants the controller, not a
+    // subscription - and a listening read here would outlive the tap, since
+    // nothing clears a dependency on a rebuild. #407.
+    DeviceScope.notifierOf(context).synchronize();
     await FirmwareRepository.instance.refresh();
   }
 
   static void _openFullInfo(BuildContext context) {
-    final ctrl = DeviceScope.of(context);
+    // Takes **one snapshot** of the controller's state - `deviceInfoEntries`
+    // several times and `info` once, all in this call - to fill a sheet that
+    // is pushed and then static, so there is nothing for a later notification
+    // to update.
+    //
+    // This is the awkward site for `notifierOf`'s rule, and the one the
+    // syntactic guard cannot see either way, because the reads go through a
+    // local. What justifies it is the shape, not Flutter's wording about a
+    // value "used once and not cached": the derived values are baked into a
+    // pushed route, which that wording does not cover. The census budget in
+    // `test/device_scope_listen_test.dart` carries the justification. #407.
+    final ctrl = DeviceScope.notifierOf(context);
     showDeviceFullInfoSheet(
       context,
       title: context.l10n.deviceFullInfo,
@@ -199,14 +230,14 @@ class _ConnectedContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const ConnectCard(),
+        ConnectCard(links: LinkService.instance),
         const SizedBox(height: 14),
       ],
     );
   }
 
   static Future<void> _playAlert(BuildContext context) async {
-    final ctrl = DeviceScope.of(context);
+    final ctrl = DeviceScope.notifierOf(context);
     final success = await ctrl.playAlert();
     if (!context.mounted) return;
     context.showNotification(
@@ -216,7 +247,7 @@ class _ConnectedContent extends StatelessWidget {
   }
 
   static Future<void> _exportDeviceInfo(BuildContext context) async {
-    final ctrl = DeviceScope.of(context);
+    final ctrl = DeviceScope.notifierOf(context);
     Pasteboard.writeText(ctrl.buildExportDump());
     if (!context.mounted) return;
     context.showNotification(
@@ -233,7 +264,12 @@ class _DisconnectedContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Column(children: [SizedBox(height: 14), ConnectCard()]);
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        ConnectCard(links: LinkService.instance),
+      ],
+    );
   }
 }
 

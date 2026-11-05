@@ -45,7 +45,7 @@ refutes() {
 # the same path and the last writer would win.
 pubspec_with() {
   local file
-  file="$(mktemp "$TMP/pubspec-XXXXXX.yaml")"
+  file="$(mktemp "$TMP/pubspec-XXXXXX")"
   printf 'name: qunleashed\nversion: %s\n' "$1" > "$file"
   printf '%s' "$file"
 }
@@ -313,8 +313,18 @@ refutes "a shallow checkout" \
 # So the guard runs against this repository and passes because the version it
 # holds is unpublished - which the branch would already be failing CI over if
 # it were not.
-want="$(sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' \
-  "$HERE/../../pubspec.yaml")"
+# Read without sed, so this is an independent oracle rather than a second
+# copy of the parser under test. Two copies of one expression cannot disagree,
+# which is how the BSD-only `;q}` passed this assertion all the way to a
+# release job.
+want=""
+while IFS= read -r line; do
+  [[ "$line" == version:* ]] || continue
+  want="${line#version:}"
+  want="${want%%+*}"
+  want="${want//[[:space:]]/}"
+  break
+done < "$HERE/../../pubspec.yaml"
 got="$(run "$COUNT" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
   bash "$DERIVE" --print || true)"
 [[ "$got" == "$want 108080" ]] && pass "the default pubspec path resolves" \

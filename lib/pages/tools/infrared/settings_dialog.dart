@@ -3,8 +3,12 @@ import 'dart:io' as io;
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/permissions/permission.dart';
+import '../../../services/permissions/scope.dart';
 import '../../../theme/theme.dart';
+import '../../../components/dialogs/storage_permission.dart';
 import '../../../components/notification.dart';
+import '../../../components/permission_notice.dart';
 import '../../../components/progress_button.dart';
 import 'controller.dart';
 import 'local_repo.dart';
@@ -55,6 +59,16 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
 
   void _onCtrl() {
     if (mounted) setState(() {});
+  }
+
+  /// Whether the storage permission is refused right now.
+  ///
+  /// Read through the scope so this dialog redraws when the user grants
+  /// it in system settings and comes back - the dialog can be the thing
+  /// on screen the whole time, and nothing else would rebuild it.
+  bool _storageDenied(BuildContext context) {
+    final center = PermissionScope.maybeOf(context);
+    return center?.outcomeOf(AppPermission.storage).warrantsNotice ?? false;
   }
 
   IrdbRepoRef? _parsedRef() {
@@ -171,11 +185,26 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
                 ),
               ),
               const _StrandedNotice(),
+              // The one surface where a denied storage permission was most
+              // misleading: `exists()` reads an unlistable library as absent,
+              // so this dialog offered to spend the whole download again on a
+              // library already on disk, and said nothing about why. #351.
+              PermissionNotice(
+                permission: AppPermission.storage,
+                severity: PermissionNoticeSeverity.blocking,
+                title: context.l10n.permissionStorageDeniedTitle,
+                body:
+                    '${context.l10n.permissionStorageDeniedIrLibrary}\n\n'
+                    '${context.l10n.permissionStorageDeniedIrStillWorks}',
+                actionLabel: context.l10n.permissionStorageGrant,
+                onAction: () => promptStorageAccess(context),
+              ),
               const SizedBox(height: 14),
               _PrimaryActionButton(
                 colors: colors,
                 downloading: downloading,
                 localAvailable: localAvailable,
+                storageDenied: _storageDenied(context),
                 progress: widget.controller.downloadProgress,
                 onPressed: _onPrimaryAction,
               ),
@@ -313,6 +342,7 @@ class _PrimaryActionButton extends StatelessWidget {
     required this.colors,
     required this.downloading,
     required this.localAvailable,
+    required this.storageDenied,
     required this.progress,
     required this.onPressed,
   });
@@ -320,6 +350,13 @@ class _PrimaryActionButton extends StatelessWidget {
   final QAppColors colors;
   final bool downloading;
   final bool localAvailable;
+
+  /// Whether the folder this writes into cannot be read.
+  ///
+  /// Disables the button rather than letting the download run and fail
+  /// several hundred megabytes later. The notice above it is what says
+  /// why, so this does not need a label of its own.
+  final bool storageDenied;
   final IrLibDownloadProgress? progress;
   final VoidCallback onPressed;
 
@@ -354,7 +391,10 @@ class _PrimaryActionButton extends StatelessWidget {
       action = onPressed;
     } else {
       label = context.l10n.irDownloadCaps;
-      action = onPressed;
+      // Left null when storage is refused: nothing can be saved until the
+      // folder is writable, and a button that starts a download which
+      // cannot land is worse than one that is plainly unavailable.
+      action = storageDenied ? null : onPressed;
     }
 
     return ProgressButton(

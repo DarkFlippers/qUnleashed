@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../components/format.dart';
 import '../../../../components/path.dart';
 import '../../../../services/localization/l10n.dart';
+import '../../../../components/name_rule.dart';
 import '../../../../theme/theme.dart';
 import '../controller.dart';
 import 'file_row.dart';
@@ -107,7 +108,14 @@ class _ReplaceFilesDialogState extends State<ReplaceFilesDialog> {
   String _suggest() {
     final name = basename(_conflict.name);
     final dot = name.lastIndexOf('.');
-    final stem = dot > 0 ? name.substring(0, dot) : name;
+    // Leading dots dropped, because the field refuses a name that starts with
+    // one and a dialog that prefills what it then refuses reads as broken.
+    // `.gitkeep` is the reachable case: it collides, it is suggested, and
+    // `.gitkeep (2)` is `dotEdge`.
+    final stem = (dot > 0 ? name.substring(0, dot) : name).replaceFirst(
+      RegExp(r'^\.+'),
+      '',
+    );
     final ext = dot > 0 ? name.substring(dot) : '';
     for (var n = 2; ; n++) {
       final candidate = '$stem ($n)$ext';
@@ -128,12 +136,15 @@ class _ReplaceFilesDialogState extends State<ReplaceFilesDialog> {
     setState(() => _renaming = true);
   }
 
+  /// What is wrong with the typed name, or null when nothing is.
+  ///
+  /// Its own rule used to be `empty / . / .. / contains '/'`, which let a tab,
+  /// a `?` or a 300-byte name straight through to an RPC write. The storage
+  /// rule comes first for the reason `QNameDialog.validate` gives. #277
   String? _problem(L10n l) {
-    final name = _name.text.trim();
-    if (name.isEmpty || name == '.' || name == '..' || name.contains('/')) {
-      return l.fmConflictRenameInvalid;
-    }
-    if (_isTaken(name)) return l.fmConflictRenameTaken;
+    final problem = deviceNameRule.describe(l, _name.text);
+    if (problem != null) return problem;
+    if (_isTaken(_name.text.trim())) return l.fmConflictRenameTaken;
     return null;
   }
 

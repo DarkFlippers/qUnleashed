@@ -1,16 +1,19 @@
+import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/folder_pick.dart';
 import '../../../../components/icon.dart';
+import '../../../../components/selection.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../controller.dart';
+import '../rename_key.dart';
 import '../../../../components/archive/category.dart';
 import '../../../../components/archive/models/key.dart';
 import '../../widgets/actions_sheet.dart';
@@ -19,6 +22,8 @@ import '../widgets/key_actions_sheet.dart';
 import '../../../../components/filelist/sync_progress_bar.dart';
 import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
+import '../../../../components/filelist/key_table.dart';
+import '../../../../components/filelist/list_scaffold.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
@@ -29,30 +34,47 @@ class CategoryPage extends StatefulWidget {
   const CategoryPage({
     super.key,
     required this.controller,
+    required this.sortSettings,
     required this.category,
   });
 
   final ArchiveController controller;
+
+  /// Shared with every other archive table and owned by `AppShell`, so a sort
+  /// picked here is the one they all open in - and the rail's other mounted
+  /// tables follow it without being rebuilt by hand.
+  final ArchiveSortSettings sortSettings;
+
   final ArchiveCategory category;
 
   @override
   State<CategoryPage> createState() => _CategoryPageState();
 }
 
-class _CategoryPageState extends State<CategoryPage> {
+class _CategoryPageState extends State<CategoryPage>
+    with ListSelection<CategoryPage> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   String _query = '';
   String? _filterVal;
   bool _starredOnly = false;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
-
-  bool _selectionMode = false;
-  final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
   ArchiveCategory get _cat => widget.category;
+
+  /// Rebuilds on either the archive's own changes or a sort picked on another
+  /// mounted table. Built once rather than per build, so the `AnimatedBuilder`
+  /// is not resubscribing to a fresh `Listenable` every frame.
+  late final Listenable _repaint = Listenable.merge([
+    _ctrl,
+    widget.sortSettings,
+  ]);
+
+  List<SortOption> get _sortOpts => sortOptionsFor(columnsFor(_cat));
+
+  /// The stored sort, held to the keys this category's columns offer.
+  ({String key, bool asc}) get _sort =>
+      widget.sortSettings.resolve(_sortOpts.map((o) => o.key));
 
   @override
   void initState() {
@@ -128,63 +150,26 @@ class _CategoryPageState extends State<CategoryPage> {
         return false;
       }).toList();
     }
-    return sortArchiveKeys(keys, _sortKey, _sortAsc);
+    final sort = _sort;
+    return sortArchiveKeys(keys, sort.key, sort.asc);
   }
 
   List<ArchiveKey> get _selectedKeys =>
-      _allKeys.where((k) => _selected.contains(_keyId(k))).toList();
-
-  void _enterSelection(ArchiveKey key) {
-    setState(() {
-      _selectionMode = true;
-      _selected.add(_keyId(key));
-    });
-  }
-
-  void _toggleSelect(ArchiveKey key) {
-    final id = _keyId(key);
-    setState(() {
-      if (!_selected.remove(id)) _selected.add(id);
-      if (_selected.isEmpty) _selectionMode = false;
-    });
-  }
-
-  void _exitSelection() {
-    setState(() {
-      _selectionMode = false;
-      _selected.clear();
-    });
-  }
-
-  void _onDropped() {
-    if (mounted) _exitSelection();
-  }
-
-  void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
-    setState(() {
-      if (selected) {
-        _selected.addAll(filtered.map(_keyId));
-      } else {
-        _selected.removeAll(filtered.map(_keyId));
-        if (_selected.isEmpty) _selectionMode = false;
-      }
-    });
-  }
+      _allKeys.where((k) => isSelected(k.id)).toList();
 
   Future<void> _bulkSetFavorite(bool favorite) async {
     await _ctrl.setKeysFavorite(_selectedKeys, favorite);
-    _exitSelection();
+    exitSelection();
   }
 
   void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
+    unawaited(
+      guarded(
+        '[ArchiveSort] storing the picked sort',
+        () =>
+            widget.sortSettings.pick(key, offered: _sortOpts.map((o) => o.key)),
+      ),
+    );
   }
 
   Future<void> _showKeyActions(BuildContext context, ArchiveKey key) {
@@ -206,50 +191,8 @@ class _CategoryPageState extends State<CategoryPage> {
     );
   }
 
-  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) async {
-    final colors = context.appColors;
-    final ctrl = TextEditingController(text: key.name);
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(
-          context.l10n.fmRename,
-          style: TextStyle(color: colors.dialogText),
-        ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: context.l10n.archiveFileName,
-            hintStyle: TextStyle(color: colors.textMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(c, v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text(context.l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            child: Text(context.l10n.fmRename),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (newName != null && newName.isNotEmpty && newName != key.name) {
-      await _ctrl.renameKey(key, newName);
-      if (!context.mounted) return;
-      reportArchiveFailure(
-        context,
-        _ctrl.lastFailure,
-        context.l10n.archiveRenameFailed,
-      );
-    }
-  }
+  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) =>
+      promptRenameKey(context, controller: _ctrl, key: key);
 
   bool get _hasFilter =>
       _starredOnly || _filterVal != null || _query.isNotEmpty;
@@ -311,7 +254,7 @@ class _CategoryPageState extends State<CategoryPage> {
     final catColor = colors.adaptCategoryHeader(_cat.color);
 
     return AnimatedBuilder(
-      animation: _ctrl,
+      animation: _repaint,
       builder: (context, _) {
         final filtered = _filtered;
         final total = _allKeys.length;
@@ -322,67 +265,66 @@ class _CategoryPageState extends State<CategoryPage> {
           );
         }
 
-        final allSelected =
-            filtered.isNotEmpty &&
-            filtered.every((k) => _selected.contains(_keyId(k)));
+        // One record for the toolbar and the table both: two would be two
+        // chances to disagree about what a second tap on a column means. The
+        // getter behind it resolves the sort against this page's own columns,
+        // which allocates both lists, so it is read once here.
+        final resolved = _sort;
+        final sort = (
+          key: resolved.key,
+          asc: resolved.asc,
+          opts: _sortOpts,
+          onSort: _onSort,
+        );
 
-        return PopScope(
-          canPop: !_selectionMode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _selectionMode) _exitSelection();
-          },
-          child: Scaffold(
-            backgroundColor: colors.background,
-            appBar: AppBar(
-              backgroundColor: catColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleSpacing: categoryTitleSpacing(context),
-              title: CategoryAppBarTitle(cat: _cat),
-              actions: [
-                CategorySyncButton(
-                  syncing: _ctrl.syncing,
-                  enabled: _ctrl.isConnected,
-                  catColor: catColor,
-                  onTap: () => _ctrl.syncCategory(_cat),
-                ),
-                CategoryCountBadge(filtered: filtered.length, total: total),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(50),
-                child: _selectionMode
-                    ? CategorySelectionToolbar(
-                        count: _selected.length,
-                        allSelected: allSelected,
-                        catColor: catColor,
-                        onClose: _exitSelection,
-                        onToggleAll: () =>
-                            _setAllSelected(filtered, !allSelected),
-                        onActions: () => _showBulkActions(context),
-                      )
-                    : CategoryToolbar(
-                        searchCtrl: _searchCtrl,
-                        query: _query,
-                        filterVal: _filterVal,
-                        filterOpts: filterOpts,
-                        starredOnly: _starredOnly,
-                        catColor: catColor,
-                        colors: colors,
-                        onQueryChanged: (v) => setState(() => _query = v),
-                        onFilterChanged: (v) => setState(() => _filterVal = v),
-                        onStarredToggle: () =>
-                            setState(() => _starredOnly = !_starredOnly),
-                      ),
-              ),
+        return ArchiveListScaffold(
+          headerColor: catColor,
+          title: CategoryAppBarTitle(cat: _cat),
+          actions: [
+            CategorySyncButton(
+              syncing: _ctrl.syncing,
+              enabled: _ctrl.isConnected,
+              catColor: catColor,
+              onTap: () => _ctrl.syncCategory(_cat),
             ),
-            body: Column(
-              children: [
-                if (_ctrl.syncing) _syncBar(catColor),
-                Expanded(child: _buildTable(catColor, colors, filtered)),
-              ],
+            CategoryCountBadge(filtered: filtered.length, total: total),
+          ],
+          selection: selectionControl(
+            filtered.map((k) => k.id),
+            onActions: () => _showBulkActions(context),
+          ),
+          toolbar: CategoryToolbar(
+            searchCtrl: _searchCtrl,
+            query: _query,
+            filterVal: _filterVal,
+            filterOpts: filterOpts,
+            sort: sort,
+            starredOnly: _starredOnly,
+            catColor: catColor,
+            colors: colors,
+            onQueryChanged: (v) => setState(() => _query = v),
+            onFilterChanged: (v) => setState(() => _filterVal = v),
+            onStarredToggle: () => setState(() => _starredOnly = !_starredOnly),
+          ),
+          topBar: _ctrl.syncing ? _syncBar(catColor) : null,
+          body: ArchiveKeyTable(
+            columns: (width) => visibleColumns(_cat, width, filtered),
+            sort: sort,
+            selectionMode: selectionMode,
+            accent: catColor,
+            onRefresh: () => guarded(
+              '[Archive] pull to sync',
+              () => _ctrl.syncCategory(_cat),
             ),
+            empty: () => ArchiveEmptyView(
+              icon: _emptyIcon(),
+              title: _emptyTitle(),
+              subtitle: _ctrl.lastError,
+              actionLabel: _emptyActionLabel(),
+              onAction: _onEmptyAction,
+            ),
+            itemCount: filtered.length,
+            itemBuilder: (i, cols) => _keyRow(filtered[i], cols, colors),
           ),
         );
       },
@@ -404,92 +346,32 @@ class _CategoryPageState extends State<CategoryPage> {
     );
   }
 
-  Widget _buildTable(
-    Color catColor,
-    QAppColors colors,
-    List<ArchiveKey> filtered,
-  ) {
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final visibleCols = visibleColumns(
-          _cat,
-          constraints.maxWidth -
-              (_selectionMode ? kSelectionIndicatorWidth : 0),
-          filtered,
-        );
-
-        return RefreshIndicator(
-          color: catColor,
-          displacement: 15,
-          // Returns the work rather than starting it: `RefreshIndicator` holds
-          // its spinner only until the future it is given settles, and
-          // `() async => unawaited(...)` settles at once - so the spinner
-          // flashed while the sync had not begun. The same defect as the three
-          // apps tables in #219, and the last one of its shape in `lib/`.
-          onRefresh: () =>
-              guarded('[Archive] pull to sync', () => _ctrl.syncCategory(_cat)),
-          child: filtered.isEmpty
-              ? SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: SizedBox(
-                    height: constraints.maxHeight,
-                    child: ArchiveEmptyView(
-                      icon: _emptyIcon(),
-                      title: _emptyTitle(),
-                      subtitle: _ctrl.lastError,
-                      actionLabel: _emptyActionLabel(),
-                      onAction: _onEmptyAction,
-                    ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    ArchiveColumnHeader(
-                      cols: visibleCols,
-                      sortKey: _sortKey,
-                      sortAsc: _sortAsc,
-                      onSort: _onSort,
-                      colors: colors,
-                      selectionMode: _selectionMode,
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: ClampingScrollPhysics(),
-                        ),
-                        itemCount: filtered.length,
-                        itemBuilder: (_, i) {
-                          final key = filtered[i];
-                          final selected = _selected.contains(_keyId(key));
-                          return ArchiveKeyDragSource(
-                            key: ValueKey(_keyId(key)),
-                            archiveKey: key,
-                            selected: selected,
-                            selection: () => _selectedKeys,
-                            onDropped: _onDropped,
-                            child: ArchiveTableRow(
-                              flipperKey: key,
-                              cols: visibleCols,
-                              colors: colors,
-                              cat: _cat,
-                              progress: _ctrl.progressForKey(key),
-                              selectionMode: _selectionMode,
-                              selected: selected,
-                              onTap: () => _selectionMode
-                                  ? _toggleSelect(key)
-                                  : _showKeyActions(context, key),
-                              onLongPress: () => _selectionMode
-                                  ? _toggleSelect(key)
-                                  : _enterSelection(key),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-        );
-      },
+  /// One row. Built against the page's `context`, never a row's: the actions
+  /// sheet keeps the context it is given across its awaits and tests `mounted`
+  /// on it, and a row that leaves the list - which a failed delete or a rename
+  /// does - would take the failure report with it. #110.
+  Widget _keyRow(ArchiveKey key, List<SizedColumn> cols, QAppColors colors) {
+    final id = key.id;
+    final selected = isSelected(id);
+    return ArchiveKeyDragSource(
+      key: ValueKey(id),
+      archiveKey: key,
+      selected: selected,
+      selection: () => _selectedKeys,
+      onDropped: exitSelection,
+      child: ArchiveTableRow(
+        flipperKey: key,
+        cols: cols,
+        colors: colors,
+        cat: _cat,
+        progress: _ctrl.progressForKey(key),
+        selectionMode: selectionMode,
+        selected: selected,
+        onTap: () =>
+            selectionMode ? toggleSelect(id) : _showKeyActions(context, key),
+        onLongPress: () =>
+            selectionMode ? toggleSelect(id) : enterSelection(id),
+      ),
     );
   }
 
@@ -519,7 +401,7 @@ class _CategoryPageState extends State<CategoryPage> {
         context,
         _ctrl,
         keys,
-        onDone: _exitSelection,
+        onDone: exitSelection,
       ),
     ];
 
@@ -544,14 +426,30 @@ class _CategoryPageState extends State<CategoryPage> {
       return;
     }
 
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: context.l10n.archiveSaveFiles(keys.length),
+    // Read before the pick, not inside it: a plural selector that threw would
+    // otherwise be reported as the system picker failing, at a level that
+    // never alerts.
+    final title = context.l10n.archiveSaveFiles(keys.length);
+    // [pickFolder] catches for itself, which is what this site needs rather
+    // than a `try` of its own: it is reached from a bulk-actions sheet entry
+    // whose `onTap` is a `VoidCallback`, so a rejection here has no listener
+    // at all and lands in the zone as a fatal uncaught error - the mechanism
+    // of QUNLEASHED-K, which killed the app from the file browser's *file*
+    // pick. A refused pick on Android and iOS used to answer a bare null that
+    // read as a cancellation; #353.
+    final dir = await pickFolder(
+      context,
+      what: '[Archive] the folder pick',
+      dialogTitle: title,
     );
     if (dir == null) return;
 
     final saved = await saveKeysInto(keys, dir);
-    _exitSelection();
+    // Below the guard, not above it. `ListSelection.exitSelection` is safe
+    // either way, but reading it above a `mounted` check invites someone to
+    // add a second guard here instead of trusting the one in the mixin.
     if (!context.mounted) return;
+    exitSelection();
     context.showNotification(
       saved == keys.length
           ? context.l10n.archiveSavedFiles(saved)
@@ -561,7 +459,4 @@ class _CategoryPageState extends State<CategoryPage> {
           : QNotificationType.warning,
     );
   }
-
-  String _keyId(ArchiveKey k) =>
-      '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
 }

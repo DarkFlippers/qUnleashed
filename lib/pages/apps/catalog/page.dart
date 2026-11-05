@@ -542,9 +542,7 @@ class _CatalogViewState extends State<CatalogView>
         item(
           Icons.settings_outlined,
           s.settingsTitle,
-          () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const AppsSettingsPage())),
+          () => pushPage(context, (_) => const AppsSettingsPage()),
         ),
       ],
       builder: (context, menu, _) => IconButton(

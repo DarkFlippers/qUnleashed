@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qunleashed/components/pixel_font.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Replicates the pixel-art button from https://flipperunleashed.com/
 //
@@ -14,7 +16,7 @@ import 'package:flutter/material.dart';
 // The path below encodes this exact staircase so the shape matches the site.
 //
 // Fonts used:
-//   • regular nav buttons → Born2bSportyV2  (site .pxbtn / .pixel)
+//   • regular nav buttons → Born2bSportyV3  (site .pxbtn / .pixel)
 //   • large Install button → GravityBold8   (site .install p)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -55,7 +57,7 @@ class PixelButton extends StatefulWidget {
   final VoidCallback? onTap;
 
   /// large=true → Install style (GravityBold8, bigger padding, 7px shadow)
-  /// large=false → nav-button style (Born2bSportyV2, smaller, 4px shadow)
+  /// large=false → nav-button style (Born2bSportyV3, smaller, 4px shadow)
   final bool large;
   final bool glowing;
   final Color? glowColor;
@@ -106,7 +108,7 @@ class _PixelButtonState extends State<PixelButton>
     final fontSize = widget.large ? 28.0 : 16.0;
     final hPad = widget.large ? 40.0 : 20.0;
     final vPad = widget.large ? 20.0 : 8.0;
-    final fontFamily = widget.large ? 'GravityBold8' : 'Born2bSportyV2';
+    final fontFamily = widget.large ? 'GravityBold8' : kPixelFontFamily;
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),

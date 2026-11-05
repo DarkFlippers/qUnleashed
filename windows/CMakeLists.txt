@@ -23,6 +23,97 @@ else()
       "Debug" "Profile" "Release")
   endif()
 endif()
+
+# === Debug information in Release ===
+#
+# Not Flutter's. CMake's MSVC defaults give the Release configuration no debug
+# information at all: `CMAKE_CXX_FLAGS_RELEASE` is `/MD /O2 /Ob2 /DNDEBUG` with
+# no `/Zi`, and `CMAKE_EXE_LINKER_FLAGS_RELEASE` is `/INCREMENTAL:NO` with no
+# `/DEBUG`. The generated project therefore carries an empty
+# `DebugInformationFormat` and `GenerateDebugInformation=false`, and **not one
+# PDB is written** - not for the runner, not for a plugin DLL, not for the
+# three libraries in `lib/modules/cpp`.
+#
+# That, and not the upload step, is why no Windows native frame has ever
+# symbolicated (#310). The upload was never empty - a PE carries an export
+# table and unwind info, and `sentry-cli` takes it - but export-level data is
+# all it ever got for our modules, so a minidump resolved them to the nearest
+# exported symbol. That is where `guard_dispatch_icall$thunk$...` came from.
+# Engine frames resolve to `file:line` because Flutter *ships*
+# `flutter_windows.dll.pdb`, which `sentry_dart_plugin` 3.4.0 names outright.
+#
+# `/DEBUG` on its own also turns `/OPT:REF` and `/OPT:ICF` off, which the
+# Release default relies on, so both are named back and the shipped binary
+# keeps its size. It gains only a debug directory entry naming the PDB - which
+# is the record Sentry matches the uploaded PDB against.
+#
+# Set on the configuration-level variables rather than inside
+# `APPLY_STANDARD_SETTINGS`, because that function reaches only the targets
+# that call it. These reach every target in the tree, which is the point: the
+# plugin DLLs and sentry-native are most of what a desktop crash is.
+#
+# `enable_language(C)` first, and it is not decoration. `project()` above
+# declares `LANGUAGES CXX`, so without this line C is still unenabled here and
+# `${CMAKE_C_FLAGS_RELEASE}` expands to **nothing** - the append would not
+# extend the defaults, it would replace them with ` /Zi` and shadow the cache
+# entry that `lib/modules/cpp`'s own `project(... LANGUAGES C)` writes later.
+# Measured on a cold configure: the generated project then carries
+# `Optimization=''`, no `/Ob2`, no `NDEBUG` and `RuntimeLibrary=''` for the
+# three C libraries - and an empty `RuntimeLibrary` emits no `/M` switch, so
+# cl defaults to `/MT`. Unoptimized, asserts live, and against the static CRT
+# while the clang-cl objects beside them stay `/MD`, which is the two-heap
+# `_aligned_free` fault `hardnested/CMakeLists.txt` records having already
+# been paid for once. Note `/Zi` itself still applies in that state - the
+# append replaces the defaults with exactly ` /Zi` - so no debug-file check
+# can see this; only this line prevents it.
+#
+# None of that shows up in a warm build directory, where the cache entry
+# already exists and the append lands on it correctly. It only appears on a
+# clean checkout - which is every CI run.
+enable_language(C)
+
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE
+  "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE
+  "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+
+# Every *linker* PDB into the bundle directory - which is where the runner's
+# would land anyway and where a plugin's would not, since a plugin builds under
+# `build/windows/x64/plugins/<name>/` and only its DLL is installed here.
+# Collecting them is what makes one upload cover the whole application. A
+# static target's *compile* PDB is a different property
+# (`CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY`) and stays put; its CodeView ends up in
+# the PDB of whatever links it, so there is nothing to collect.
+#
+# The bundle directory is deliberate rather than convenient: it is the one path
+# `sentry_dart_plugin` already hands to `sentry-cli debug-files upload`
+# (`flutter_debug_files.dart`, as of the 3.4.0 the lockfile pins), so nothing
+# in `.github/` has to learn a new one. CMake appends the configuration to a
+# plain path, so this resolves to `build/windows/x64/runner/Release`.
+#
+# Written out rather than reusing `BUILD_BUNDLE_DIR`, which is not defined
+# until the install block below. `CMAKE_PDB_OUTPUT_DIRECTORY` is captured into
+# a target's properties as that target is created, so a value set down there
+# would still reach the plugins - but not the runner, and not the three
+# `lib/modules/cpp` libraries, which are created inside `add_subdirectory`
+# above it. Those are exactly the four `windows.ps1` checks. (A generator
+# expression would also suppress the per-configuration append, so the two
+# spellings are not interchangeable even where both are in scope.) What
+# catches the two drifting apart is `windows.ps1` refusing to package a build
+# whose PDBs are not here.
+#
+# Profile gets these PDBs too - the property is not per-configuration - and
+# inherits the flags above from the block below, which copies the Release ones.
+# Both are wanted: a profile build is for local work, where a symbolicated
+# native frame is worth the same as it is in a crash report.
+#
+# These must not reach a user. `windows.ps1` excludes them from the archive and
+# fails the build if one is in it anyway - that guard is the thing to keep if
+# this ever moves.
+set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/runner")
+
 # Define settings for the Profile build mode.
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
 set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")

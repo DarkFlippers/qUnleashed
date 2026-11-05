@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' as io;
 
 /// Joins [parts] with the host path separator, skipping empty segments.
@@ -14,7 +15,7 @@ String pathJoin(Iterable<String> parts) {
 /// The characters a name may not carry, written down once.
 ///
 /// Two rules read it: [sanitizePathSegment] replaces them for a host path, and
-/// `SeedSubFile.checkBaseName` reports them for a path on the Flipper. They
+/// [deviceNameProblem] reports them for a name on the Flipper. They
 /// are the nine Windows reserves, and a single path segment cannot carry any
 /// of them on the Flipper either — so the two rules were one set spelled
 /// twice, in two files, with the English ARB sentence spelling it a third
@@ -41,7 +42,7 @@ const reservedNameChars = r'\/:*?"<>|';
 ///
 /// It lists only the nine. [reservedNameCharsPattern] also refuses the control
 /// range, which this cannot say — a name is refused for a control character
-/// through its own message rather than this list. See `SeedNameProblem`.
+/// through its own message rather than this list. See [DeviceNameProblem].
 final reservedNameCharsSpelled = reservedNameChars.split('').join(' ');
 
 /// [reservedNameChars] plus the C0 range and DEL, as one character class.
@@ -193,4 +194,151 @@ String basename(String path) {
 String dirname(String path) {
   final slash = path.lastIndexOf('/');
   return slash < 0 ? '' : path.substring(0, slash);
+}
+
+/// Why a name the user typed cannot be written to the Flipper, or null when
+/// nothing is.
+///
+/// An enum rather than a message, so that the rule can live here - where the
+/// character set it reads already does - while the sentence lives where the
+/// localizations are. `NameRule.describe` is the mapping, and it is exhaustive,
+/// so a member added here is a compile error there rather than a name refused
+/// with nothing said. It began as `SeedNameProblem`, in a feature folder four
+/// directories down, which is why the prompts that write a user-named file to
+/// the device did not call it. #277
+enum DeviceNameProblem {
+  /// Nothing, or nothing but space.
+  ///
+  /// Rendered where a prompt has somewhere to put it - the replace dialog's
+  /// rename field says so while the field is empty - and reported by
+  /// `SeedController.save`, which can be reached with any string. The two
+  /// prompts that do *not* render it refuse it another way: `QNameDialog`
+  /// keeps its confirm button disabled, because an error on a field the user
+  /// has just cleared reads as a complaint about their typing, and the inline
+  /// rename closes its editor.
+  empty,
+
+  /// Longer than the caller's byte budget. In bytes, not characters: no name
+  /// this accepts can tell the two apart, because [nonAscii] is refused first,
+  /// but `length` got it wrong once at 126 bytes and relaxing that rule would
+  /// make them differ again.
+  tooLong,
+
+  /// One of the nine [reservedNameChars]. Separate from [controlCharacter]
+  /// because the message for this one can list what it refuses and the message
+  /// for that one cannot.
+  illegalCharacter,
+
+  /// A C0 control character or DEL, which a paste can carry in and a keyboard
+  /// cannot type.
+  controlCharacter,
+
+  /// Anything outside ASCII. Its own problem rather than [illegalCharacter]
+  /// because that message lists nine characters, none of which is the one the
+  /// user typed, and the fix is different: there is no escaping or quoting
+  /// that gets a Cyrillic letter onto the device, the name has to be written
+  /// in ASCII. See [isNonAsciiNameChar].
+  ///
+  /// Refusing it was #266's open question and #282 is the answer: accepting
+  /// one bought nothing except a write that failed afterwards, saying only
+  /// that it had failed.
+  nonAscii,
+
+  /// Starts or ends with a dot.
+  dotEdge,
+}
+
+/// The longest name the Flipper's own storage will carry, in bytes.
+///
+/// FatFS long-file-name entries hold as many characters as `_MAX_LFN`, which
+/// the firmware sets to 255. A macro name and no path, for the reason
+/// [isNonAsciiNameChar] gives: the firmware is not vendored here, so nothing
+/// in CI can check one.
+///
+/// Characters there and bytes here, which is the same number only because
+/// [isNonAsciiNameChar] is refused first - the firmware builds FatFS with
+/// `_LFN_UNICODE 0`, so one byte is one character on the volume too.
+///
+/// It is the rule's widest setting because it is the volume's limit rather
+/// than any feature's: a caller whose own layer is stricter passes its own
+/// number, as the Sub-GHz name does at 63.
+const deviceNameMaxBytes = 255;
+
+/// The budget for a base name that [extension] will be appended to, dot
+/// included.
+///
+/// Here rather than at the prompt that needs it, because the prompt is not
+/// where the extension is added: the archive controller composes
+/// `'$name.$extension'` and the field holds only the first half, so a prompt
+/// computing this for itself is reverse-engineering another layer's
+/// composition - and the arithmetic goes quietly wrong the day that layer
+/// appends anything else. #277
+///
+/// Counted through UTF-8 like every other budget here, even though no
+/// extension in this app is anything but ASCII: the one place a byte count
+/// must not be a character count is the type whose whole discipline is bytes.
+int deviceNameBudgetFor(String extension) =>
+    deviceNameMaxBytes - utf8.encode(extension).length - 1;
+
+/// What is wrong with [raw] as one path segment on the Flipper.
+///
+/// These are the storage layer's rules, not the on-screen keyboard's. The
+/// Flipper's own text input offers `a-z`, `A-Z`, `0-9`, `_` and the space that
+/// its shifted `_` produces (`text_input.c`, `char_to_uppercase`), but a file
+/// written over RPC lands on a FAT volume and is listed by a browser that is
+/// perfectly happy with a dash too - so refusing one would be this app
+/// inventing a rule the device does not have.
+///
+/// Three layers own the refusals, and which owns what is worth keeping
+/// straight because it is re-derived every time someone asks whether a rule is
+/// too strict. Two of them are described where their characters are:
+/// [reservedNameChars] for the volume's, [isNonAsciiNameChar] for the RPC
+/// layer's - and it is eight of the nine there, not nine, because `/` has
+/// already been split on by the time it looks.
+///
+/// The third is this app's own, and nothing else here states it:
+/// [DeviceNameProblem.dotEdge], which both layers below would accept. A
+/// leading dot hides the file from the Flipper's own browser -
+/// `browser_filter_by_name` in `file_browser_worker.c` skips any name starting
+/// with one while `hide_dot_files` is set - so the file writes and the user
+/// then cannot find what they just saved, which is worse than being told no. A
+/// trailing dot is refused for the weaker reason that it reads as a mistake,
+/// costs nothing to fix, and keeps the rule one sentence rather than two.
+///
+/// Takes one segment, not a path: a `/` in [raw] is one of
+/// [reservedNameChars] and is refused rather than read as a separator.
+///
+/// **The order is user-facing policy, not an implementation detail.** A name
+/// that breaks two rules has to report the one whose fix the next refusal
+/// would not undo: a long non-ASCII name reported as
+/// [DeviceNameProblem.tooLong] sends the user to shorten something that is
+/// refused at any length, and a Cyrillic name starting with a dot reported as
+/// [DeviceNameProblem.dotEdge] does one problem over. So the order is: a
+/// control character first, for the reason [isControlNameChar] gives; then
+/// non-ASCII; then the nine; then the dot rule; and the length last of all.
+/// `test/device_name_rule_test.dart` holds that order as a table, with the
+/// reasoning for each pair.
+///
+/// [maxBytes] is required rather than defaulted: no caller in `lib/` wants
+/// "whatever the volume takes" without saying so, and a forgotten argument
+/// would quietly mean 255 - which for a Sub-GHz name is one that writes fine
+/// and is truncated by the first rename on the device. [deviceNameRule] is the
+/// named way to ask for the volume's own limit.
+DeviceNameProblem? deviceNameProblem(String raw, {required int maxBytes}) {
+  final name = raw.trim();
+  if (name.isEmpty) return DeviceNameProblem.empty;
+  if (name.codeUnits.any(isControlNameChar)) {
+    return DeviceNameProblem.controlCharacter;
+  }
+  if (name.codeUnits.any(isNonAsciiNameChar)) {
+    return DeviceNameProblem.nonAscii;
+  }
+  if (reservedNameCharsPattern.hasMatch(name)) {
+    return DeviceNameProblem.illegalCharacter;
+  }
+  if (name.startsWith('.') || name.endsWith('.')) {
+    return DeviceNameProblem.dotEdge;
+  }
+  if (utf8.encode(name).length > maxBytes) return DeviceNameProblem.tooLong;
+  return null;
 }

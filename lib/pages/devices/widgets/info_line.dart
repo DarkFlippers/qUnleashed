@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/sensitive_surface.dart';
 import '../../../theme/theme.dart';
 
-class FlipperInfoLine extends StatelessWidget {
+class FlipperInfoLine extends StatelessWidget with VisibleSurface {
   const FlipperInfoLine({
     super.key,
     required this.label,

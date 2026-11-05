@@ -9,7 +9,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/material.dart';
 
+import '../../../../components/folder_pick.dart';
+import '../../../../components/format.dart';
 import '../../../../components/path.dart';
+import '../../../../components/picked_file.dart';
 import '../../../../services/logging.dart';
 import '../../../../services/storage/paths.dart';
 import '../../../../theme/theme.dart';
@@ -25,6 +28,30 @@ import 'widgets/canvas_view.dart';
 import 'widgets/editor_toolbars.dart';
 import 'widgets/editor_widgets.dart';
 import 'widgets/frames_strip.dart';
+
+/// The largest single image this page will read from a pick.
+///
+/// Everything it decodes draws onto the Flipper's 128x64 screen: a `.bm`
+/// frame is about a kilobyte, a PNG of that screen a few, and the largest
+/// honest input is a multi-frame GIF. 8 MB is well past all of them and well
+/// under what decoding one costs, which is the number that matters -
+/// `instantiateImageCodec` holds the encoded bytes and the raw RGBA at once.
+const int _paintImportLimit = 8 * 1024 * 1024;
+
+/// The largest `meta.txt` this page will read.
+///
+/// A dolphin manifest is a few lines of text. This is not a cap on the import
+/// - the frames around it are bounded separately, where they are read - it is
+/// a cap on reading a file that is only called `meta.txt`.
+const int _metaTextLimit = 1024 * 1024;
+
+/// The most frames a dolphin manifest may ask for.
+///
+/// The count derived from `Passive frames` and `Active frames` is already
+/// clamped to this; the `Frames order` line was not, so a manifest naming
+/// frame 999999999 sent the walk below `stat`-ing its way there one file at a
+/// time. Restated here so both ways in land on the same bound.
+const int _maxDolphinFrameIdx = 255;
 
 class PaintPage extends StatefulWidget {
   const PaintPage({super.key, this.project, this.remotePath, this.client})
@@ -65,6 +92,18 @@ class _PaintPageState extends State<PaintPage> {
   // without prompting and autosave is redirected there.
   String? _projectDir;
   String? _projectName;
+
+  /// The last name typed into the export prompt.
+  ///
+  /// Offered back by [_resolveExportName] on every later export prompt, not
+  /// only after a pick that did not happen: nothing in the three export paths
+  /// binds a project, so `_projectName` stays null and a second export of an
+  /// unsaved drawing is the same prompt again. The export that mattered is the
+  /// one that was interrupted - the pick is refused or cancelled *after* the
+  /// name is typed - and a name offered back after a successful export is the
+  /// better default anyway. `_saveProject` does not read this: saving is where
+  /// a name becomes the project's own, and it prompts from `_projectName`.
+  String? _lastExportName;
 
   @override
   void initState() {
@@ -116,6 +155,19 @@ class _PaintPageState extends State<PaintPage> {
     }
   }
 
+  /// What decodes [ext], or null if nothing here does.
+  ///
+  /// One list rather than three. Both ways into the decoders - a pick and a
+  /// file opened from the device - ask this, so a format added here reaches
+  /// both, and one added to neither cannot be half-supported.
+  Future<void> Function(Uint8List bytes)? _decoderFor(String ext) =>
+      switch (ext) {
+        'bm' => _importBmSingle,
+        'gif' => _importGif,
+        'png' => _importPng,
+        _ => null,
+      };
+
   Future<void> _loadRemoteFile(String path) async {
     try {
       final bytes = await widget.client!.storageReadChunked(
@@ -127,17 +179,13 @@ class _PaintPageState extends State<PaintPage> {
       }
 
       final data = Uint8List.fromList(bytes);
-      final extension = _extensionOf(path);
-      switch (extension) {
-        case 'png':
-          await _importPng(data);
-        case 'gif':
-          await _importGif(data);
-        case 'bm':
-          await _importBmSingle(data);
-        default:
-          throw UnsupportedError(context.l10n.paintUnsupportedFile);
+      final decode = _decoderFor(_extensionOf(path));
+      if (decode == null) {
+        // The global `l10n` and not `context.l10n`, matching `paintFileEmpty`
+        // above: both are read after an await, and neither needs the tree.
+        throw UnsupportedError(l10n.paintUnsupportedFile);
       }
+      await decode(data);
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
@@ -332,14 +380,47 @@ class _PaintPageState extends State<PaintPage> {
   }
 
   /// The export name: the current project name when saved, otherwise prompted.
-  Future<String?> _resolveExportName() {
-    if (_projectName != null) return Future.value(_projectName);
-    return _promptProjectName(initial: _suggestedName());
+  ///
+  /// A prompted name is kept in [_lastExportName] and offered back the next
+  /// time, because the folder pick that follows this can be cancelled or
+  /// refused - and until #353 a refusal looked exactly like a cancellation, so
+  /// the name the user had just typed was gone with no way to resume it.
+  Future<String?> _resolveExportName() async {
+    if (_projectName != null) return _projectName;
+    final name = await _promptProjectName(
+      initial: _lastExportName ?? _suggestedName(),
+    );
+    if (name != null) _lastExportName = name;
+    return name;
   }
 
-  /// Opens the system folder picker; returns null when cancelled.
-  Future<String?> _pickDestination() {
-    return FilePicker.platform.getDirectoryPath(
+  /// Opens the system folder picker; returns null when cancelled and when the
+  /// picker refused.
+  ///
+  /// The three export entry points await this *before* their own `try`, and
+  /// each is reached from a sheet entry - so a rejection from here would have
+  /// no listener anywhere and would land in the zone as a fatal uncaught
+  /// error, which is the mechanism of QUNLEASHED-K. [pickFolder] is where that
+  /// is held now: it never rejects, it reports the failure itself, and on
+  /// Android and iOS it sees the refusal the plugin's own call swallowed.
+  ///
+  /// **The two nulls are not distinguishable, and the callers rely on that.**
+  /// All three treat null as "cancelled" and return silently, which is right
+  /// only because the refusal is reported before it answers. What they do keep
+  /// across either one is the name [_resolveExportName] prompted for.
+  Future<String?> _pickDestination() async {
+    // Mounted first, because this one is reached *after* an await - the three
+    // export paths resolve a name through a dialog above it - and the title is
+    // read from the context here rather than inside [pickFolder]. On a page
+    // the user left while the name prompt was open, `context.l10n` trips
+    // `dependOnInheritedWidgetOfExactType`'s active-ancestor assertion, and
+    // the three entry points are invoked bare from a sheet entry: nothing
+    // would be listening to that throw. The other four sites read their title
+    // synchronously from a tap.
+    if (!mounted) return null;
+    return pickFolder(
+      context,
+      what: '[Paint] the export folder pick',
       dialogTitle: context.l10n.paintChooseExportLocation,
     );
   }
@@ -374,49 +455,30 @@ class _PaintPageState extends State<PaintPage> {
 
   /// Prompts for a project (folder) name, sanitizing the result to a safe
   /// folder name. Returns null when cancelled or left empty.
+  ///
+  /// The field lives in [_NamePrompt] so that its controller is disposed with
+  /// the dialog's own route and not here. `showDialog`'s future completes when
+  /// the route is *popped*, while its exit transition still has frames to run
+  /// and anything that rebuilds this page rebuilds the dialog's subtree inside
+  /// them. A `ctrl.dispose()` after the await therefore threw "A
+  /// TextEditingController was used after being disposed" out of `build`, from
+  /// every dismissal that a rebuild landed on.
+  /// `test/paint_export_name_test.dart` is what found it, by being the first
+  /// test to mount this page and close this dialog.
+  ///
+  /// What used to supply the rebuild was `DeviceScope`'s five-second battery
+  /// poll, through the bar's listening read. #344 made that read
+  /// non-listening, so nothing in this tree depends on the scope any more -
+  /// but the hazard is any rebuild, not that one, and a theme change or a
+  /// controller tick still is one.
   Future<String?> _promptProjectName({String? initial}) async {
     if (!mounted) return null;
     final colors = context.appColors;
-    final ctrl = TextEditingController(text: initial ?? '');
     final result = await showDialog<String>(
       context: context,
       barrierColor: colors.dialogBarrier,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text(
-          context.l10n.paintProjectName,
-          style: TextStyle(color: colors.dialogText),
-        ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: context.l10n.paintProjectNameHint,
-            hintStyle: TextStyle(color: colors.dialogMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              context.l10n.commonCancel,
-              style: TextStyle(color: colors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: Text(
-              context.l10n.commonSave,
-              style: TextStyle(color: colors.accent),
-            ),
-          ),
-        ],
-      ),
+      builder: (ctx) => _NamePrompt(initial: initial ?? '', colors: colors),
     );
-    ctrl.dispose();
     if (result == null) return null;
     final name = _sanitizeName(result);
     return name.isEmpty ? null : name;
@@ -498,52 +560,63 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _onImport() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        withData: true,
-      );
+      // `withData: false` (the default); the bytes are read in Dart. See
+      // `readPickedFile` for why. Sentry QUNLEASHED-E.
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
-      final name = file.name.toLowerCase();
-      final ext = file.extension?.toLowerCase() ?? '';
-      final bytes = file.bytes;
       final path = file.path;
-
-      if (name == 'meta.txt') {
-        if (path != null) {
-          await _importDolphinFromPath(path);
-        } else {
-          if (!mounted) return;
-          context.showNotification(
-            context.l10n.paintNoFilePath,
-            type: QNotificationType.error,
-          );
-        }
+      // Checked once, for every branch below. Every target this app ships
+      // supplies a path.
+      if (path == null) {
+        if (!mounted) return;
+        context.showNotification(
+          context.l10n.paintNoFilePath,
+          type: QNotificationType.error,
+        );
         return;
       }
 
-      if (ext == 'bm') {
-        final data =
-            bytes ?? (path != null ? await io.File(path).readAsBytes() : null);
-        if (data != null) await _importBmSingle(data);
+      if (file.name.toLowerCase() == 'meta.txt') {
+        // Only the manifest is measured here. What bounds the import is the
+        // frame walk itself, in `_importDolphinFromPath`, because that is
+        // where the bytes are - a two-line `meta.txt` can name 256 frames.
+        await ensurePickedFileFits(path, limit: _metaTextLimit);
+        await _importDolphinFromPath(path);
         return;
       }
 
-      if (bytes == null) return;
-
-      if (ext == 'gif') {
-        await _importGif(bytes);
-      } else if (ext == 'png') {
-        await _importPng(bytes);
-      } else {
+      // Decided on the extension before anything is read: there is nothing to
+      // gain from pulling a picked video into memory to then turn it down.
+      final decode = _decoderFor(file.extension?.toLowerCase() ?? '');
+      if (decode == null) {
         if (!mounted) return;
         context.showNotification(
           context.l10n.paintUnsupportedType,
           type: QNotificationType.error,
         );
+        return;
       }
-    } catch (e) {
+
+      await decode(await readPickedFile(path, limit: _paintImportLimit));
+    } on PickedFileTooLarge catch (e) {
+      if (!mounted) return;
+      context.showNotification(
+        context.l10n.commonFileTooLarge(
+          formatBytes(e.size),
+          formatBytes(e.limit),
+        ),
+        type: QNotificationType.error,
+      );
+    } catch (e, st) {
+      // The toast carries `$e`, which is the user's only feedback and is not
+      // a sentence - and before this it was also the only record anywhere, so
+      // a failed import reached nobody who could act on it. Reading the file
+      // is now this method's own I/O, so there is more that can land here.
+      LogService.caught(
+        '[Paint] importing the picked file failed: ${LogService.describe(e, st)}',
+      );
       if (!mounted) return;
       context.showNotification(
         context.l10n.paintImportFailed('$e'),
@@ -628,12 +701,28 @@ class _PaintPageState extends State<PaintPage> {
       ).firstMatch(metaText);
       final orderStr = orderMatch?.group(1)?.trim() ?? '';
 
-      int maxFrameIdx = (passiveFrames + activeFrames - 1).clamp(0, 255);
+      int maxFrameIdx = (passiveFrames + activeFrames - 1).clamp(
+        0,
+        _maxDolphinFrameIdx,
+      );
       if (orderStr.isNotEmpty) {
         for (final s in orderStr.split(RegExp(r'\s+'))) {
           final n = int.tryParse(s);
           if (n != null && n > maxFrameIdx) maxFrameIdx = n;
         }
+      }
+      // The clamp above was on the counted frames only, so a `Frames order`
+      // naming frame 999999999 walked to it one `exists()` at a time - with
+      // no frame files present the loop below neither finds nor breaks, and
+      // the import hangs on a file the user picked. Same bound, both ways in.
+      maxFrameIdx = maxFrameIdx.clamp(0, _maxDolphinFrameIdx);
+
+      // What the walk will hold if every frame is there. The frames are the
+      // import's real size - this is the cap `_onImport` could not apply to
+      // the manifest, applied where the bytes are.
+      final projected = expectedBytes * (maxFrameIdx + 1);
+      if (projected > _paintImportLimit) {
+        throw PickedFileTooLarge(projected, _paintImportLimit);
       }
 
       final newFrames = <Uint8List>[];
@@ -779,6 +868,86 @@ class _PaintPageState extends State<PaintPage> {
                 FrameActions(ctrl: _ctrl, colors: colors),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The project-name dialog, which owns the field's controller.
+///
+/// Stateful for the controller's lifetime alone: a `State`'s `dispose` runs
+/// when the route is actually removed, which is after the exit transition that
+/// a controller disposed at the `showDialog` call site was still being
+/// rebuilt in. [_PaintPageState._promptProjectName] has the failure.
+///
+/// **A holdout from `components/dialogs/name.dart`**, which is this skeleton
+/// extracted (#266/#278) and which already owns its controller this way - the
+/// failure above was rediscovered here rather than inherited. Converting is
+/// not a refactor, though: `QNameDialog` takes a required device-shaped
+/// `NameRule` and *refuses* a name the rule rejects, while this one sanitizes
+/// whatever is typed into a folder name, and `name.dart`'s own doc names the
+/// paint editor as the caller waiting on a host-shaped rule.
+/// `test/name_prompt_budget_test.dart` counts the `showDialog<String>` sites
+/// and still reads one for `pages/tools`, which is this.
+class _NamePrompt extends StatefulWidget {
+  const _NamePrompt({required this.initial, required this.colors});
+
+  /// What the field starts with: the current project's name, the last name
+  /// typed into the export prompt, or a suggestion.
+  final String initial;
+
+  final QAppColors colors;
+
+  @override
+  State<_NamePrompt> createState() => _NamePromptState();
+}
+
+class _NamePromptState extends State<_NamePrompt> {
+  late final TextEditingController _ctrl = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    return AlertDialog(
+      backgroundColor: colors.dialogBackground,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text(
+        context.l10n.paintProjectName,
+        style: TextStyle(color: colors.dialogText),
+      ),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        style: TextStyle(color: colors.dialogText),
+        decoration: InputDecoration(
+          hintText: context.l10n.paintProjectNameHint,
+          hintStyle: TextStyle(color: colors.dialogMuted),
+        ),
+        onSubmitted: (v) => Navigator.pop(context, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            context.l10n.commonCancel,
+            style: TextStyle(color: colors.textSecondary),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text),
+          child: Text(
+            context.l10n.commonSave,
+            style: TextStyle(color: colors.accent),
           ),
         ),
       ],

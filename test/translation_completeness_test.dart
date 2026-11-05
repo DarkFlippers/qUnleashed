@@ -1,7 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'arb.dart';
 
 /// A ratchet on languages the app offers but does not speak.
 ///
@@ -54,20 +55,11 @@ const Set<String> kUntranslated = <String>{};
 void main() {
   final dir = Directory('translations');
 
-  Map<String, String> stringsOf(File file) {
-    final decoded = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    return {
-      for (final entry in decoded.entries)
-        if (!entry.key.startsWith('@') && entry.value is String)
-          entry.key: entry.value as String,
-    };
-  }
-
   late Map<String, String> english;
   late List<File> others;
 
   setUpAll(() {
-    english = stringsOf(File('${dir.path}/app_en.arb'));
+    english = arbStrings(File('${dir.path}/app_en.arb'));
     others = dir
         .listSync()
         .whereType<File>()
@@ -87,7 +79,7 @@ void main() {
     final verdicts = <String, String>{};
     for (final file in others) {
       final name = file.uri.pathSegments.last;
-      final strings = stringsOf(file);
+      final strings = arbStrings(file);
       // A language that has been started and not finished is fine, and
       // falling back to English for the rest is the behaviour this project
       // wants. With `skip_untranslated_strings` set, that is exactly what an
@@ -156,7 +148,7 @@ void main() {
 
     final nameless = [
       for (final file in others)
-        if (!stringsOf(file).containsKey('languageName'))
+        if (!arbStrings(file).containsKey('languageName'))
           file.uri.pathSegments.last,
     ];
 

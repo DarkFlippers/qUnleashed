@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
 import 'nav_bar.dart';
 import '../components/archive/category.dart';
 import '../components/open_url.dart';
+import '../components/permission_notice.dart';
 import '../pages/apps/catalog/page.dart';
 import '../pages/archive/browser/page.dart';
 import '../pages/archive/home_widget/picker_page.dart';
@@ -19,11 +22,14 @@ import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
 import '../pages/option/diagnostics_notice.dart';
 import '../pages/option/diagnostics_scope.dart';
+import '../services/archive/sort_settings.dart';
 import '../services/guarded.dart';
 import '../services/home_widget/service.dart';
 import '../services/localization/l10n.dart';
 import '../services/notifications/push_intent.dart';
 import '../services/notifications/push_service.dart';
+import '../services/permissions/permission.dart';
+import '../services/permissions/scope.dart';
 import '../theme/theme.dart';
 
 class AppShell extends StatefulWidget {
@@ -56,6 +62,11 @@ class _AppShellState extends State<AppShell> {
     client: widget.client,
   );
 
+  /// How the archive tables are ordered. Owned here rather than by a page
+  /// because the rail keeps several of them mounted at once, and a sort the
+  /// user changes on one has to reach the others. ADR 0002.
+  final ArchiveSortSettings _archiveSort = ArchiveSortSettings();
+
   int _slot = _slotDevice;
 
   /// Slots built so far. Everything the mobile layout used to build eagerly
@@ -65,8 +76,21 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    _archiveController.addListener(_onArchiveChanged);
+    // No listener on the archive controller here: its notification is taken
+    // by the `ListenableBuilder` in `build`, which is the whole of #410 - see
+    // the note there for what it used to cost.
     _archiveController.initialize();
+    // Started as early as there is anywhere to start it, so the stored sort
+    // is normally in hand before an archive table is reachable - but this is
+    // a platform round trip and nothing waits for it. A table opened before
+    // it lands shows name ascending and reorders once when it arrives, and
+    // `ArchiveSortSettings` holds off the read for a user who picked first.
+    //
+    // `load` never rejects; `guarded` is for the dropped future, not the
+    // error. #23.
+    unawaited(
+      guarded('[ArchiveSort] reading the stored sort', _archiveSort.load),
+    );
     HomeWidgetService.instance.pickRequests.addListener(_onWidgetPickRequest);
     PushService.instance.taps.addListener(_onPushTap);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -81,9 +105,18 @@ class _AppShellState extends State<AppShell> {
       // `guarded` because a post-frame callback is a void slot: the future
       // would otherwise be dropped and a rejection would land as `[uncaught]`
       // naming nothing. #23.
+      //
+      // `notifierOf` and not `of`: this reads the switch once, and `of` left
+      // the shell a dependent of `DiagnosticsScope` for its whole life - so
+      // flipping the reporting switch rebuilt the page stack and the rail
+      // groups. The dependency does not lapse on the next build; see that
+      // accessor's doc. #415.
       guarded(
         '[Diagnostics] raising the sharing notice',
-        () => showDiagnosticsNoticeIfDue(context, DiagnosticsScope.of(context)),
+        () => showDiagnosticsNoticeIfDue(
+          context,
+          DiagnosticsScope.notifierOf(context),
+        ),
       );
     });
   }
@@ -94,8 +127,8 @@ class _AppShellState extends State<AppShell> {
       _onWidgetPickRequest,
     );
     PushService.instance.taps.removeListener(_onPushTap);
-    _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
+    _archiveSort.dispose();
     super.dispose();
   }
 
@@ -127,9 +160,46 @@ class _AppShellState extends State<AppShell> {
     await openUrl(context, url);
   }
 
-  void _onArchiveChanged() {
-    if (mounted) setState(() {});
+  /// Whether a Bluetooth denial leaves this app with nothing to do.
+  ///
+  /// Two conditions, and both matter. The platform one is iOS alone -
+  /// Android keeps USB-OTG, which makes the same denial a feature gate the
+  /// device picker draws instead. The outcome one is `denied` exactly: an
+  /// unknown or unavailable answer must never raise this screen, because
+  /// blocking the whole app on a guess is worse than the silence it
+  /// replaces.
+  bool _bluetoothBlocks(BuildContext context) {
+    final center = PermissionScope.maybeOf(context);
+    if (center == null) return false;
+    // Asked through `tierOf` rather than re-derived from `Platform.isIOS`
+    // here. `AppPermission.tier` was made a pure function precisely so this
+    // decision could be tested on both platforms, and open-coding it meant
+    // the one branch that blacks out the whole app had no test at all.
+    if (center.tierOf(AppPermission.bluetooth) != PermissionTier.blocking) {
+      return false;
+    }
+    // `denied` exactly. An unknown or unavailable answer must never raise
+    // this screen: blocking the app on a guess is worse than the silence it
+    // replaces.
+    return center.outcomeOf(AppPermission.bluetooth).warrantsNotice;
   }
+
+  Widget _blockingGate(BuildContext context) {
+    return PermissionGate(
+      icon: Icons.bluetooth_disabled,
+      title: context.l10n.permissionBluetoothBlockedTitle,
+      body: context.l10n.permissionBluetoothBlockedBody,
+      hint: context.l10n.permissionBluetoothBlockedHint,
+      actionLabel: context.l10n.permissionOpenSettings,
+      // No re-check button beside it. `PermissionCenter` re-reads on
+      // resume, so coming back from settings clears this by itself -
+      // which is what the footnote on the screen promises.
+      onAction: _openAppSettings,
+    );
+  }
+
+  void _openAppSettings() =>
+      unawaited(openPermissionSettings(context, '[Gate] opening app settings'));
 
   @override
   Widget build(BuildContext context) {
@@ -140,20 +210,86 @@ class _AppShellState extends State<AppShell> {
 
     // Provided above the Navigator now, so this reads it like every other
     // page rather than owning it - ADR 0011.
-    final device = DeviceScope.of(context);
+    //
+    // `notifierOf`, so the poll does not rebuild *this*. The read used to be
+    // listening, which subscribed this element - so every tick re-ran the
+    // lines above as well as the builder below, and the `ListenableBuilder`
+    // narrowed nothing at all.
+    //
+    // The controller's state *is* read, by `_deviceLabel`, but only from
+    // inside the builder - whose element holds the subscription, so the label
+    // follows the device. Nothing below reads a *value* off it; the merge at
+    // the foot of this method only subscribes to it. That is what makes a
+    // non-listening read correct here. #407.
+    final device = DeviceScope.notifierOf(context);
+
+    // Tier 1. The only permission that reaches it is Bluetooth on iOS,
+    // where `transport/usb/ios.dart` throws `UnsupportedError` and there is
+    // no second transport - so every tab behind this is furniture and a
+    // notice inside one of them would be a notice on a dead screen. #351.
+    //
+    // Replaces the shell rather than covering it: there is nothing usable
+    // underneath, and a dismissible sheet over an empty app is how the user
+    // ends up staring at the empty app.
+    if (_bluetoothBlocks(context)) return _blockingGate(context);
+
+    // **The page stack is built out here and handed through, not rebuilt
+    // inside the builder.** `ListenableBuilder.child` exists for exactly this:
+    // it passes the same widget instance back, and `Element.updateChild`
+    // skips a child whose widget is identical - so a notification rebuilds
+    // this scaffold and its nav bar, and **every mounted page's `build` is
+    // skipped**.
+    //
+    // That is the saving, and it is worth being exact about: built inside the
+    // closure it was a new `IndexedStack` every tick, which *updates* its
+    // children rather than tearing them down, so `State` objects and scroll
+    // positions survived either way. What they paid was a `build` per mounted
+    // page, twelve times a minute.
+    //
+    // The only thing in here that depends on either controller is
+    // `deviceLabel` - one string, drawn in the bottom bar - and the wide
+    // layout does not draw even that: `FlipperRootScaffold` ignores
+    // `deviceLabel`, `currentTab` and `onTabSelected` entirely when `isWide`,
+    // so on desktop a tick was rebuilding the whole app for a value nothing
+    // displayed. #407, #410.
+    final pages = IndexedStack(
+      index: slot,
+      children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
+    );
+
+    // Out here with it: neither depends on either controller, and
+    // `_railGroups` builds a fresh list of lists, with a `FlipperRailIcon` per
+    // item, every time it is called. Inside the builder they were recomputed
+    // on every tick along with the label.
+    final railGroups = _railGroups(colors, slot);
+    final currentTab = _tabOf(slot);
+
+    // **Only the sync status, not the archive controller.** `_deviceLabel`
+    // reads `syncStatus` for the `connected` case and nothing else off that
+    // controller, and `ArchiveController` exposes it as a `ValueNotifier` -
+    // which notifies on `!=` - so the bottom bar follows a sync without being
+    // woken by the forty-one places the controller notifies from. ADR 0011's
+    // #410 addendum has the rates, and why this is merged in `build` rather
+    // than held in a field.
+    //
+    // #410 supposed the shell read no *value* off the archive controller at
+    // all, in which case its listener could simply have gone. Dropping it
+    // would have stopped the bar following a sync - lagging to the next
+    // five-second device tick rather than freezing, because the device
+    // controller is in this same merge.
+    final repaint = Listenable.merge([device, _archiveController.syncStatus]);
 
     return ListenableBuilder(
-      listenable: device,
-      builder: (context, _) {
+      listenable: repaint,
+      child: pages,
+      builder: (context, child) {
         return FlipperRootScaffold(
-          currentTab: _tabOf(slot),
+          currentTab: currentTab,
           onTabSelected: (tab) => _select(_slotOfTab(tab)),
           deviceLabel: _deviceLabel(device),
-          railGroups: _railGroups(colors, slot),
-          child: IndexedStack(
-            index: slot,
-            children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
-          ),
+          deviceStatus: _deviceStatus(device),
+          railGroups: railGroups,
+          child: child!,
         );
       },
     );
@@ -208,21 +344,31 @@ class _AppShellState extends State<AppShell> {
     if (!wide && _isArchiveDetail(slot)) return const SizedBox.shrink();
     if (slot == _slotDevice) return const DeviceTab();
     if (slot == _slotArchive) {
-      return ArchivePage(controller: _archiveController);
+      return ArchivePage(
+        controller: _archiveController,
+        sortSettings: _archiveSort,
+      );
     }
     if (slot == _slotFavorites) {
-      return FavoritesPage(controller: _archiveController);
+      return FavoritesPage(
+        controller: _archiveController,
+        sortSettings: _archiveSort,
+      );
     }
     if (slot == _slotFiles) {
       return FileManagerPage(client: widget.client, initialPath: '/ext');
     }
     if (slot == _slotDeleted) {
-      return DeletedPage(controller: _archiveController);
+      return DeletedPage(
+        controller: _archiveController,
+        sortSettings: _archiveSort,
+      );
     }
     if (slot == _slotApps) return const AppsCatalogPage();
     if (slot == _slotTools) return const ToolsPage();
     return CategoryPage(
       controller: _archiveController,
+      sortSettings: _archiveSort,
       category: ArchiveCategory.values[slot - _slotCategory],
     );
   }
@@ -305,6 +451,32 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  /// The same state as [_deviceLabel], in the four classes the tab's icon can
+  /// draw. See [DeviceTabStatus] for why it is coarser.
+  ///
+  /// Reads the same three sources in the same order, so the dot and the
+  /// sentence cannot disagree: a `connected` Flipper whose data is still
+  /// coming in, or whose archive is still syncing, is `working` here and
+  /// "Syncing" there.
+  DeviceTabStatus _deviceStatus(DeviceController device) {
+    switch (device.connectionState) {
+      case DeviceConnectionState.disconnected:
+        return DeviceTabStatus.absent;
+      case DeviceConnectionState.connecting:
+      case DeviceConnectionState.recovering:
+        return DeviceTabStatus.working;
+      case DeviceConnectionState.dfu:
+        return DeviceTabStatus.attention;
+      case DeviceConnectionState.connected:
+        if (device.deviceLoading) return DeviceTabStatus.working;
+        return switch (_syncStatus) {
+          ArchiveSyncStatus.syncing => DeviceTabStatus.working,
+          ArchiveSyncStatus.synced => DeviceTabStatus.ready,
+          ArchiveSyncStatus.idle => DeviceTabStatus.ready,
+        };
+    }
+  }
+
   String _deviceLabel(DeviceController device) {
     final strings = l10n;
     switch (device.connectionState) {
@@ -320,18 +492,29 @@ class _AppShellState extends State<AppShell> {
         return strings.deviceStateRecovering;
       case DeviceConnectionState.connected:
         if (device.deviceLoading) return strings.deviceStateSyncing;
+        // **Three statuses, three strings**, and `synced` draws the one
+        // the ARB describes as "when the archive finished syncing": what
+        // `ArchiveController.syncAll` means by reaching it, and what
+        // `syncCategory` deliberately does not claim.
+        //
+        // The arm used to be guarded on `DeviceController`'s
+        // `deviceInfoConnected`, which says nothing about the archive and is
+        // implied by `connected && !deviceLoading` besides - every route to
+        // `isConnected` runs `_ensureDataLoading`, which leaves one of that
+        // pair set - so the string and its seven translations were
+        // unreachable. The flag was the wrong thing to read, not the branch
+        // the wrong thing to have; a connectedness guard here is the mistake
+        // not to re-add. #420.
         switch (_syncStatus) {
           case ArchiveSyncStatus.syncing:
             return strings.deviceStateSyncing;
           case ArchiveSyncStatus.synced:
-            return device.deviceInfoConnected
-                ? strings.deviceStateConnected
-                : strings.deviceStateSynced;
+            return strings.deviceStateSynced;
           case ArchiveSyncStatus.idle:
             return strings.deviceStateConnected;
         }
     }
   }
 
-  ArchiveSyncStatus get _syncStatus => _archiveController.syncStatus;
+  ArchiveSyncStatus get _syncStatus => _archiveController.syncStatus.value;
 }

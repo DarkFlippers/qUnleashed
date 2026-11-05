@@ -1,4 +1,7 @@
 import 'package:flutter/gestures.dart';
+
+import '../../../../../components/sensitive_surface.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../../../../theme/colors/display.dart';
@@ -11,7 +14,7 @@ import '../painters.dart';
 /// editor page no longer has to juggle pointer bookkeeping. Drawing strokes are
 /// forwarded to [ctrl]; right-mouse drag, scroll wheel, trackpad and two-finger
 /// touch all pan, clamped to the zoomed canvas bounds.
-class CanvasView extends StatefulWidget {
+class CanvasView extends StatefulWidget with SensitiveSurface {
   const CanvasView({super.key, required this.ctrl});
 
   final PaintController ctrl;

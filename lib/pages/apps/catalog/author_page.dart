@@ -98,7 +98,7 @@ class _AuthorPageState extends State<AuthorPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        client: DeviceScope.of(context).client,
+        client: DeviceScope.clientOf(context),
         title: context.l10n.authorPageTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

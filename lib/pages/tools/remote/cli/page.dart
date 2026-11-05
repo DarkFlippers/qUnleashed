@@ -14,6 +14,7 @@ import 'package:qunleashed/components/appbar.dart';
 
 import '../../../../components/dialogs/connection_error.dart';
 import '../../../../components/dialogs/connection.dart';
+import '../../../../services/connection/connect_report.dart';
 import '../../../../services/connection/link_service.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/logging.dart';
@@ -112,7 +113,7 @@ class _CliPageState extends State<CliPage> {
   /// a session whose transport has been torn down, one already back in RPC
   /// mode, and the write itself all reject instead. The first two both read
   /// "No active transport", so which of them happened is easy to mistake; the
-  /// Future.sync inside [guarded] puts all four in one place.
+  /// `task()` call inside [guarded]'s `try` puts all four in one place.
   void _fireAndShow(Future<void> Function() send, String what) =>
       unawaited(guarded('[CLI] $what', send, onFailure: _reportWriteFailure));
 
@@ -235,6 +236,14 @@ class _CliPageState extends State<CliPage> {
       // throws, this is the only place the real reason survives - the outer
       // catch would otherwise draw the dialog's failure instead.
       if (mounted) _notice(l10n.cliStartFailed('$e'));
+      // Before the dialog, for the reason the notice above goes first: the
+      // dialog is the half of this that can fail on its own.
+      reportConnectFailure(
+        e,
+        st,
+        attempt: ConnectAttempt.manual,
+        isBle: device.isBle,
+      );
       await _showConnectionFailedDialog(device, e);
       if (mounted) {
         Navigator.of(context).maybePop();

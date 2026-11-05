@@ -10,20 +10,37 @@
 // its own visitor and its own budget - what they share is how a file list is
 // obtained, how a path becomes an area, and how two maps are compared.
 //
-// Seven of them now, and they do not all mean the same thing. Four -
-// `bare_catch`, `build_io`, `client_reach` and `log_level` - count legacy that
-// a sweep is draining. `unawaited` was the first whose budget went in before
-// its sweep rather than after, deliberately, so the figure could not climb
-// while the sweep ran; that sweep is done. `caught` is the only one meant to
-// *rise*, once, as ADR 0013 §5's re-ruling lands. And
-// `sentry_import_guard_test.dart` has no legacy at all: its budget is empty
-// everywhere, because the dependency arrived with the folder allowed to hold
-// it.
+// They do not all mean the same thing. Four - `bare_catch`, `build_io`,
+// `client_reach` and `log_level` - count legacy that a sweep is draining.
+// `unawaited` was the first whose budget went in before its sweep rather than
+// after, deliberately, so the figure could not climb while the sweep ran; that
+// sweep is done. `caught` is the only one meant to *rise*, once, as ADR 0013
+// §5's re-ruling lands.
+//
+// The guards have an empty budget everywhere and no legacy to drain -
+// `picker`, `picker_bytes`, `toolbar_sort`, `selection` and `sentry_import`.
+// All but the last went in with their own final site already moved, so zero
+// was both the count and the target. `sentry_import` never had a site to move:
+// the dependency arrived with the folder allowed to hold it.
+//
+// **No count of the ratchets themselves.** The first line carried one from the
+// third ratchet, and this paragraph said "Seven of them now" from the seventh
+// to the fifteenth; `picker_guard_test.dart` names that as the reason it
+// carries no ordinal either. Nothing checks a number only a human reads, and a
+// stale one reads as a file nobody maintains - `git ls-files test` and a grep
+// for `expectWithinBudget` is the answer that cannot go stale.
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+// The file list moved to its own library so a test that wants only that does
+// not pull in `package:analyzer` with it. Imported for this file's own use and
+// re-exported, so every ratchet keeps importing this file exactly as before.
+import 'source_files.dart';
+
+export 'source_files.dart';
 
 /// Parses [source], failing the test rather than counting zero if it cannot.
 ///
@@ -45,41 +62,6 @@ CompilationUnit parseUnit(String source, {String? path}) {
   );
   return parsed.unit;
 }
-
-/// Paths matching [pathspec] that git can see, tracked or not.
-///
-/// git rather than a directory walk: submodule contents under lib/modules are
-/// gitlinks rather than tracked files, so flipperlib and dartufbt drop out
-/// without being named, and anything gitignored drops out too. The same
-/// reasoning as check_format.sh.
-///
-/// `--others --exclude-standard` as well as the index, because a file that has
-/// not been added yet is exactly the one its author is about to run this
-/// against. Without it a local run before `git add` is a false green - which is
-/// how the formatting check on the first ratchet came to be missed.
-///
-/// Takes the pathspec because `test/local_defines_test.dart` wants the same
-/// question asked of a different glob, and had a verbatim copy of this
-/// function until it did. The pathspec is the only part that differs.
-List<String> gitVisibleFiles(String pathspec) {
-  final result = Process.runSync('git', [
-    'ls-files',
-    '-z',
-    '--cached',
-    '--others',
-    '--exclude-standard',
-    '--',
-    pathspec,
-  ]);
-  expect(result.exitCode, 0, reason: 'git ls-files failed: ${result.stderr}');
-  return (result.stdout as String)
-      .split(String.fromCharCode(0))
-      .where((path) => path.isNotEmpty)
-      .toList();
-}
-
-/// Dart under `lib/` that git can see, tracked or not.
-List<String> dartFilesUnderLib() => gitVisibleFiles('lib/*.dart');
 
 /// The budget bucket a file belongs to.
 ///
@@ -115,39 +97,75 @@ String areaOf(String path) {
   return (over: over, under: under);
 }
 
-/// Walks every Dart file under `lib/`, counting what [linesIn] finds.
+/// Per-area totals and, for a failure message, where each counted site is.
 ///
-/// Returns the per-area totals and, for a failure message, where each counted
-/// site is.
-({Map<String, int> counted, Map<String, List<String>> sites}) countAcrossLib(
-  List<int> Function(CompilationUnit unit, String path) linesIn,
-) {
-  final files = dartFilesUnderLib();
-  // A guard that counts nothing passes every budget. The wrong working
-  // directory, a pathspec that stops matching, a submodule layout change - all
-  // of them empty this list, and without this the build stays green having
-  // looked at nothing at all.
-  expect(
-    files,
-    hasLength(greaterThan(100)),
-    reason: 'expected the whole of lib/, got ${files.length} files',
-  );
+/// [countAcrossLib] fills one of these as it walks. It is a class rather than
+/// the two bare maps because a ratchet wanting a *second* number out of the
+/// same walk has to accumulate it itself, and the bookkeeping was being copied
+/// to do that: `device_scope_listen_test.dart` tallies every listening read
+/// while the walk returns the client-only subset of them. Extracted at that
+/// second user, which is this file's charter.
+class AreaTally {
+  final Map<String, int> counted = {};
+  final Map<String, List<String>> sites = {};
 
-  final counted = <String, int>{};
-  final sites = <String, List<String>>{};
-  for (final path in files) {
-    final lines = linesIn(
-      parseUnit(File(path).readAsStringSync(), path: path),
-      path,
-    );
-    if (lines.isEmpty) continue;
+  /// Records the [lines] found in [path], under that path's area.
+  void add(String path, List<int> lines) {
+    if (lines.isEmpty) return;
     final area = areaOf(path);
     counted.update(area, (n) => n + lines.length, ifAbsent: () => lines.length);
     sites
         .putIfAbsent(area, () => <String>[])
         .addAll(lines.map((line) => '$path:$line'));
   }
-  return (counted: counted, sites: sites);
+
+  /// Every area's count added up, for a vacuity check.
+  int get total => counted.values.fold(0, (sum, n) => sum + n);
+}
+
+/// Walks every Dart file under `lib/`, counting what [linesIn] finds.
+///
+/// Returns the per-area totals and, for a failure message, where each counted
+/// site is. The record rather than the [AreaTally] itself, because fifteen
+/// ratchets destructure it and none of them wants the accumulator.
+({Map<String, int> counted, Map<String, List<String>> sites}) countAcrossLib(
+  List<int> Function(CompilationUnit unit, String path) linesIn,
+) => countAcross(dartFilesUnderLib(), linesIn, expected: 'the whole of lib/');
+
+/// Walks [files], counting what [linesIn] finds in each.
+///
+/// Split out of [countAcrossLib] at its second caller: #414's ratchet walks
+/// `test/` rather than `lib/`, because that is where its subject lives, and
+/// nothing else about the walk differs. [expected] and [atLeast] carry the
+/// vacuity guard's words with it - "the whole of lib/" is the wrong complaint
+/// for a walk that is not of lib, and a guard whose message is wrong is one
+/// nobody reads. [atLeast] has a default because both trees are in the
+/// hundreds; a ratchet over a small directory lowers it, and a floor bigger
+/// than the tree fails loudly rather than quietly.
+({Map<String, int> counted, Map<String, List<String>> sites}) countAcross(
+  List<String> files,
+  List<int> Function(CompilationUnit unit, String path) linesIn, {
+  required String expected,
+  int atLeast = 100,
+}) {
+  // A guard that counts nothing passes every budget. The wrong working
+  // directory, a pathspec that stops matching, a submodule layout change - all
+  // of them empty this list, and without this the build stays green having
+  // looked at nothing at all.
+  expect(
+    files,
+    hasLength(greaterThan(atLeast)),
+    reason: 'expected $expected, got ${files.length} files',
+  );
+
+  final tally = AreaTally();
+  for (final path in files) {
+    tally.add(
+      path,
+      linesIn(parseUnit(File(path).readAsStringSync(), path: path), path),
+    );
+  }
+  return (counted: tally.counted, sites: tally.sites);
 }
 
 /// Asserts [counted] is at or under [budget], and says where if it is not.
@@ -184,22 +202,87 @@ void expectWithinBudget({
   expect(drift.over, isEmpty, reason: '$why\n${offending.join('\n')}');
 }
 
+/// Whether [path] is one of [exempt], matched on the path's tail.
+///
+/// Shared because two ratchets exempt a file - the push census spares the
+/// helper that owns pushing, the prompt census the dialog that owns prompting -
+/// and `ratchet.dart`'s charter is how a file list is obtained and how a path
+/// becomes an area. Both copies also normalised `\` to `/` first, which
+/// cannot matter: `countAcrossLib` takes its paths from `git ls-files`, which
+/// emits forward slashes on Windows too, and `areaOf` has always assumed that
+/// by splitting on one.
+bool isExempt(String path, Set<String> exempt) => exempt.any(path.endsWith);
+
+/// Whether [node] is a static call on the class named [className], however
+/// that class was imported.
+///
+/// The prefixed form is why it is worth sharing: one
+/// `import '.../logging.dart' as log;` would zero out a whole file's
+/// contribution to a rule that only knew the bare name, and nobody adding that
+/// import would connect it to a ratchet.
+///
+/// What it cannot see is the other redirection: `typedef Log = LogService;`
+/// gives the target a different name, and nothing here resolves a typedef.
+/// That is a blind spot for every caller, and each says so.
+bool isCallOnClass(MethodInvocation node, String className) {
+  final target = node.target;
+  if (target is SimpleIdentifier) return target.name == className;
+  if (target is PrefixedIdentifier) {
+    return target.identifier.name == className;
+  }
+  return false;
+}
+
 /// Whether [node] is a call on `LogService`, however it was imported.
 ///
 /// Shared because two ratchets ask it and a third would — the log-level budget
-/// and the `caught` budget had byte-identical copies. The prefixed form is why
-/// it is worth sharing: one `import '.../logging.dart' as log;` would zero out
-/// a whole file's contribution to whichever copy had not been taught about it,
-/// and nobody adding that import would connect it to a ratchet.
+/// and the `caught` budget had byte-identical copies. The third arrived as
+/// `device_scope_listen_test.dart` asking the same question about
+/// `DeviceScope`, which is what pushed the target test down into
+/// [isCallOnClass]; this stayed, because two ratchets read better for naming
+/// the class once than for passing it in.
 ///
 /// The visitors stay with their own tests, as this file's header says. They
 /// differ — one tracks catch depth and one does not — and only the predicate
 /// is common.
-bool isLogServiceCall(MethodInvocation node) {
-  final target = node.target;
-  if (target is SimpleIdentifier) return target.name == 'LogService';
-  if (target is PrefixedIdentifier) {
-    return target.identifier.name == 'LogService';
+bool isLogServiceCall(MethodInvocation node) =>
+    isCallOnClass(node, 'LogService');
+
+/// The argument called [name] in [arguments], or null if it is not passed.
+///
+/// Shared on the same grounds as [isLogServiceCall], and by then four ratchets
+/// had spelt it out: the bytes argument of a pick, the `throwable:` of a Sentry
+/// event, a toolbar's `sort:`, and a folder pick's `what:`.
+///
+/// The reason it is worth a function is the accessor rather than the loop.
+/// `NamedArgument.argumentExpression` carries `@ToBeDeprecated` and
+/// `argumentExpression2` - the one that replaces it - is `@experimental`,
+/// which `flutter analyze` makes fatal in CI, so the copies had to agree on
+/// using the deprecated spelling *and* on why. With one copy, the migration
+/// is one edit here and the argument is written once.
+NamedArgument? namedArgument(ArgumentList arguments, String name) {
+  for (final argument in arguments.arguments) {
+    if (argument is NamedArgument && argument.name.lexeme == name) {
+      return argument;
+    }
   }
-  return false;
+  return null;
 }
+
+/// The types in [clause] named [name], for a rule about a mixin being applied.
+///
+/// Shared on the same grounds as [namedArgument], at the second user: the
+/// visible-surface census reads a `with` clause to find its marker and
+/// `selection_guard_test.dart` reads one to find `ListSelection`. Both want
+/// the matching [NamedType] rather than a bool - one for its offset, one to
+/// ask whether there was a match at all.
+///
+/// Null is empty, so a declaration with no `with` clause needs no special
+/// case at the call site. What the *caller* must not forget is
+/// `ClassTypeAlias`: `class A = B with M;` is the same decision in the other
+/// spelling, and a visitor that overrides only `visitClassDeclaration`
+/// silently misses it.
+Iterable<NamedType> mixinsNamed(WithClause? clause, String name) =>
+    (clause?.mixinTypes ?? const <NamedType>[]).where(
+      (type) => type.name.lexeme == name,
+    );

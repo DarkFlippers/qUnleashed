@@ -11,6 +11,7 @@ import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'quiet_device_title.dart';
+import 'view_size.dart';
 
 /// Enough of a client for the page to open a session over and for the test to
 /// see what actually reached the wire. Shaped like the fakes in
@@ -130,9 +131,7 @@ void main() {
     // Phone-sized and portrait: RemoteLayout.isWide is width > height, and the
     // narrow layout is both where Wrist Remote is actually used and the one
     // that renders the app bar's back button.
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, const Size(390, 844));
 
     await tester.pumpWidget(
       _wrap(RemoteControlPage(client: client, mediaRemoteSupported: true)),
@@ -193,9 +192,7 @@ void main() {
     final client = _FakeClient();
     // Narrow enough to squeeze the dropdown rows, which is where the icon plus
     // an elided label has to survive.
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+    sizeView(tester, const Size(390, 844));
 
     await tester.pumpWidget(
       _wrap(RemoteControlPage(client: client, mediaRemoteSupported: true)),

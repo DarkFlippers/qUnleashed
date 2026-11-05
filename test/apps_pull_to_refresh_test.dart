@@ -22,11 +22,12 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// The indicator rather than `AppsTable`, deliberately. `AppsTable`'s column
 /// header overflows its row by 8.2 pixels at every surface width, which is a
-/// rendering error and fails any case that builds it - a separate bug, found
-/// while writing this and not fixed here. What is left to cover is the shape of
-/// the handler, which is what #23 got wrong; the three call sites themselves
-/// are held by `test/unawaited_budget_test.dart`, since going back to
-/// `unawaited` there raises its number.
+/// rendering error and failed any case that built it. That bug is fixed -
+/// #220, and `apps_table.dart` records that the header ellipsizes now - so
+/// what keeps this file on a stand-in rather than the table is only that the
+/// handler's shape is what #23 got wrong and is all this covers. The three
+/// call sites themselves are held by `test/unawaited_budget_test.dart`, since
+/// going back to `unawaited` there raises its number.
 void main() {
   late Completer<void> work;
   late int started;

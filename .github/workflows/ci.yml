@@ -43,6 +43,26 @@ jobs:
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
 
+      # Its subject runs only on a tag push and is written never to fail - a
+      # release must not be discarded over Sentry - so this suite is the only
+      # thing that can turn a regression in it red.
+      - name: Test the R8 mapping upload
+        run: .github/scripts/upload_r8_mapping_test.sh
+
+      # The guard's other two modes run on the release path only, and the thing
+      # they watch - the build image's GLib - cannot be made to move from here.
+      # So this is where their logic is checked: #280 was a published binary
+      # that could not start, and the floor is now a number a test can drive.
+      - name: Test the Linux ABI floor guard
+        run: .github/scripts/check_linux_abi_test.sh
+
+      # This one is not a test of the guard but the guard itself, and it is the
+      # only part of the #280 fix a pull request can see: nothing here builds
+      # Linux, so a change of `runs-on` back to a floating label would
+      # otherwise go green and be caught by the run that publishes.
+      - name: Check the Linux build image is pinned
+        run: .github/scripts/check_linux_abi.sh --check-runner
+
       # The guard itself only ever runs on a tagged release, on macOS. This runs
       # its logic here so it is not first trusted at the moment it matters.
       - name: Test the Apple FFI export guard
@@ -50,6 +70,26 @@ jobs:
 
       - name: Test the translation source guard
         run: .github/scripts/check_translation_sources_test.sh
+
+      # The release notes are hand-written and, until this guard, nothing read
+      # them - which is how the file came to name 0.15.0 while 0.16.0-dev was
+      # the published build. The check is on the shape, not the prose.
+      - name: Test the changelog guard
+        run: .github/scripts/check_changelog_test.sh
+
+      - name: Check the changelog
+        run: .github/scripts/check_changelog.sh
+
+      # Only ever runs on a release, which is the least-rehearsed path there
+      # is, and it writes the one file CI refuses a build over.
+      - name: Test the cycle opener
+        run: .github/scripts/open_next_cycle_test.sh
+
+      # Its output is published prose rather than a build decision, so nothing
+      # downstream goes red when it is wrong - somebody reads the release page
+      # and finds it describing the wrong build.
+      - name: Test the release body
+        run: .github/scripts/release_body_test.sh
 
       # Why: the probe's own header. The only thing anywhere that runs the
       # generated engine, and it needs no Flutter.
@@ -61,6 +101,33 @@ jobs:
       # surface as a translation silently reported as fine.
       - name: Test the translation compile summary
         run: .github/scripts/summarize_l10n_failure_test.sh
+
+      # The sync no longer passes --write; this suite is the only thing that
+      # exercises it, so it is the only thing that would notice it rotting.
+      # What the flag is still for is in check_arb_locales.sh's header.
+      - name: Test the ARB locale guard
+        run: .github/scripts/check_arb_locales_test.sh
+
+      # Which of the two families of pub get failure a job is looking at. The
+      # call is in setup-flutter, where no test can reach it.
+      - name: Test the pub get failure message
+        run: .github/scripts/pub_get_failure_message_test.sh
+
+      # The button font is built from text, not drawn in an editor: every
+      # glyph is a block of # and . in font/src, and the .ttf is committed so
+      # nothing has to run before the app compiles. This is what keeps the two
+      # from drifting apart. fonttools is pinned because --check compares bytes
+      # and a new version may legitimately pad a table differently.
+      - name: Set up Python for the font build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the font build's dependency
+        run: pip install fonttools==4.56.0
+
+      - name: Check the button font matches its source
+        run: python font/build.py --check
 
       # Why any of this exists is in the script's own header. What is specific
       # to running it here:
@@ -145,3 +212,46 @@ jobs:
           --dart-define=QLOG_EXPECT_QUIET=true
           test/logging_kept_test.dart
           test/kept_sink_test.dart
+
+  # `derive_version.sh` runs first in every one of the five build jobs, so a
+  # fault in it is an outage of whichever platforms share the cause. It is the
+  # only script in the repository that runs on all three runner OSes, and until
+  # this job existed it was only ever tested under GNU userland: the job above
+  # is ubuntu-only, so a BSD-only sed form shipped, passed every assertion, and
+  # killed the macOS and iOS dev build on the first push to main after it
+  # merged. The suite is pure bash and builds its own fixture repositories, so
+  # running it here costs a runner boot and nothing else.
+  #
+  # Not every suite. `checksums_test.sh` calls `sha256sum`, which macOS has not
+  # got, and `check_linux_abi_test.sh` is doubly out: its subject uses
+  # `declare -A` and macOS still ships bash 3.2, so adding it here fails on the
+  # option rather than on anything about the guard. The rest are simply not here
+  # yet - `check_ffi_exports.sh` does run on a macOS build, so its suite would
+  # belong.
+  #
+  # `release_body_test.sh` is here although its script runs only on
+  # `ubuntu-latest`, because it leans on the answer for `grep -v -f <empty
+  # file>` - not a thing to assume holds across userlands, and load-bearing for
+  # every note at a cycle boundary. It costs a step on a runner this job has
+  # already booted.
+  scripts-bsd:
+    name: Test the release scripts on BSD userland
+    runs-on: macos-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Test the release version derivation
+        run: .github/scripts/derive_version_test.sh
+
+      # Pure bash too, and both use mktemp, which is where BSD and GNU differ.
+      - name: Test the changelog guard
+        run: .github/scripts/check_changelog_test.sh
+
+      - name: Test the cycle opener
+        run: .github/scripts/open_next_cycle_test.sh
+
+      - name: Test the release body
+        run: .github/scripts/release_body_test.sh

@@ -114,7 +114,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   void _onSort(String key) => setState(() => _sort.select(key));
 
   Future<void> _launch(InstalledApp app) =>
-      launchApp(context, () => _device.launch(app));
+      launchApp(context, () => _device.launch(app), target: app.path);
 
   Future<bool> _confirm(String title, String body) {
     return QConfirmDialog.show(context, title: title, message: body);
@@ -306,12 +306,16 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               children: [
                 const Icon(Icons.manage_search, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  context.l10n.managerTitle,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    context.l10n.managerTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -366,6 +370,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                 query: _query,
                 filterVal: _folderFilter,
                 filterOpts: folders,
+                sort: _sort.control(_onSort),
                 catColor: header,
                 colors: colors,
                 showStar: false,

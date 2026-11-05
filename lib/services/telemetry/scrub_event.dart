@@ -27,10 +27,20 @@ import 'scrub.dart';
 /// through here at all - it is assembled below Dart, which is why §6.3 asks for
 /// the same patterns as server-side rules.
 ///
-/// `data` values are scrubbed only where they are already strings. A nested map
-/// is left alone rather than walked: nothing the app puts in a breadcrumb has
-/// one today, and a recursive walk over arbitrary JSON is a cost paid on every
-/// event for a case that does not exist.
+/// `data` values are scrubbed **one level deep**: strings, and the strings
+/// inside a list or a map one step down. Not arbitrary depth, which would be a
+/// recursive walk over untyped JSON paid on every event.
+///
+/// One level and not zero because the old reasoning - "nothing the app puts in
+/// a breadcrumb has a nested one" - is no longer true and was about to matter.
+/// The SDK's `RouteObserverBreadcrumb` puts `from_arguments`, `to_arguments`
+/// and `data` into breadcrumb `data`, and `_formatArgs` renders a
+/// `Map<String, dynamic>` argument as a nested `Map<String, String>`. It is
+/// empty today only because nothing in `lib/` passes
+/// `RouteSettings(arguments:)` - so a single `Navigator.push(..., arguments:
+/// {...})` in a later PR would have minted an unscrubbed nested map, with
+/// nothing failing. The same shape is what `SentryUserInteractionWidget`
+/// produces, which `options.dart` keeps switched off partly for this reason.
 ///
 /// Returns non-null, and the type says so. `beforeSend` reads null as "drop
 /// this event", which would lose exactly the failures nobody has seen
@@ -78,12 +88,29 @@ SentryLog scrubLog(SentryLog log) {
 /// Shared by the breadcrumb and span walks. A number or a bool cannot carry a
 /// filename, and rewriting one into a string would change what the event
 /// means.
+///
+/// One level down into a list or a map, and no further - see the file header
+/// for which live source produces that shape. Depth is capped rather than
+/// recursive so the cost stays proportional to what the app actually sends.
 void _scrubStringValues(Map<String, dynamic>? data) {
   if (data == null) return;
   for (final key in data.keys) {
-    final value = data[key];
-    if (value is String) data[key] = Scrub.outbound(value);
+    data[key] = _scrubValue(data[key], descend: true);
   }
+}
+
+/// [value] with any string in it rewritten, descending one level when
+/// [descend].
+Object? _scrubValue(Object? value, {required bool descend}) {
+  if (value is String) return Scrub.outbound(value);
+  if (!descend) return value;
+  if (value is List) {
+    return value.map((v) => _scrubValue(v, descend: false)).toList();
+  }
+  if (value is Map) {
+    return value.map((k, v) => MapEntry(k, _scrubValue(v, descend: false)));
+  }
+  return value;
 }
 
 SentryEvent scrubEvent(SentryEvent event) {

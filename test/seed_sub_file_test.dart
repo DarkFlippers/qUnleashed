@@ -1,15 +1,24 @@
 // The `.sub` a recovered remote is written as.
 //
-// The expectation is not invented here: it is what the engine's own
+// The expectations are not invented here: each is what the engine's own
 // command-line build writes for the same recovery, captured by running it. The
 // engine refuses to write that file unless re-encrypting the rebuilt frame
 // reproduces the captured hop, so a file matching it byte for byte is one the
 // firmware will transmit.
 //
-// What it cannot see: whether the firmware accepts the file. That needs a
+// Which build matters, for the two KeeLoq ones. They come from the engine's
+// readable source *after* it learned to reverse a KeeLoq frame. The obfuscated
+// copy in `lib/modules/cpp/faaccrack/` predates that, so building the CLI from
+// the in-repo engine and re-running these commands reproduces every line
+// except `Key:`, which comes back unreversed. That is the stale artifact, not a
+// wrong fixture here - and it reaches nothing, because the library build
+// renames `main` away (`CMakeLists.txt`) and the app writes the `.sub` itself.
+//
+// What none of it can see: whether the firmware accepts the file. That needs a
 // Flipper and a receiver.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
+import 'package:qunleashed/components/path.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_sub_file.dart';
 
 /// A recovery that came back verified, which is the only kind that may be
@@ -27,8 +36,9 @@ SeedResult _found({
   hopsUsed: hopsUsed,
 );
 
-/// Written by `faaccrack 3 A0DC9330 293AC619 1EECA414 CBCEFBA6 -f 868350000`,
-/// the Genius known-answer vector the native probe also uses.
+/// Written by `faaccrack 3 A0DC9330 293AC619 1EECA414 CBCEFBA6 -o genius.sub
+/// -f 868350000`, the Genius known-answer vector the native probe also uses.
+/// Without `-o` the engine solves and prints but writes nothing.
 const _engineWroteGenius = '''
 Filetype: Flipper SubGhz Key File
 Version: 1
@@ -41,6 +51,53 @@ Seed: 00 00 07 89
 Manufacture: Genius
 ''';
 
+/// Written by `faaccrack 1 12345674 B3EF9ABB 3F5E4CF5 698DCAEE -o faac.sub -f
+/// 433920000`, the FAAC SLH known-answer vector.
+///
+/// Here for `Manufacture`: the keystore spells it `FAAC_SLH` and the firmware
+/// matches that by `strcmp`, where this app's label for a screen is "FAAC SLH".
+/// It was the one mode with no engine fixture, and the only one whose output
+/// differed from the engine's.
+const _engineWroteFaacSlh = '''
+Filetype: Flipper SubGhz Key File
+Version: 1
+Frequency: 433920000
+Preset: FuriHalSubGhzPresetOok650Async
+Protocol: Faac SLH
+Bit: 64
+Key: 12 34 56 74 69 8D CA EE
+Seed: 00 00 01 23
+Manufacture: FAAC_SLH
+''';
+
+/// Written by `faaccrack 2 200342E2 2F62BE4B 1895D794 367AEB49 -o bft.sub -f
+/// 433920000`, the BFT known-answer vector.
+///
+/// The key is the frame `200342E2367AEB49` reversed over all 64 bits, so a
+/// reader can recompute it. See [SeedManufacturer.framesAreBitReversed] for
+/// what the firmware does with it.
+const _engineWroteBft = '''
+Filetype: Flipper SubGhz Key File
+Version: 1
+Frequency: 433920000
+Preset: FuriHalSubGhzPresetOok650Async
+Protocol: KeeLoq
+Bit: 64
+Key: 92 D7 5E 6C 47 42 C0 04
+Seed: 00 00 04 56
+Manufacture: BFT
+''';
+
+/// The `Key:` line of what `faaccrack 4 20345678 4AB86AAC 04C40F30 A1988133 -o
+/// erreka.sub -f 433920000` wrote: the frame `20345678A1988133` reversed.
+///
+/// The other KeeLoq manufacturer, so that the reversal is pinned by protocol
+/// and not by one enum value. Only the key, because that is this vector's whole
+/// job - [_engineWroteBft] already holds the KeeLoq header byte for byte, and a
+/// second full-file fixture would report a change to `Preset:` under the name
+/// of the reversal.
+const _engineWroteErrekaKey = 'Key: CC 81 19 85 1E 6A 2C 04';
+
 void main() {
   group('render', () {
     test('matches what the engine itself writes', () {
@@ -52,6 +109,44 @@ void main() {
           frequencyHz: 868350000,
         ),
         _engineWroteGenius,
+      );
+    });
+
+    test('names the manufacturer the keystore does, not the screen', () {
+      // `subghz_protocol_faac_slh_get_key` compares `Manufacture` against each
+      // keystore entry with `strcmp`, so this is the field that picks the
+      // manufacture key. The label is for a screen and says "FAAC SLH".
+      expect(
+        SeedSubFile.render(
+          result: _found(seed: 0x00000123, frameHop: 0x698DCAEE),
+          manufacturer: SeedManufacturer.faacSlh,
+          fix: 0x12345674,
+          frequencyHz: 433920000,
+        ),
+        _engineWroteFaacSlh,
+      );
+    });
+
+    test('turns a KeeLoq frame round, as the engine does', () {
+      // Not a formatting choice - see `SeedManufacturer.framesAreBitReversed`
+      // for what the firmware does with a frame written the other way round.
+      expect(
+        SeedSubFile.render(
+          result: _found(seed: 0x00000456, frameHop: 0x367AEB49),
+          manufacturer: SeedManufacturer.bft,
+          fix: 0x200342E2,
+          frequencyHz: 433920000,
+        ),
+        _engineWroteBft,
+      );
+      expect(
+        SeedSubFile.render(
+          result: _found(seed: 0x0600A0BC, frameHop: 0xA1988133),
+          manufacturer: SeedManufacturer.erreka,
+          fix: 0x20345678,
+          frequencyHz: 433920000,
+        ),
+        contains(_engineWroteErrekaKey),
       );
     });
 
@@ -109,7 +204,7 @@ void main() {
           frequencyHz: 433920000,
         );
         expect(rendered, contains('Protocol: $protocol'));
-        expect(rendered, contains('Manufacture: ${manufacturer.label}'));
+        expect(rendered, contains('Manufacture: ${manufacturer.inFile}'));
       }
     });
   });
@@ -210,7 +305,7 @@ void main() {
       // Otherwise the dialog opens on a name its own Save button refuses.
       for (final manufacturer in SeedManufacturer.values) {
         expect(
-          SeedSubFile.checkBaseName(
+          SeedSubFile.nameRule.check(
             SeedSubFile.baseName(manufacturer: manufacturer, fix: 0xA0DC9330),
           ),
           isNull,
@@ -234,137 +329,40 @@ void main() {
   });
 
   group('checkBaseName', () {
-    test('accepts what a user would reasonably type', () {
-      for (final name in [
-        'Genius_A0DC9330',
-        'garage',
-        'Gate 2',
-        'front-gate',
-        'v1.2',
-        'a',
-        'x' * SeedSubFile.maxBaseNameLength,
-      ]) {
-        expect(
-          SeedSubFile.checkBaseName(name),
-          isNull,
-          reason: '"$name" should be accepted',
-        );
-      }
-    });
-
-    test('refuses an empty name, including one that is only spaces', () {
-      expect(SeedSubFile.checkBaseName(''), SeedNameProblem.empty);
-      expect(SeedSubFile.checkBaseName('   '), SeedNameProblem.empty);
-    });
-
-    test('refuses what the Sub-GHz app could not hold', () {
-      // Exactly the buffer the firmware strncpy's an extension-less name
-      // into, which leaves no room for the terminator. A longer name writes
-      // fine over RPC and is mangled on the first rename there, which is the
-      // surprise this refusal exists to prevent.
-      expect(
-        SeedSubFile.checkBaseName('x' * (SeedSubFile.maxBaseNameLength + 1)),
-        SeedNameProblem.tooLong,
-      );
-    });
-
-    test('reports the rule whose fix the next refusal would not undo', () {
-      // One table, because this is one invariant: when a name breaks two
-      // rules, the message shown has to be the one the user can act on.
-      //
-      // The budget and the ASCII rule used to be the same subject - the limit
-      // is a buffer and a Cyrillic letter is two bytes - so a long Cyrillic
-      // name came back `tooLong`, sending the user to shorten something that
-      // was never going to be accepted at any length. `.Ворота` reported as
-      // `dotEdge` is the same dead end one problem over.
-      //
-      // A control character outranks even this, because its message names
-      // something the user cannot see and this one does not.
-      for (final (name, problem) in [
-        // Over the budget as well as outside ASCII. The rows this file has to
-        // carry, because no other test can make that pairing.
-        ('я' * 32, SeedNameProblem.nonAscii),
-        ('🙂' * 16, SeedNameProblem.nonAscii),
-        // Comfortably inside it, so the refusal cannot be the length check in
-        // disguise.
-        ('Ворота', SeedNameProblem.nonAscii),
-        // Also dotted, also one of the nine.
-        ('.Ворота', SeedNameProblem.nonAscii),
-        ('Ворота?', SeedNameProblem.nonAscii),
-        // One high character in an otherwise ASCII name - a non-breaking
-        // space, which is the shape a paste from a web page arrives in.
-        // Written as an escape, because an invisible literal leaves a reader
-        // unable to see what is asserted.
-        ('gate\u00a0one', SeedNameProblem.nonAscii),
-        ('gate\nЯ', SeedNameProblem.controlCharacter),
-      ]) {
-        expect(SeedSubFile.checkBaseName(name), problem, reason: name);
-      }
-    });
-
+    // The rule itself moved to `deviceNameProblem`, with its table of which
+    // refusal wins; `test/device_name_rule_test.dart` holds it. What is
+    // Sub-GHz's is the budget, so that is what is left here. #277
     test('holds the budget to the buffer the firmware copies into', () {
       // `SUBGHZ_MAX_LEN_NAME` is 64 and `subghz_scene_save_name.c` strncpy's
       // the extension-less name into a `char[64]`, so 63 is the longest name
       // that keeps its terminator. Pinned as a literal, because every other
-      // length assertion here is written in terms of the constant and follows
-      // it wherever it moves - including to 64, the exact off-by-one that
-      // writes fine over RPC and is mangled by the first rename on the device.
-      //
-      // Only the value. The byte-versus-character spelling cannot be covered
-      // through `checkBaseName` at all; see `maxBaseNameLength` for why.
+      // length assertion is written in terms of the constant and follows it
+      // wherever it moves - including to 64, the exact off-by-one that writes
+      // fine over RPC and is mangled by the first rename on the device.
       expect(SeedSubFile.maxBaseNameLength, 63);
     });
 
-    test('refuses every character a FAT volume cannot carry', () {
-      // Spelled out rather than a sample: a class that quietly stopped
-      // matching one of these would let a save fail on the device instead,
-      // reported as a write failure that names no cause.
-      for (final bad in [r'\', '/', ':', '*', '?', '"', '<', '>', '|']) {
-        expect(
-          SeedSubFile.checkBaseName('gate${bad}1'),
-          SeedNameProblem.illegalCharacter,
-          reason: '"$bad" should be refused',
-        );
-      }
-      // A control character is refused too, but as its own problem: the
-      // message for the nine lists them, and a newline has no printable form
-      // to list. `test/reserved_name_chars_test.dart` walks the whole range.
+    test('passes its own budget rather than the volume default', () {
+      // The one thing the delegation can get wrong. A name this long is fine
+      // for the storage and too long for the Sub-GHz app, so it separates
+      // "called the shared rule" from "called it with 63".
+      final tooLongForSubGhz = 'x' * (SeedSubFile.maxBaseNameLength + 1);
+
       expect(
-        SeedSubFile.checkBaseName('gate\u0000one'),
-        SeedNameProblem.controlCharacter,
+        SeedSubFile.nameRule.check(tooLongForSubGhz),
+        DeviceNameProblem.tooLong,
+      );
+      // And exactly the budget is accepted, which is what makes this an
+      // off-by-one test rather than a "passes something" one: `maxBytes:
+      // maxBaseNameLength - 1` satisfies the row above on its own.
+      expect(
+        SeedSubFile.nameRule.check('x' * SeedSubFile.maxBaseNameLength),
+        isNull,
       );
       expect(
-        SeedSubFile.checkBaseName('gate\nnewline'),
-        SeedNameProblem.controlCharacter,
+        deviceNameProblem(tooLongForSubGhz, maxBytes: deviceNameMaxBytes),
+        isNull,
       );
-    });
-
-    test('refuses a leading or trailing dot', () {
-      expect(SeedSubFile.checkBaseName('.hidden'), SeedNameProblem.dotEdge);
-      expect(SeedSubFile.checkBaseName('trailing.'), SeedNameProblem.dotEdge);
-      expect(SeedSubFile.checkBaseName('.'), SeedNameProblem.dotEdge);
-      expect(SeedSubFile.checkBaseName('..'), SeedNameProblem.dotEdge);
-    });
-
-    test('judges the trimmed name, which is the one that gets written', () {
-      // The surrounding spaces are dropped before the check and before the
-      // write, so a name that is legal once trimmed is legal here.
-      expect(SeedSubFile.checkBaseName('  garage  '), isNull);
-      // And one that is not stays refused rather than being trimmed into
-      // legality.
-      expect(SeedSubFile.checkBaseName('  .hidden  '), SeedNameProblem.dotEdge);
-      // Dart's `trim` reaches past the ASCII space, so these arrive at the
-      // check as plain `garage` too. Judging `raw` instead would refuse a name
-      // that looks pure ASCII on screen, naming a character that is both
-      // invisible and about to be removed anyway.
-      for (final padded in [
-        '\u00a0garage\u00a0',
-        '\u3000garage',
-        '\ufeffgarage',
-        '\u0085garage',
-      ]) {
-        expect(SeedSubFile.checkBaseName(padded), isNull, reason: padded);
-      }
     });
 
     test('accepts a name that carries the extension, deliberately', () {
@@ -372,7 +370,7 @@ void main() {
       // as a fixed suffix rather than leaving the user to type it. Nothing
       // refuses it, and this records that as the choice it is: the firmware
       // lists `gate.sub.sub` perfectly well, it just looks silly.
-      expect(SeedSubFile.checkBaseName('gate.sub'), isNull);
+      expect(SeedSubFile.nameRule.check('gate.sub'), isNull);
     });
   });
 }

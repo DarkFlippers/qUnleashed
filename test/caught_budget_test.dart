@@ -1,9 +1,11 @@
 // A ceiling on `LogService.caught`, the level ADR 0013 §5 adds.
 //
-// Unlike every other budget here, this number is meant to *rise* - once, as
-// §5's re-ruling of the `info`-in-a-catch sites lands, and not after. It counts
-// something the project wants a bounded amount of rather than less of, which is
-// why the failure message asks a different question.
+// Unlike every other budget here, this number is meant to *rise*. §5's
+// re-ruling of the `info`-in-a-catch sites was the bulk of it and has landed;
+// what rises after is one site at a time, each judged against §5's own rule
+// and named in the comment on the number. It counts something the project
+// wants a bounded amount of rather than less of, which is why the failure
+// message asks a different question.
 //
 // It exists because `caught` is a legitimate way to lower
 // `log_level_budget_test.dart`: moving a genuine failure off `info` makes that
@@ -17,8 +19,12 @@
 // did not do what was asked.
 //
 // Blind spots, shared with every per-file syntactic ratchet here: a `caught`
-// behind a one-line wrapper, or inside an `onError:` closure rather than a
-// catch clause. #103 holds those.
+// behind a one-line wrapper. #103 holds those.
+//
+// An `onError:` closure used to be listed here too, and it was never true -
+// `_CaughtVisitor` counts a `caught` wherever it sits, as its own doc below
+// says. #441's icon handler was the first site of that shape to arrive and the
+// budget had to move for this test to pass, which is what settled it.
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,35 +33,339 @@ import 'ratchet.dart';
 
 /// What each area may record at `caught`.
 ///
-/// §5's re-ruling has landed, which is the one rise this ratchet was ever
-/// meant to have. 23 of the 42 `LogService.info`-inside-a-catch sites moved;
-/// the other 19 stayed, each on a volume argument its own comment makes.
+/// §5's re-ruling has landed: 23 of the 42 `LogService.info`-inside-a-catch
+/// sites moved; the other 19 stayed, each on a volume argument its own
+/// comment makes. A rise after it is one site with its reason written here.
 ///
-/// `services` is 6: the two `build_identity.dart` sites and the two in
+/// `services` is 9: the two `build_identity.dart` sites and the two in
 /// `telemetry.dart` that were here before, plus a launcher refusing a
 /// home-widget pin and an HTTP request the network responder could not carry.
 /// The relay reply beside that second one runs per frame and stayed at `info`,
 /// which is the distinction the level is for.
 ///
-/// `pages/archive` is 16 — every `list`, `read`, `write`, `delete`, `mkdir`,
-/// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
-/// `syncCategory`. Two sites in that area did **not** move: the per-node
-/// `list` of a whole-SD walk, and the per-file `md5 check`, which §5 excludes
-/// by name because the per-sync summary at `warn` already covers it (#194).
+/// The seventh is the replay switch's restart in `telemetry.dart`, and it is
+/// not a failure at all - it is the one line that makes a deliberate gap in
+/// reporting visible. 9.30.1 has no app-facing pause API, so applying a
+/// replay rate means taking the SDK down and bringing it back, and in that
+/// window all four sinks are off and the native handler is down. A crash lost
+/// there is indistinguishable from no crash, so the gap is named once, at
+/// `caught`, and shows up in the timeline of the next report. Once per tap on
+/// one switch, which is as bounded as this level gets.
+///
+/// The eighth is `RemoteBuildService.ensureClientId`, which rose it from 7:
+/// the client id was not remembered for the next launch, because the store
+/// would not open or would not take it. That is an operation that did not do
+/// what was asked, and deliberately not the `warn` `persistSetting` would
+/// have logged - the id is returned either way and serves the session, so
+/// there is nothing for anyone to do about it and the cost is a fresh id next
+/// launch. One line whichever of the two happened, and once per process,
+/// since the field is set on the way out regardless. #313.
+///
+/// Two sites in `pages/archive` did **not** move: the per-node `list` of a
+/// whole-SD walk, and the per-file `md5 check`, which §5 excludes by name
+/// because the per-sync summary at `warn` already covers it (#194).
 ///
 /// `pages/tools` is 5: the IR library's download, delete and search, and the
 /// pixel editor's load and send. The two Dolphin walks stayed — one entry per
 /// folder wants a tally at the caller, not a level here.
 ///
-/// `pages/apps` is 1, and it is none of those six: their sites are
-/// one-per-app loops or a cancel the user asked for, so none of them moved.
-/// The one is the app page's author cards - a fetch the page makes for the
-/// user and then shows without, recorded once per page rather than per author.
+/// It rose to 8 for the two import pickers, after QUNLEASHED-E. All three are
+/// failures of a file the user chose, which is the user's environment rather
+/// than a defect, so none of them is worth an alert — and none of them had
+/// any record at all before. The plotter counts two: a read or a pick that
+/// threw, and a pick that came back with no path, which every target this app
+/// ships does supply. They show the user the same sentence, so the log line
+/// is the only thing that can tell a report about one from a report about the
+/// other. Pixel Draw counts one, for the same `catch` reaching the same kind
+/// of failure; its toast prints the exception and kept nothing.
+///
+/// It rose to 10 for the two listings the IR library cannot make of its own
+/// folder, after QUNLEASHED-J. Android answers `exists()` on a shared-storage
+/// folder and then refuses the listing with errno 1 when
+/// MANAGE_EXTERNAL_STORAGE is not granted, and both sites used to let that
+/// out: the recovery pass, where `guarded` reported a permission the user
+/// declined as a failure of the IR library - and where the same rejection,
+/// awaited by `IrLibController.initialize` with no catch of its own, left the
+/// IR page in its initial state for the session - and `exists()`, a query
+/// returning `bool` that the page awaits and that has no third answer. Both
+/// now read as "nothing here this process can get at", which is the one state
+/// where the library the user can see and the library the app can use differ.
+/// Each line carries the errno, because that is the whole of what tells a
+/// report about an absent library from a report about a declined permission.
+///
+/// Neither is once per process, and the fold does not save them: the startup
+/// pass is memoised, but `download()` and `deleteAll()` reach the same listing
+/// outside it, and the two bodies name different folders, so a refresh
+/// alternates them and each breaks the other's run. What bounds them is that
+/// every one of those is a tap - `initialize`, `updateSettings`, a refresh, a
+/// delete - so the ceiling is two lines per thing the user asked for, nothing
+/// like the burst Section 5 of the ADR was written for.
+///
+/// A third site was deliberately not added. `_supersededTrees` throws the
+/// refusal rather than answering it, because `_deleteAll` needs it to: a short
+/// list there takes the library out while leaving the trees that make the next
+/// recovery pass hand it back. Only `_recoverInterrupted` catches, and only
+/// `PathAccessException` - ENOTDIR, EIO and a descriptor leak reach the same
+/// `list`, are not a declined permission, and still belong in a report.
+///
+/// `pages/apps` is 1 and `pages/archive` 17 for the same operation: a launch
+/// refused because one of the same app is already in flight (#244). The tap
+/// did nothing, and the page deliberately shows nothing for it - so without a
+/// line kept in every build, a tap that was swallowed cannot be told from one
+/// that was never delivered, which is the question a bug report about a dead
+/// button asks. Its six other `pages/apps` sites are one-per-app loops or a
+/// cancel the user asked for, and none of them moved.
+///
+/// `pages/apps` rose to 2 for the app page's author cards - a fetch the page
+/// makes for the user and then shows without, recorded once per page rather
+/// than per author.
+///
+/// `pages/archive` also counts every `list`, `write`, `delete`, `mkdir`,
+/// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
+/// `syncCategory`. The per-file `read` inside a sync is **no longer one of
+/// them** - §5's table carries the amendment and the reason, which is that
+/// that one site produced 94% of the project's entire log volume and the burst
+/// evicted error events out of the SDK's cache. A `read` the user asked for by
+/// opening one file is still counted.
+///
+/// It rose to 18 for the line that records a whole scope reading as deleted.
+/// That is not a failure at all: an absent directory is now treated as the
+/// empty listing it is, which is right, and the consequence is that every
+/// local key under it is marked `deleted` - #109's outcome, reinstated
+/// deliberately for one status code. The argument rests on
+/// `ERROR_STORAGE_NOT_EXIST` meaning the firmware looked, and these codes are
+/// a firmware contract this repo does not own while the app ships against
+/// forks. One line, in a build that does not print, is the difference between
+/// diagnosing a fork that answers the wrong code and guessing at it. Once per
+/// walk, and only when keys actually moved.
+///
+/// The ninth is ADR 0013 §2's connect-failure hook: reporting runs inside a
+/// `catch` that still has a user waiting, so the call is wrapped, and the one
+/// line is what keeps a lost report from being silent. `connect_report.dart`
+/// has which two things in there can throw.
+///
+/// The tenth through thirteenth are the pickers that had no `try` at all,
+/// after QUNLEASHED-K - two in `pages/archive`, one in `pages/tools`, and the
+/// new `pages/flibler`. They are one rule, not four judgements: a picker the
+/// user opened answered with an error instead of a selection, so the upload,
+/// the save or the export never started. That is an operation that did not do
+/// what was asked, and it is the user's environment rather than a defect, so
+/// none of them is worth an alert - and none of them had any record at all
+/// before, because the rejection was going to the zone as a fatal instead.
+///
+/// The cause differs by site and by platform, which is why the line carries
+/// `describe` rather than a sentence of its own. The file pick is Android's
+/// `unknown_path`, the one in the incident. The three folder picks cannot be:
+/// `getDirectoryPath` swallows its own `PlatformException` on Android and iOS
+/// and answers null, so what reaches them is a desktop refusal - no `zenity`
+/// on the path - or a missing plugin.
+///
+/// The line is also the only thing that can tell those apart, because all four
+/// show `commonPickFailed` and it deliberately does not guess at a cause. The
+/// four bodies differ, so no two sites fold into each other. **What the fold
+/// does drop is a repeat at one site** - the same tap, the same broken
+/// provider, twice - and nothing counts the drop. That is acceptable here
+/// because the second line would say exactly what the first one said.
+///
+/// `test/unguarded_pick_test.dart` does assert `hasLength(1)` on this area's
+/// lines, which is CLAUDE.md's named anti-pattern everywhere the fold is live -
+/// and is safe there for one reason worth writing down: the fold is a static
+/// that `test/flutter_test_config.dart` resets before every test, so inside one
+/// test a count of one means said once. It would not be safe across two.
+///
+/// Six pickers already caught before this and were left alone. Three of them
+/// recorded nothing - two in the file browser and the archive's save dialog -
+/// and that was a smaller fault than a crash and not this issue's. The two in
+/// the file browser were folder picks, and #353 took them into the shim
+/// below, which records; the save dialog still does not. The other
+/// three do keep a line, and one of them disagrees with these four:
+/// `firmware_update_button.dart` records the same mechanism at `error` and
+/// shows the user the exception. Under §5's rule these four are right and that
+/// one is the outlier, but moving it is its own change - it would lower
+/// `log_level_budget_test.dart` and raise this, and the sentence it shows the
+/// user would have to change with it.
+///
+/// Then #351, which is the block below. It landed against the four pickers
+/// above rather than before them, so `pages/tools` carries one from each: the
+/// infrared search walk here, and the pixel editor's export pick there.
+/// `services` rose from 9 to 17 for #351, and every one of the eight is an
+/// operation that did not do what was asked. They are listed because the
+/// number invites the wrong reading: this is a permission layer whose whole
+/// job is to stop a failure being absorbed, so the places it cannot get an
+/// answer are exactly the places worth a kept line.
+///
+/// None is `warn`. In every case the app still works and what the user is
+/// told is true — it is the *completeness* or the *timeliness* that suffers,
+/// which is what `caught` is for. And none is `info`: the whole defect #351
+/// fixes is a failure reported nowhere, and `info` const-folds away in a
+/// release build, so it would reproduce the bug inside its own fix.
+///
+///  * `permissions/center.dart` ×2 — the dismissal store refusing to open
+///    (every dismissible notice then returns at the next launch, for the life
+///    of the install), and a permission that could not be re-read on resume
+///    (its notice will not clear when the user grants it, which is the half of
+///    #351 the widget cannot supply).
+///  * `storage/asked_store.dart` — the asked flag unreadable. While that
+///    fails, a standing storage denial cannot be reported at all, so three
+///    screens stay silent about a permission the user refused.
+///  * `storage/permissions.dart` ×3 — the Android version read, the
+///    permission status read, and the prompt itself. Each used to be a bare
+///    catch folded into "not granted", and the caller then reported that as a
+///    *refusal*: a plugin hiccup during startup put a non-dismissible gate on
+///    three screens and disabled the IR download button.
+///  * `connection/foreground_service.dart` ×2 — the location read (it was a
+///    `catch (_)` to false; the service started without
+///    `ForegroundServiceTypes.location` and nothing said why) and the
+///    notification prompt, which moved up *from* `info` because its outcome
+///    stopped being ignored. On the `widgetMain()` path that throw is routine,
+///    and after it the background link can die with the user told nothing.
+///
+/// `pages/tools` rose to 11 for `infrared/api.dart`'s search walk. A folder
+/// that will not list prunes its entire subtree, so one failure near the root
+/// can cost most of the library, and the `catch (_) { continue; }` it replaces
+/// handed the short result back as though it were whole. One line after the
+/// walk with the count and the first cause, not one per folder — a line per
+/// folder is a log burst, and bodies differing by path defeat `LogService`'s
+/// consecutive fold.
+///
+/// Both replaced catches had non-empty bodies (`return false;` and
+/// `continue;`), so neither was ever counted by `bare_catch_budget_test.dart`
+/// and its figures do not move. The exchange that file's header describes is
+/// between itself and `log_level_budget_test.dart`; this is not that trade.
+///
+/// `services` rose to 18 for `rpc/gps/geolocator_gps_provider.dart` — a
+/// platform error the plugin could not classify, which used to escape
+/// `ensureReady` entirely. On the desktop pre-warm that reached `guarded`,
+/// which filed an issue *and* an error log on every launch of an affected
+/// machine; those become this one line, so the ledger goes down and not up.
+/// `caught` because no alert could prompt anyone to act — the machine cannot
+/// do GPS — while it stays worth reading afterwards, which is §5's audience
+/// split. The on-demand caller's blanket catch simply stops firing for this
+/// class, because nothing throws any more. QUNLEASHED-B.
+///
+/// `pages/archive` rose to 23 for three sites in the archive controller, all
+/// of them failures that previously reached nobody. #373/#374.
+///
+/// The twenty-first is `_refusedWithoutDevice`, which covers three refusals -
+/// a restore, a bulk restore and a save with no device to talk to. Each told
+/// the user in a localized sentence and recorded nothing at any level, so
+/// "restore does nothing" arrived as a report with no trace to read, and this
+/// ledger could not see the gap because there was no call to count. One site
+/// and not three, with the operation's name as the body rather than the
+/// sentence: the three stay distinguishable in a report without any of them
+/// grouping per language.
+///
+/// The twenty-second is `_reportNoLocalCopy`, the same symptom reached a
+/// different way: `readBytes` answers null for a file that is gone rather
+/// than throwing, so a restore whose local copy had been purged had no catch
+/// to be reported from at all. Keyed on the category and not the file name,
+/// so a selection of forty is one body.
+///
+/// The twenty-third is `_linkIsBack`, and it is the only one of the three that
+/// guards a promise rather than a known failure: `waitForRpcSession` answers a
+/// timeout instead of throwing it, but it does that by subscribing to
+/// `connectionStream`, where an error does not end the stream. A throw there
+/// abandons the delete queue with nothing set and nothing logged, and the
+/// sheet's `onTap` is a `VoidCallback`, so it would land as an unlabelled
+/// `[uncaught]`.
+///
+/// The level is §5's audience split for all three: nobody can act on a Flipper
+/// that is not connected or a file the user already moved, while the rate of
+/// either says whether the connection state is wrong.
+/// ## #353 and #354, which move three of these into one file
+///
+/// The four picker lines above are two sites now. Every folder pick in `lib/`
+/// goes through `components/folder_pick.dart`, which reports the failure
+/// itself rather than leaving each surface to do it, so `pages/flibler` falls
+/// to 0 and `pages/tools` to 11. `pages/archive` does not move: it loses the
+/// archive category's folder pick and gains a second line in the file
+/// browser's *file* pick, which is #354.
+///
+/// `components` is 4. Three are the shim's:
+///
+///  * **the folder pick failed** - the four lines above arriving in one place.
+///    The body is the caller's `what` plus `describe`, so the five surfaces
+///    stay apart in a report (`[Archive]`, `[Flibler]`, `[Paint]`, and the
+///    file browser's download and upload), and the fold drops a repeat at one
+///    of them exactly as the paragraph above describes for the four;
+///  * **the pick fell back to the plugin** - the fix going quiet. The shim
+///    talks to the plugin's own method channel, named from its 8.x source,
+///    because the plugin's Dart layer catches the refusal and answers null. A
+///    rename in a major bump leaves folder picks working and refusals
+///    invisible again, which is the state #353 describes and nothing else
+///    would report. It cannot fire on a build where the channel is there.
+///  * **the sentence could not be shown** - the innermost fallback, and the
+///    same shape as `guarded.dart`'s and the pair in `logging.dart`:
+///    `showNotification` reads the root `Overlay` and the theme off the
+///    context it was handed, and five callers with no `try` between them rely
+///    on `pickFolder` answering rather than rejecting. The failure itself is
+///    already on the record one line up, so what this adds is that the user
+///    was told nothing - which is the part a report cannot otherwise show.
+///
+/// **The cause paragraph above now reads differently on mobile.** The three
+/// folder picks could not carry `unknown_path` because `getDirectoryPath`
+/// swallowed it; the shim's own call sees it, so a refused tree URI on Android
+/// is as reportable as the file pick's. The desktop refusals are unchanged.
+///
+/// The file browser's new line is the other half of #354: a multi-select that
+/// came back with none of the chosen files, which used to return silently
+/// beside the cancellation. Why those two are separable, and what is left of
+/// the issue, is in `_uploadFromPath` beside the code.
+///
+/// **The fourth is `icon.dart`'s** - *a raster the engine refused*, in
+/// `_RasterIconCache._record`. Rasterizing an icon is an operation and a
+/// surface `dart:ui` will not allocate is it failing, so the rule is met; what
+/// makes it worth a number is that the same handler also sees a missing asset,
+/// and that one goes to `warn` instead, because a packaging defect has an
+/// owner. §5's volume question is answered in the cache rather than in the
+/// comment: the record is once per key, not once per widget, because every
+/// later `QIcon` with that key re-asks and sixteen icons on a cold start are
+/// sixteen bodies that cannot fold. #441.
+/// **`services` is 19.** The nineteenth is `storage/paths.dart`'s, *Windows
+/// would not name Documents*. Asking the OS for `FOLDERID_Documents` is an
+/// operation, and a machine that refuses it gets the old
+/// `%USERPROFILE%\Documents` guess instead - a usable answer, so the user
+/// sees nothing. That is exactly why the refusal has to be on the record:
+/// when the guess fails too, the `PathNotFoundException` that reaches a
+/// report is the *second* failure, and this line is the first. QUNLEASHED-5.
+///
+/// **`services` is 22.** All three of the new ones are in
+/// `known_devices.dart`, and each is a remembered device being thrown away
+/// where the user asked for nothing:
+///
+///  * *an entry the store could not read*. `_load` reads entry by entry, and
+///    the next mutation writes the whole array back from what it kept - so an
+///    entry `KnownDevice.fromJson` refuses is gone from disk, and what the
+///    user sees is a Flipper they paired absent from the list. It is also the
+///    gate the #444 id migration passes through, so a silent drop is that
+///    migration not applying.
+///  * *duplicate entries merged*. Canonicalising a stored id can make two
+///    entries equal, and `_load` sorts newest-first before `_replace` folds
+///    on the id keeping the first, so the newer survives. It is *not*
+///    evidence that the migration ran - a store written by one build on
+///    universal_ble 2.x holds one spelling per device, so nothing collides on
+///    the ordinary upgrade.
+///  * *entries over the cap*. `_maxEntries` was applied in `remember` and in
+///    none of the other three assignments to `_devices`, so an oversized
+///    store loaded whole and stayed that way. Since #456 there is one
+///    assignment and it caps, so what is left here is reporting the drop
+///    rather than remembering to make it. `remember`'s own trim is silent and
+///    is not the precedent: there the user tapped connect and displaced one
+///    entry they chose, where this is unbounded and unasked. The cut runs
+///    after the sort, so `lastDevice` cannot change - which makes it the
+///    least of the three, not a non-loss. #453
+///
+/// All three are counts rather than ids, because an id here is a Bluetooth
+/// address. None can repeat in a shipped build: `load()` memoises, and the
+/// only thing that clears the memo is the test-only
+/// `KnownDevicesStore.debugReset`. #444
 const Map<String, int> kBudget = {
-  'services': 6,
-  'pages/apps': 1,
-  'pages/archive': 16,
-  'pages/tools': 5,
+  'services': 22,
+  'pages/archive': 23,
+  'pages/tools': 11,
+  'pages/flibler': 0,
+  'pages/apps': 2,
+  'components': 4,
 };
 
 const String kAdr = 'docs/adr/0013-observability-with-sentry.md';

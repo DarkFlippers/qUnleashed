@@ -7,10 +7,37 @@ import '../../../services/connection/device_info_watch.dart';
 import '../../../services/connection/known_devices.dart';
 import '../../../services/connection/link_service.dart';
 import '../../../services/logging.dart';
-import '../../../services/telemetry/scrub.dart';
 import '../../../theme/theme.dart';
 import '../models/connection_state.dart';
 import '../models/device_info.dart';
+
+/// How far this session's device data has got.
+///
+/// Was two booleans, `_deviceLoading` and `_deviceInfoConnected`, which only
+/// ever moved together: of their four combinations, `(true, true)` never
+/// happened, so a reader had to reconstruct that invariant to know what the
+/// pair meant. #426
+///
+/// Private, and the controller still exposes only [DeviceController.deviceLoading],
+/// because the thing that went wrong was a *reader* believing `loaded`
+/// carried something `loading` did not. It does not: every route to
+/// `isConnected` runs `_ensureDataLoading`, so `connected && !loading`
+/// already implies `loaded`. The shell's device label was guarded on the
+/// second flag for that reason and its arm was unreachable, with eight
+/// locales' worth of a string dead behind it until #420 - and `shell.dart`'s
+/// own comment there records that a connectedness guard was the mistake.
+/// Publishing `loaded` would re-offer exactly that.
+enum _DeviceDataState {
+  /// No load has started, or the last session's data died with a disconnect.
+  none,
+
+  /// Started and no device info has arrived yet.
+  loading,
+
+  /// Device info has arrived. Not a claim that it is complete - the stream
+  /// keeps adding keys - only that the first of it is in.
+  loaded,
+}
 
 class DeviceController extends ChangeNotifier {
   /// [client] is the one the app built at its composition root.
@@ -37,8 +64,7 @@ class DeviceController extends ChangeNotifier {
 
   FlipperDevice? _device;
   bool _deviceDisconnected = false;
-  bool _deviceLoading = false;
-  bool _deviceInfoConnected = false;
+  _DeviceDataState _dataState = _DeviceDataState.none;
   bool _alertPlaying = false;
   Map<String, String> _info = {};
   int _infoRequestGeneration = 0;
@@ -58,8 +84,7 @@ class DeviceController extends ChangeNotifier {
 
   FlipperClient get client => _client;
   FlipperDevice? get device => _device;
-  bool get deviceLoading => _deviceLoading;
-  bool get deviceInfoConnected => _deviceInfoConnected;
+  bool get deviceLoading => _dataState == _DeviceDataState.loading;
   bool get alertPlaying => _alertPlaying;
   bool get dfuPresent => _dfuPresent;
   bool get recovering => _recovering;
@@ -166,8 +191,7 @@ class DeviceController extends ChangeNotifier {
   void _resetSession() {
     _device = null;
     _deviceDisconnected = false;
-    _deviceLoading = false;
-    _deviceInfoConnected = false;
+    _dataState = _DeviceDataState.none;
     _info = {};
     _loadedForDeviceId = null;
     _infoRequestGeneration++;
@@ -181,7 +205,7 @@ class DeviceController extends ChangeNotifier {
     final device = _device;
     if (device == null) return;
     if (_loadedForDeviceId == device.id &&
-        (_deviceLoading || _deviceInfoConnected)) {
+        _dataState != _DeviceDataState.none) {
       return;
     }
     _startDataLoading();
@@ -190,8 +214,7 @@ class DeviceController extends ChangeNotifier {
   void _startDataLoading() {
     _loadedForDeviceId = _device?.id;
     _cancelDataStreams();
-    _deviceLoading = true;
-    _deviceInfoConnected = false;
+    _dataState = _DeviceDataState.loading;
     _info = {};
     _notify();
 
@@ -200,10 +223,7 @@ class DeviceController extends ChangeNotifier {
     _infoStreamSub = _client.deviceInfoUpdates.listen((data) {
       if (generation != _infoRequestGeneration || data.isEmpty) return;
       _info = {..._info, ...data};
-      _deviceInfoConnected = true;
-      if (_deviceLoading) {
-        _deviceLoading = false;
-      }
+      _dataState = _DeviceDataState.loaded;
       if (data.keys.any(
         (k) => k.startsWith('firmware') || k == 'software_revision',
       )) {
@@ -215,12 +235,6 @@ class DeviceController extends ChangeNotifier {
           hardwareName != null &&
           hardwareName.isNotEmpty) {
         _knownDevices.updateName(connected, hardwareName);
-        // The one place the app learns what the user called their Flipper, so
-        // the one place that can tell the scrubber. People name a Flipper
-        // after themselves, and a device name is arbitrary text - nothing in
-        // a message distinguishes one from any other word, so it has to be
-        // learned rather than matched. ADR 0013 §6.2.
-        Scrub.rememberDeviceName(hardwareName);
       }
       _notify();
     }, onError: (e) => LogService.info('[DeviceController] info stream: $e'));
@@ -245,8 +259,7 @@ class DeviceController extends ChangeNotifier {
     }
     _cancelDataStreams();
     _deviceDisconnected = true;
-    _deviceLoading = false;
-    _deviceInfoConnected = false;
+    _dataState = _DeviceDataState.none;
     _infoRequestGeneration++;
     _notify();
   }

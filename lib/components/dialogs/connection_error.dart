@@ -82,6 +82,29 @@ Future<void> showConnectionFailedDialog(
             ? strings.connectUnreachableBleBody
             : strings.connectUnreachableUsbBody,
       );
+    // Not folded into either neighbour, and the switch is exhaustive so the
+    // compiler asked for this the moment the kind existed. The device
+    // answered, so `deviceUnreachable`'s "move it closer" is wrong for a
+    // Flipper sitting on the desk; the bond is intact, so `stalePairing`'s
+    // "forget it" is premature. Both remedies appear here, cheapest first.
+    // QUNLEASHED-Y.
+    case FlipperConnectErrorKind.servicesMissing:
+      return (
+        strings.connectServicesMissingTitle,
+        strings.connectServicesMissingBody,
+      );
+    // One body for both transports, where every other kind that needs a
+    // transport has two. The fault is in the handset rather than in the link,
+    // so there is nothing transport-specific to say - and the needle behind
+    // this kind reads a Java throwable, which the Android *USB* path can
+    // surface too. `connect_error.dart`'s `permission denied` comment is the
+    // precedent: a sentence named for Bluetooth, reached from a cable, is the
+    // collision to avoid.
+    case FlipperConnectErrorKind.platformFault:
+      return (
+        strings.connectPlatformFaultTitle,
+        strings.connectPlatformFaultBody,
+      );
     case FlipperConnectErrorKind.unknown:
       return (
         strings.connectFailedTitle,

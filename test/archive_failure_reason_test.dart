@@ -39,6 +39,13 @@ class _RefusingFlipper implements FlipperClient {
   @override
   bool isLinkDropError(Object e) => false;
 
+  /// What `connected` says. This fake predates `ArchiveRpcFake` and answers
+  /// the client by hand, so without this the first disconnected-delete case
+  /// added here would die in `noSuchMethod` rather than on its assertion -
+  /// the delete loop asks this whenever the link reads as down.
+  @override
+  Future<bool> waitForRpcSession(Duration timeout) async => connected;
+
   @override
   Future<T> runTask<T>(
     FlipperRequestPriority priority,

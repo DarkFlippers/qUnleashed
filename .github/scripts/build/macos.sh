@@ -211,25 +211,74 @@ DMG, поместите оба файла в одну папку и выполн
 Gatekeeper или другие механизмы безопасности macOS для всей системы.
 INSTRUCTIONS
 
+# `hdiutil` and Finder fail here for reasons that have nothing to do with this
+# build: a volume the runner has not finished letting go of, a Finder not yet
+# ready to be scripted. Every call below used to send its output to
+# `/dev/null`, so when one died the job read as
+#
+#     Creating DMG...
+#     ##[error]Process completed with exit code 16.
+#
+# and said nothing about which call it was or why - a build script's version of
+# the bare `catch (_) {}`. `run_step` keeps the output a `>/dev/null` threw
+# away and prints it when, and only when, the step fails, so the log stays
+# quiet on the path that works.
+STEP_LOG="$TMP_DIR/step.log"
+LAYOUT_SCRIPT="$TMP_DIR/layout.applescript"
+RETRY_DELAY=5
+
+run_step() {
+  local description="$1"
+  shift
+  local status=0
+  "$@" >"$STEP_LOG" 2>&1 || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    echo "$description failed with exit status $status." >&2
+    cat "$STEP_LOG" >&2
+  fi
+  return "$status"
+}
+
+# One retry, because the failures seen here are transient by nature and the
+# second attempt runs against a runner that has had a few more seconds to let
+# go of the volume. A second failure is the real thing: reported, and fatal
+# under `set -e`.
+retry_step() {
+  local description="$1"
+  shift
+  if run_step "$description" "$@"; then
+    return 0
+  fi
+  echo "Retrying in ${RETRY_DELAY}s: $description" >&2
+  sleep "$RETRY_DELAY"
+  run_step "$description (retry)" "$@"
+}
+
 echo "Creating DMG..."
-hdiutil create \
+retry_step "hdiutil create" \
+  hdiutil create \
   -volname "$VOLUME_NAME" \
   -srcfolder "$STAGING_DIR" \
   -fs HFS+ \
   -format UDRW \
   -ov \
-  "$RW_IMAGE" >/dev/null
+  "$RW_IMAGE"
 
-hdiutil attach \
+retry_step "hdiutil attach" \
+  hdiutil attach \
   -readwrite \
   -noverify \
   -noautoopen \
   -nobrowse \
-  "$RW_IMAGE" >/dev/null
+  "$RW_IMAGE"
 MOUNTED=1
 
 sleep 5
-osascript - "$VOLUME_NAME" <<'APPLESCRIPT'
+
+# The layout goes through a file rather than standard input so that it runs
+# under `run_step` like every other step. `on run` takes its argument list the
+# same way either way.
+cat > "$LAYOUT_SCRIPT" <<'APPLESCRIPT'
 on run (volumeName)
   tell application "Finder"
     tell disk (volumeName as string)
@@ -261,15 +310,20 @@ on run (volumeName)
 end run
 APPLESCRIPT
 
+retry_step "Finder layout" osascript "$LAYOUT_SCRIPT" "$VOLUME_NAME"
+
 sync
-hdiutil detach "$MOUNT_DIR" -quiet
+# No `-quiet`: `run_step` is already holding the output back until it matters,
+# and a detach that fails is exactly when its reason is worth having.
+retry_step "hdiutil detach" hdiutil detach "$MOUNT_DIR"
 MOUNTED=0
 
 rm -f "$OUT_FILE"
-hdiutil convert "$RW_IMAGE" \
+run_step "hdiutil convert" \
+  hdiutil convert "$RW_IMAGE" \
   -format UDZO \
   -imagekey zlib-level=9 \
-  -o "$OUT_FILE" >/dev/null
+  -o "$OUT_FILE"
 
 echo "Built macOS DMG:"
 echo "$OUT_FILE"

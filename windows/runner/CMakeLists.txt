@@ -38,13 +38,17 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
-set(PLUGIN_BUNDLED_LIBRARIES
-  ${PLUGIN_BUNDLED_LIBRARIES}
-  $<TARGET_FILE:qunleashed_mfkey32>
-  $<TARGET_FILE:qunleashed_hardnested>
-  $<TARGET_FILE:qunleashed_faaccrack>
-  PARENT_SCOPE
-)
+# There is deliberately no `PLUGIN_BUNDLED_LIBRARIES` append here. There used
+# to be, and it never did anything: `flutter/generated_plugins.cmake` carries a
+# bare `set(PLUGIN_BUNDLED_LIBRARIES)` before its own loops, which clears it,
+# and the parent includes that file after this subdirectory. The POST_BUILD
+# copy below is what has always put these three DLLs in the bundle.
+#
+# It is called out rather than silently deleted because the same seven lines on
+# Linux were *not* masked by anything, and shipped a release where MIFARE and
+# SubGHz seed recovery could not load their libraries at all - #338. Anyone
+# adding a fourth library here should copy the POST_BUILD command, not that
+# variable.
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

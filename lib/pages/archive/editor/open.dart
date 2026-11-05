@@ -39,18 +39,35 @@ Future<bool> openRemoteFileInEditor(
   /// the controller keeps the reason for either. #110.
   String? Function()? failureReason,
 
-  /// What to say when [download] or [upload] ended in that cancel; null says
-  /// nothing.
-  String? Function(FlipperCancelledException cancel)? cancelledMessage,
+  /// Whether the firmware acknowledged the cancel that ended [download] or
+  /// [upload]. False, or absent, says nothing to the user: the transfer left
+  /// the screen, but nothing claims it stopped.
+  ///
+  /// A predicate rather than the wording, so that nothing here depends on a
+  /// caller's `BuildContext` outliving the transfer. It used to be
+  /// `String? Function(...)`, every implementation was a State method wording
+  /// itself off `context.l10n`, and a cancel that landed after the user left
+  /// the page read `State.context` on a disposed State: an assert in debug,
+  /// and in release a null `_element` dereference that `guarded` swallowed,
+  /// taking the whole open with it. QUNLEASHED-1F. The string is a constant,
+  /// so it is read here from the context-free [l10n] instead - the same shape
+  /// `shareRemoteFile` already uses for this exact cancel.
+  bool Function(FlipperCancelledException cancel)? cancelAcknowledged,
   VoidCallback? onRun,
 }) async {
   final String? localPath;
   try {
     localPath = await download();
   } on FlipperCancelledException catch (e) {
-    final message = cancelledMessage?.call(e);
-    if (context.mounted && message != null) {
-      context.showNotification(message, type: QNotificationType.warning);
+    // An ordinary don't-toast-a-dead-context check, which is all it has to be
+    // now that the wording does not come from one. `test/
+    // editor_cancel_after_dispose_test.dart` covers the cancel that lands
+    // after the page has gone.
+    if (context.mounted && (cancelAcknowledged?.call(e) ?? false)) {
+      context.showNotification(
+        l10n.fmTransferCancelled,
+        type: QNotificationType.warning,
+      );
     }
     return false;
   }
@@ -81,9 +98,21 @@ Future<bool> openRemoteFileInEditor(
     },
     onSaveFailureReason: () {
       final cancel = cancelled;
-      return cancel != null
-          ? cancelledMessage?.call(cancel)
-          : failureReason?.call();
+      if (cancel == null) return failureReason?.call();
+      // Not `failureReason` as the fallback: a cancel does not set
+      // `lastFailure`, so that would word this save with some earlier
+      // operation's reason.
+      //
+      // Neither half reads a context, which is what lets this answer at all.
+      // The editor sits on the root navigator, so it outlives the page that
+      // opened it whenever the shell drops that page - `_page` swaps a file
+      // manager for `SizedBox.shrink()` on a wide -> narrow change
+      // (`app/shell.dart`), which a desktop window resize does with the editor
+      // still on screen. The user is looking at the editor and deserves the
+      // reason regardless.
+      return (cancelAcknowledged?.call(cancel) ?? false)
+          ? l10n.fmTransferCancelled
+          : null;
     },
     onRun: onRun,
   );

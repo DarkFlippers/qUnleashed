@@ -5,10 +5,16 @@ import 'package:flutter/material.dart';
 
 import '../cancel_spinner.dart';
 import '../notification.dart';
+import '../permission_notice.dart';
+import '../../services/connection/connect_report.dart';
 import '../../services/connection/link_service.dart';
 import '../../services/localization/l10n.dart';
 import '../../services/guarded.dart';
 import '../../services/logging.dart';
+import '../../services/permissions/center.dart';
+import '../../services/permissions/permission.dart';
+import '../../services/permissions/probes.dart';
+import '../../services/permissions/scope.dart';
 import '../../theme/theme.dart';
 import '../../pages/devices/device_scope.dart';
 import 'connection_error.dart';
@@ -21,7 +27,7 @@ Future<FlipperDevice?> showConnectionDialog(
   // above the Navigator, so every caller of this has one - and the dialog
   // reaching for the global itself was the last thing in `components`
   // resolving its own. ADR 0002.
-  final client = DeviceScope.of(context).client;
+  final client = DeviceScope.clientOf(context);
   return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,
@@ -43,7 +49,16 @@ Future<void> connectPickedDevice(
 ) async {
   try {
     await LinkService.instance.connectDevice(device);
-  } catch (e) {
+  } catch (e, st) {
+    // Reported before the mounted check, not after: a user who left the
+    // screen while the dial was in flight is a failure nobody sees a dialog
+    // for, which is the one most worth counting. ADR 0013 §2.
+    reportConnectFailure(
+      e,
+      st,
+      attempt: ConnectAttempt.manual,
+      isBle: device.isBle,
+    );
     if (!context.mounted) return;
     await showConnectionFailedDialog(context, e, isBle: device.isBle);
   }
@@ -55,7 +70,13 @@ Future<void> connectPickedDevice(
 Future<void> connectLinkEntry(BuildContext context, LinkEntry entry) async {
   try {
     await LinkService.instance.connect(entry);
-  } catch (e) {
+  } catch (e, st) {
+    reportConnectFailure(
+      e,
+      st,
+      attempt: ConnectAttempt.manual,
+      isBle: entry.isBle,
+    );
     if (!context.mounted) return;
     await showConnectionFailedDialog(context, e, isBle: entry.isBle);
   }
@@ -71,6 +92,7 @@ class ConnectionDialog extends StatefulWidget {
   /// The link this picker scans and connects on.
   final FlipperClient client;
 
+  /// Lists only what arrived over a cable, and says so — see [_buildHeader].
   final bool usbOnly;
 
   @override
@@ -109,6 +131,42 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     super.dispose();
   }
 
+  /// Writes the transport's answer into the shared record.
+  ///
+  /// Through the scope rather than a field, so the notice below clears
+  /// itself when the user grants the permission in system settings and
+  /// comes back - the picker can be the thing on screen the whole time.
+  void _recordBleAccess(BleAccess access) {
+    // Captured in `initState` rather than looked up here, which is what lets
+    // this record unconditionally. Guarded on `mounted` it discarded the
+    // *answer* and not just the redraw: the system BLE dialog being answered
+    // is what closes this sheet, so the denial arrived at an unmounted picker
+    // and reached nobody. Android permission dialogs do not reliably take the
+    // activity out of `resumed`, so the lifecycle re-read may never fire
+    // either, and the user is back to "No devices found." #351.
+    _permissions?.record(AppPermission.bluetooth, outcomeOfBleAccess(access));
+  }
+
+  /// The permission record, captured while this still has a context.
+  ///
+  /// `didChangeDependencies` and not `initState`, because reading an
+  /// inherited widget in `initState` does not register the dependency.
+  PermissionCenter? _permissions;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _permissions = PermissionScope.maybeOf(context);
+  }
+
+  bool get _bluetoothDenied =>
+      _permissions?.outcomeOf(AppPermission.bluetooth).warrantsNotice ?? false;
+
+  /// The shared route, which also tells the user when it cannot open.
+  void _openSettings() => unawaited(
+    openPermissionSettings(context, '[Picker] opening app settings'),
+  );
+
   static String _keyOf(FlipperDevice device) =>
       '${device.link.name}:${device.id}';
 
@@ -123,14 +181,27 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     if (_scanning) return;
     if (mounted) setState(() => _scanning = true);
     try {
-      await _client.initialize();
+      // The answer is recorded rather than discarded. `requestPermissions`
+      // returned `Future<void>` until #351, so a refused BLUETOOTH_SCAN
+      // left this picker showing "No devices found." - which blames the
+      // hardware, on first run, for something the user did.
+      _recordBleAccess(await _client.initialize());
       if (widget.usbOnly) {
         await _client.refreshUsbOnly();
       } else {
         await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
       }
-    } catch (e) {
+    } catch (e, st) {
       LogService.warn('[Picker] scan error: $e');
+      // A scan is a connect attempt as far as the classifier is concerned -
+      // Bluetooth off and a busy adapter are the same two buckets - and it is
+      // the only one of the three the user starts without naming a device.
+      reportConnectFailure(
+        e,
+        st,
+        attempt: ConnectAttempt.scan,
+        isBle: !widget.usbOnly,
+      );
       // The list the finally rebuilds is a partial one: refreshDevices
       // clears it and re-adds held sessions and USB devices before the BLE
       // scan that threw, so a short list reads as the whole list - worse
@@ -262,17 +333,45 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Row(
+        // The reason line makes the title column taller than the control
+        // beside it, which stays on the title's line rather than centring
+        // against both.
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(
-              widget.usbOnly
-                  ? context.l10n.pickerSelectUsbDevice
-                  : context.l10n.pickerSelectDevice,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: colors.dialogText,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.usbOnly
+                      ? context.l10n.pickerSelectUsbDevice
+                      : context.l10n.pickerSelectDevice,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: colors.dialogText,
+                  ),
+                ),
+                // Beside the title it already picks, because it is the other
+                // half of the same statement: a narrowed list has no
+                // Bluetooth device in it, and a title saying only that this
+                // is a USB list reads as the app not having the transport
+                // rather than as this screen not being able to use it. The
+                // one caller is the command line, whose link cannot carry a
+                // CLI at all (`supportsCli` is false on the BLE transport);
+                // the dialog that said so went away in aa55e5c4 and nothing
+                // has said it since. Derived here rather than passed in, so
+                // the next caller to narrow the list is explained too - a
+                // sentence a caller has to remember is a sentence that goes
+                // missing. #381.
+                if (widget.usbOnly) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    context.l10n.pickerUsbOnlyReason,
+                    style: TextStyle(fontSize: 12, color: colors.dialogMuted),
+                  ),
+                ],
+              ],
             ),
           ),
           if (_scanning)
@@ -306,6 +405,24 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   Widget _buildList() {
     final colors = context.appColors;
     if (_displayed.isEmpty) {
+      // A denial before the empty-room sentence, on a BLE-capable picker
+      // that has finished scanning. Not on a USB-only one: there the
+      // Bluetooth permission is beside the point, and saying so would be a
+      // second wrong cause rather than a fix for the first.
+      if (!widget.usbOnly && !_scanning && _bluetoothDenied) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+          child: PermissionNotice(
+            permission: AppPermission.bluetooth,
+            severity: PermissionNoticeSeverity.blocking,
+            padding: EdgeInsets.zero,
+            icon: Icons.bluetooth_disabled,
+            title: context.l10n.permissionBluetoothDeniedTitle,
+            body: context.l10n.permissionBluetoothDeniedPicker,
+            onAction: _openSettings,
+          ),
+        );
+      }
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         child: Text(
