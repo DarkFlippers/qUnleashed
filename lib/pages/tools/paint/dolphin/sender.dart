@@ -6,7 +6,7 @@ import '../../../../services/progress_throttle.dart';
 import '../manager/controller.dart' show kDeviceDolphinPath;
 import '../project.dart';
 import 'dolphin_pack.dart';
-import 'manifest.dart';
+import '../../../../components/codec/dolphin/manifest.dart';
 
 enum SendPhase { checking, sending }
 

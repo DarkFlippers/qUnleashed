@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/tools/paint/dolphin/manifest.dart';
+import 'package:qunleashed/components/codec/dolphin/manifest.dart';
 import 'package:qunleashed/pages/tools/paint/dolphin_animation.dart';
 import 'package:qunleashed/pages/tools/paint/manager/controller.dart';
 import 'package:qunleashed/pages/tools/paint/project.dart';
