@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
@@ -71,6 +75,53 @@ void main() {
   // cache. Fail-safe either way, which is the point: what this buys is
   // order-independence, not protection from a false pass.
   setUp(rootBundle.clear);
+
+  // The licence is served from the file rather than through the real
+  // `flutter/assets` round trip, and that is what makes these cases
+  // deterministic rather than merely tidy.
+  //
+  // `rootBundle.loadString` is real file I/O, and `pumpAndSettle` advances the
+  // **fake** clock: it drives timers, so a `Future.delayed` inside the load
+  // would resolve fine (measured - a 50 ms delay in the handler below still
+  // passes), but it does not hand the real event loop the turn that real I/O
+  // needs. So whether the licence has arrived by the time the pump starts is a
+  // race against wall-clock time, and the page's loading branch is a bare
+  // `CircularProgressIndicator`, which schedules a frame for as long as it is
+  // drawn - so losing that race is not a late pass, it is a pump that never
+  // settles and a case that fails with `pumpAndSettle timed out`, saying
+  // nothing about assets. On an idle machine the load always lands first; on a
+  // loaded CI runner it does not. #476 merged with these two cases red, and
+  // every branch cut afterwards inherited them - which is how PR #440, one
+  // `.arb` file, came to be failing a licence test.
+  //
+  // The file is read **synchronously, here**, outside any pump, and the handler
+  // then answers from memory in a microtask. There is no I/O left inside the
+  // pump window, so the spinner is never drawn. The bytes are the ones the real
+  // bundle would have delivered, so what the cases pin - the reflow, and the
+  // identity of the string handed to `SelectableText` - is unchanged.
+  //
+  // Keyed on the asset name, and null for everything else: a mock handler has
+  // no way to pass the other keys through to the real bundle, so the app bar's
+  // icons fail here exactly as they already do in the "cannot be read" case
+  // below, which records nothing and asserts nothing about them. That case sets
+  // its own handler after this one and a later `setMockMessageHandler` on a
+  // channel replaces the earlier, so it still gets the blank bundle it wants.
+  setUp(() {
+    final licence = File('LICENSE').readAsBytesSync();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMessageHandler('flutter/assets', (message) async {
+      if (message == null) return null;
+      final key = utf8.decode(
+        message.buffer.asUint8List(
+          message.offsetInBytes,
+          message.lengthInBytes,
+        ),
+      );
+      return key == 'LICENSE' ? ByteData.sublistView(licence) : null;
+    });
+    addTearDown(() => messenger.setMockMessageHandler('flutter/assets', null));
+  });
 
   /// The page under a theme built from [seed].
   ///
