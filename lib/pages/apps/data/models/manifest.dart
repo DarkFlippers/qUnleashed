@@ -75,6 +75,12 @@ class AppManifest {
   });
 
   String encode() {
+    // From a server that does not give out ObjectIds yet, UID is the appid
+    // and Version UID <appid>@<version>: they say it already, and every byte
+    // is read over BLE. tryParse gives them back.
+    final idSaid = appId == uid;
+    final versionSaid =
+        appVersion != null && versionUid == '${appId ?? uid}@$appVersion';
     final lines = <String>[
       'Filetype: $filetype',
       'Version: 1',
@@ -85,8 +91,8 @@ class AppManifest {
       ?_line('Version UID', versionUid),
       'Path: $path',
       'DevCatalog: $devCatalog',
-      ?_line('App ID', appId),
-      ?_line('App Version', appVersion),
+      ?_line('App ID', idSaid ? null : appId),
+      ?_line('App Version', versionSaid ? null : appVersion),
       ?_line('Family', family?.code),
       ?_line('Catalog', catalog),
     ];
@@ -112,16 +118,26 @@ class AppManifest {
     final uid = map['UID'];
     final path = map['Path'];
     if (uid == null || path == null) return null;
+    final versionUid = map['Version UID'];
+    // What encode leaves out because UID and Version UID already say it.
+    final objectId = RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(uid);
+    final appId = map['App ID'] ?? (objectId ? null : uid);
+    final at = versionUid?.lastIndexOf('@') ?? -1;
+    final appVersion =
+        map['App Version'] ??
+        (at > 0 && versionUid!.substring(0, at) == appId
+            ? versionUid.substring(at + 1)
+            : null);
     return AppManifest(
       uid: uid,
       path: path,
-      versionUid: map['Version UID'],
+      versionUid: versionUid,
       fullName: map['Full Name'],
       iconBase64: map['Icon'],
       sdkApi: map['Version Build API'],
       devCatalog: map['DevCatalog']?.toLowerCase() == 'true',
-      appId: map['App ID'],
-      appVersion: map['App Version'],
+      appId: appId,
+      appVersion: appVersion,
       family: ManifestFamily.byCode(map['Family']),
       catalog: map['Catalog'],
     );

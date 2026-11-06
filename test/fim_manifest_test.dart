@@ -77,6 +77,25 @@ DevCatalog: false
     expect(back.devCatalog, isTrue);
   });
 
+  test('does not repeat what an appid UID already says', () {
+    const legacy = AppManifest(
+      uid: 'gpio_controller',
+      versionUid: 'gpio_controller@1.0',
+      path: '/ext/apps/GPIO/gpio_controller.fap',
+      devCatalog: true,
+      appId: 'gpio_controller',
+      appVersion: '1.0',
+      family: ManifestFamily.app,
+    );
+    final text = legacy.encode();
+    expect(text, isNot(contains('App ID')));
+    expect(text, isNot(contains('App Version')));
+    final back = AppManifest.tryParse(text)!;
+    expect(back.appId, 'gpio_controller');
+    expect(back.appVersion, '1.0');
+    expect(back.encode(), text);
+  });
+
   test('the official parser keeps what it needs and ignores the rest', () {
     final seen = officialRead(full.encode())!;
     expect(seen['UID'], full.uid);
