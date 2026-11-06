@@ -195,7 +195,8 @@ void main() {
     final detail = await api.fetchApp('pair');
     final installed = AppManifest(
       uid: detail.card.id,
-      versionUid: 'pair_extra@0.9',
+      // An earlier version of pair_extra than the one the catalog has.
+      versionUid: '5f0a1b2c3d4e5f6a7b8c9d0e',
       fullName: 'Pair Extra',
       path: '/ext/apps/GPIO/pair_extra.fap',
       sdkApi: '88.16',
@@ -221,7 +222,7 @@ void main() {
     );
   });
 
-  test('a .fim names its version by the public id or the old one', () async {
+  test('a .fim names its version by its public id', () async {
     final detail = await api.fetchApp('pair');
     final list = (await api.fetchApps()).items.single;
     AppManifest installed(String uid, String versionUid) => AppManifest(
@@ -241,22 +242,12 @@ void main() {
     expect(installedApp(detail.card, current)!.appid, 'pair_extra');
     expect(stateOf(extra, current), CatalogAppState.open);
 
-    // Written before public ids: the appid as UID, <app>@<version> as its
-    // version. The same version is not an update, an older one is.
-    final legacy = installed('pair', 'pair_extra@1.0');
-    expect(installedApp(detail.card, legacy)!.appid, 'pair_extra');
-    expect(stateOf(extra, legacy), CatalogAppState.open);
-    expect(
-      stateOf(extra, installed('pair', 'pair_extra@0.9')),
-      CatalogAppState.update,
-    );
-
     final older = installed(detail.card.id, '0' * 24);
     expect(stateOf(extra, older), CatalogAppState.update);
     expect(stateOf(list, older), CatalogAppState.update);
   });
 
-  test('installed apps find their card by either uid', () async {
+  test('installed apps find their card by its uid', () async {
     final lookup = await api.fetchAppsByUids(['pair']);
     final cards = InstalledCards()..replace(lookup);
     AppManifest installed(String uid) => AppManifest(
@@ -272,13 +263,11 @@ void main() {
     final byPublicId = cards.cardFor(installed(lookup.single.id))!;
     expect(byPublicId.alias, 'pair_extra');
     expect(byPublicId.currentVersion!.id, extraVersion);
-    // The uid a .fim held before public ids: the item's appid.
-    expect(cards.cardFor(installed('pair'))!.alias, 'pair_extra');
-    expect(cards.cardFor(installed('something_else')), isNotNull);
+    expect(cards.cardFor(installed('pair')), isNull);
     expect(
       cards.cardFor(
         AppManifest(
-          uid: 'unknown',
+          uid: 'ffffffffffffffffffffffff',
           versionUid: '',
           fullName: '',
           path: '/ext/apps/GPIO/unknown.fap',

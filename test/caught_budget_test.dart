@@ -120,13 +120,6 @@ import 'ratchet.dart';
 /// makes for the user and then shows without, recorded once per page rather
 /// than per author.
 ///
-/// It rose to 3 for the catalog status an install reads to know whether the
-/// catalog builds for a development firmware. Unread, the install goes on and
-/// writes what that server has always been into the `.fim`'s DevCatalog - a
-/// guess the official app then filters the app by, so the line is what tells
-/// a report about a missing app there from one about a wrong flag. Once per
-/// install, and the status is cached after the first answer.
-///
 /// `pages/archive` also counts every `list`, `write`, `delete`, `mkdir`,
 /// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
 /// `syncCategory`. The per-file `read` inside a sync is **no longer one of
@@ -371,7 +364,7 @@ const Map<String, int> kBudget = {
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,
-  'pages/apps': 3,
+  'pages/apps': 2,
   'components': 4,
 };
 

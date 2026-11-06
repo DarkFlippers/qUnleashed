@@ -217,9 +217,9 @@ class AppCard {
 
   /// The entry whose install [versionUid] and [alias] describe: the one
   /// that owns the version, else the first with that app, else none.
-  CatalogApp? appInstalledAs(String versionUid, String alias) {
+  CatalogApp? appInstalledAs(String? versionUid, String alias) {
     for (final entry in entries) {
-      if (entry.appid == alias && entry.owns(versionUid)) return entry;
+      if (entry.appid == alias && entry.isVersion(versionUid)) return entry;
     }
     for (final entry in entries) {
       if (entry.appid == alias) return entry;

@@ -41,7 +41,11 @@ class CatalogV1Api extends _CatalogProtocol {
 
   Future<bool> fetchDevCatalog() async {
     final flag = (await _status())['dev_catalog'];
-    return flag is bool ? flag : true;
+    if (flag is! bool) {
+      final uri = _uri('/status', const {});
+      throw AppsCatalogException(0, uri.toString(), 'expected dev_catalog');
+    }
+    return flag;
   }
 
   Future<List<AppSdk>> fetchSdks() async {
@@ -203,22 +207,30 @@ class CatalogV1Api extends _CatalogProtocol {
     {'target': target, 'api': api},
   );
 
-  Future<Uint8List> fetchBuild(
+  /// The file, and the API it was built for, which our servers send with
+  /// every built file: one without it is an error, as a status without
+  /// dev_catalog is.
+  Future<BuiltFile> fetchBuild(
     String versionId, {
     CatalogFamily family = CatalogFamily.apps,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
-    void Function(String api)? onBuildApi,
-  }) {
+  }) async {
     final t = target, a = apiOverride ?? api;
     if (t == null || a == null) {
       throw StateError('Set target and api before fetching builds');
     }
-    return _signedBytes(
-      buildDownloadUri(versionId, api: a, target: t, family: family),
-      onProgress: onProgress,
-      onBuildApi: onBuildApi,
-    );
+    final uri = buildDownloadUri(versionId, api: a, target: t, family: family);
+    final file = await _signed(uri, onProgress: onProgress);
+    final built = BuiltFile.apiIn(file.headers);
+    if (built == null) {
+      throw AppsCatalogException(
+        0,
+        uri.toString(),
+        'expected ${BuiltFile.apiHeader}',
+      );
+    }
+    return BuiltFile(file.bytes, buildApi: built);
   }
 
   Future<InstallPlan> fetchAnimationPlan(String versionId) async =>

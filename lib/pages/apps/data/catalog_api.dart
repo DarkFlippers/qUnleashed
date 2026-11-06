@@ -2,6 +2,7 @@ import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../../services/assembler/built_file.dart';
 import '../../../services/http/app_http.dart';
 import '../../../services/logging.dart';
 import 'models/author.dart';
@@ -208,10 +209,6 @@ List<T> readEach<T>(
   return List<T>.unmodifiable(out);
 }
 
-/// The API of the firmware a served `.fap` or `.fal` was built in, major and
-/// minor. Our servers send it with every built file; Archivarius does not.
-const kBuildApiHeader = 'x-qu-build-api';
-
 /// Captures the server and device filters for a request, so a settings change
 /// cannot redirect a retry or the next chunk of an in-flight lookup.
 abstract class _CatalogProtocol {
@@ -245,21 +242,27 @@ abstract class _CatalogProtocol {
         : AppHttp.getJsonCached(uri, ttl: ttl, headers: headers);
   }
 
-  Future<Uint8List> _signedBytes(
+  /// The file at [uri] once its signature holds, and the headers it came
+  /// with.
+  Future<({Uint8List bytes, Map<String, String> headers})> _signed(
     Uri uri, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
-    void Function(String api)? onBuildApi,
   }) async {
     final response = await AppHttp.getBytesWithHeaders(
       uri,
       headers: {io.HttpHeaders.userAgentHeader: userAgent},
       onProgress: onProgress,
     );
-    final bytes = await verifySignedArtifact(uri, response);
-    final api = response.headers[kBuildApiHeader]?.trim() ?? '';
-    if (api.isNotEmpty) onBuildApi?.call(api);
-    return bytes;
+    return (
+      bytes: await verifySignedArtifact(uri, response),
+      headers: response.headers,
+    );
   }
+
+  Future<Uint8List> _signedBytes(
+    Uri uri, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async => (await _signed(uri, onProgress: onProgress)).bytes;
 }
 
 /// One stable API reference for the backend's registries and install queue.
@@ -375,15 +378,19 @@ class AppsCatalogApi {
     );
   }
 
+  /// Whether this catalog has [family] at all: Archivarius has the apps
+  /// only.
+  bool serves(CatalogFamily family) => hasV1 || family == CatalogFamily.apps;
+
   /// What a device has installed, looked up under [family]'s own root: an
-  /// entry is found only in its family. Archivarius has the apps only.
+  /// entry is found only in its family.
   Future<List<AppCard>> fetchAppsByUids(
     List<String> uids, {
     AppsSort sortBy = AppsSort.newUpdates,
     CatalogFamily family = CatalogFamily.apps,
   }) async {
+    if (!serves(family)) return const [];
     if (hasV1) return _v1.fetchAppsByUids(uids, family: family);
-    if (family != CatalogFamily.apps) return const [];
     return _official((api) => api.fetchAppsByUids(uids, sortBy: sortBy));
   }
 
@@ -436,45 +443,44 @@ class AppsCatalogApi {
     );
   }
 
-  /// [onBuildApi] hears the API the served file was built for, when the
-  /// server says (ours do, Archivarius does not).
-  Future<List<int>> fetchFapBuild(
+  /// The file and, from our servers, the API it was built for; Archivarius
+  /// does not say.
+  Future<BuiltFile> fetchFapBuild(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
     CatalogFamily family = CatalogFamily.apps,
-    void Function(String api)? onBuildApi,
-  }) => hasV1
+  }) async => hasV1
       ? _v1.fetchBuild(
           versionId,
           family: family,
           onProgress: onProgress,
           apiOverride: apiOverride,
-          onBuildApi: onBuildApi,
         )
-      : _v0.fetchFapBuild(
-          versionId,
-          onProgress: onProgress,
-          apiOverride: apiOverride,
+      : BuiltFile(
+          await _v0.fetchFapBuild(
+            versionId,
+            onProgress: onProgress,
+            apiOverride: apiOverride,
+          ),
+          buildApi: null,
         );
 
-  Future<List<int>> fetchMenuStyleBuild(
+  Future<BuiltFile> fetchMenuStyleBuild(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
-    void Function(String api)? onBuildApi,
   }) async => _v1.fetchBuild(
     versionId,
     family: CatalogFamily.menuStyles,
     onProgress: onProgress,
     apiOverride: apiOverride,
-    onBuildApi: onBuildApi,
   );
 
   /// Whether what this catalog serves is built for a development firmware,
   /// which an installed app's `.fim` records as DevCatalog. Our servers say
-  /// so in their status, and one too old to say builds on the firmware's
-  /// development tree; the official catalog is a release one.
+  /// so in their status, and one that does not is an error; the official
+  /// catalog is a release one.
   Future<bool> fetchDevCatalog() async => hasV1 ? _v1.fetchDevCatalog() : false;
 
   Future<InstallPlan> fetchAnimationPlan(String versionId) async =>

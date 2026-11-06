@@ -1,4 +1,5 @@
 import 'build_service.dart';
+import 'built_file.dart';
 import 'controller.dart';
 import 'remote_build_service.dart';
 
@@ -14,7 +15,7 @@ enum AppBuildStage { queued, download, build }
 class AppBuildRouter {
   const AppBuildRouter._();
 
-  static Future<List<int>> build({
+  static Future<BuiltFile> build({
     required String alias,
     required String bundleUrl,
     required String target,
@@ -27,7 +28,6 @@ class AppBuildRouter {
     String? versionUid,
     void Function(AppBuildStage stage, double progress)? onStage,
     bool Function()? isCancelled,
-    void Function(String api)? onBuildApi,
   }) async {
     final controller = AssemblerController.instance;
     // The SDK or the toolchain may have been deleted since the last build.
@@ -56,11 +56,10 @@ class AppBuildRouter {
       versionUid: versionUid,
       onStage: onStage,
       isCancelled: isCancelled,
-      onBuildApi: onBuildApi,
     );
   }
 
-  static Future<List<int>> _buildHere({
+  static Future<BuiltFile> _buildHere({
     required String alias,
     required Future<List<int>> Function(
       void Function(int received, int? total) onProgress,
@@ -79,10 +78,10 @@ class AppBuildRouter {
       alias: alias,
     );
     onStage?.call(AppBuildStage.build, 1);
-    return fap;
+    return BuiltFile.local(fap);
   }
 
-  static Future<List<int>> _buildOnServer({
+  static Future<BuiltFile> _buildOnServer({
     required String alias,
     required String bundleUrl,
     required String target,
@@ -91,7 +90,6 @@ class AppBuildRouter {
     String? versionUid,
     void Function(AppBuildStage stage, double progress)? onStage,
     bool Function()? isCancelled,
-    void Function(String api)? onBuildApi,
   }) {
     onStage?.call(AppBuildStage.queued, 0);
     return RemoteBuildService.instance.build(
@@ -102,7 +100,6 @@ class AppBuildRouter {
       uid: uid,
       versionUid: versionUid,
       isCancelled: isCancelled,
-      onBuildApi: onBuildApi,
       onPhase: (phase, progress) => onStage?.call(switch (phase) {
         RemoteBuildPhase.queued => AppBuildStage.queued,
         RemoteBuildPhase.building => AppBuildStage.build,

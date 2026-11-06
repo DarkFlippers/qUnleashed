@@ -77,34 +77,12 @@ DevCatalog: false
     expect(back.devCatalog, isTrue);
   });
 
-  test('does not repeat what an appid UID already says', () {
-    const legacy = AppManifest(
-      uid: 'gpio_controller',
-      versionUid: 'gpio_controller@1.0',
-      path: '/ext/apps/GPIO/gpio_controller.fap',
-      devCatalog: true,
-      appId: 'gpio_controller',
-      appVersion: '1.0',
-      family: ManifestFamily.app,
-    );
-    final text = legacy.encode();
-    expect(text, isNot(contains('App ID')));
-    expect(text, isNot(contains('App Version')));
-    final back = AppManifest.tryParse(text)!;
-    expect(back.appId, 'gpio_controller');
-    expect(back.appVersion, '1.0');
-    expect(back.encode(), text);
-  });
-
   test('the official parser keeps what it needs and ignores the rest', () {
     final seen = officialRead(full.encode())!;
     expect(seen['UID'], full.uid);
     expect(seen['Version UID'], full.versionUid);
     expect(seen['Path'], full.path);
     expect(seen['DevCatalog'], 'true');
-    // The UID goes back to Archivarius, which fails a whole batch over one
-    // that is not an ObjectId.
-    expect(seen['UID'], matches(RegExp(r'^[0-9a-f]{24}$')));
   });
 
   test('reads a manifest the official app wrote', () {
@@ -136,14 +114,14 @@ Version: 1
 Full Name: Old
 Icon:
 Version Build API:
-UID: old_app
-Version UID: old_app@1.0
+UID: 64d2039e13043e71ea766491
+Version UID: 6993832f3a42809bf4c35bab
 Path: /ext/apps/Tools/old_app.fap
 DevCatalog: false
 ''')!;
     expect(m.iconBase64, isNull);
     expect(m.sdkApi, isNull);
-    expect(m.uid, 'old_app');
+    expect(m.uid, '64d2039e13043e71ea766491');
     expect(AppManifest.tryParse('UID: x\n'), isNull, reason: 'no Path');
   });
 
@@ -183,21 +161,13 @@ DevCatalog: false
       );
     });
 
-    test('or, written before it said, where its file is', () {
+    test("is the official app's, apps only, when it does not say", () {
       expect(catalogFamilyOf(at('/ext/apps/Tools/x.fap')), CatalogFamily.apps);
-      expect(
-        catalogFamilyOf(at('/ext/apps_data/cli/plugins/cli_x.fal')),
-        CatalogFamily.cli,
-      );
-      expect(
-        catalogFamilyOf(at('/ext/apps_data/loader/plugins/menu_style_x.fal')),
-        CatalogFamily.menuStyles,
-      );
     });
 
     test('groups what is installed, apps first', () {
       final grouped = groupByFamily([
-        at('/ext/apps_data/cli/plugins/cli_x.fal'),
+        at('/ext/apps_data/cli/plugins/cli_x.fal', ManifestFamily.cli),
         at('/ext/apps/Tools/a.fap'),
         at('/ext/apps/Tools/b.fap', ManifestFamily.app),
       ]);
@@ -309,9 +279,9 @@ DevCatalog: false
       expect(await ask(), isTrue);
     });
 
-    test('is one when the server is too old to say', () async {
+    test('is an error when the server does not say', () async {
       said = null;
-      expect(await ask(), isTrue);
+      await expectLater(ask(), throwsA(isA<AppsCatalogException>()));
     });
 
     test('the official catalog never is', () async {

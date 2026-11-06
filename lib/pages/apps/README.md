@@ -61,10 +61,10 @@ including secondary apps of the same item.
 Ids are Archivarius's shape on both protocols: an entry's `id` and every
 version id are 24-hex ObjectIds, derived on the server from its own names, so
 they survive a rebuilt database. The readable names stay in `alias`, `appid`
-and `apps[].id` (what `app=` takes). Lookups, detail pages and downloads also
-take the ids a device's `.fim` held before, so nothing installed earlier is
-orphaned. Every built file comes with `X-QU-Build-Api`, the API of the tree it
-was built in.
+and `apps[].id` (what `app=` takes). Every built file comes with
+`X-QU-Build-Api`, the API of the tree it was built in, a remote build's as
+well; a server that leaves it out fails the install, as one whose status has
+no `dev_catalog` does.
 
 Signed downloads verify Ed25519 over SHA-256. Release builds supply the trusted
 public keys through `--dart-define=QU_SIGNING_KEYS=kid:public_key_hex,...`, matching
@@ -92,7 +92,7 @@ Filetype: Flipper Application Installation Manifest
 Version: 1
 Full Name: ProtoPirate Extra
 Icon: <base64>                  the catalog icon, v0 and v1 alike
-Version Build API: 87.1         what the server says it built the file for
+Version Build API: 87.1         X-QU-Build-Api; built here, the file's .fapmeta; Official, as its app
 UID: <ObjectId of the entry>
 Version UID: <ObjectId of the installed app's version>
 Path: /ext/apps/Sub-GHz/proto_pirate_extra.fap
@@ -104,10 +104,14 @@ Catalog: qunleashed.aperturefox.ru
 ```
 
 A key without a value is left out, never written empty. Manifests are read over
-BLE one by one, so nothing goes in that the app does not use. Updates are
-looked up per `Family` and only on the server `Catalog` names; one from another
-catalog says so in the manager instead of reading as current. A `.fim` written
-before these keys is placed by its path and matched by its appid.
+BLE one by one, so each key is a short line. Updates are looked up per `Family`
+and only on the server `Catalog` names; one from another catalog says so in the
+manager instead of reading as current. `App ID` and `App Version` are written
+for whoever reads the device; this app does not read them back.
+
+Archivarius does not say what a file was built for, so from Official the API is
+what the official app writes there (its `getSdkApi`): the version's, else the
+one asked for.
 
 ## Catalog / firmware API compatibility
 

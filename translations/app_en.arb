@@ -1338,6 +1338,10 @@
   "@remoteEmptyArtifact": {
     "description": "Error shown when the finished build downloaded as an empty file."
   },
+  "remoteNoBuildApi": "Build server did not say which firmware API it built for",
+  "@remoteNoBuildApi": {
+    "description": "Error shown when the finished build came without the firmware API version it was built for, which the installed app's manifest needs."
+  },
 
   "remoteUnexpectedResponse": "Unexpected build server response",
   "@remoteUnexpectedResponse": {

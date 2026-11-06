@@ -9,9 +9,27 @@ import 'package:qunleashed/components/codec/fap/assets.dart';
 import 'package:qunleashed/components/codec/fap/manifest.dart';
 import 'package:qunleashed/pages/apps/data/models/installed_app.dart';
 import 'package:qunleashed/components/fap_facts.dart';
+import 'package:qunleashed/services/assembler/built_file.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 void main() {
+  group('the API a built file says it was built for', () {
+    test("built here, it is the file's own .fapmeta", () {
+      expect(BuiltFile.local(_buildFap(apiMajor: 88)).buildApi, '88.3');
+    });
+
+    test('a .fapmeta that cannot be read says none', () {
+      expect(BuiltFile.local(_buildFap(metaMagic: 0)).buildApi, isNull);
+      expect(BuiltFile.local(const [1, 2, 3]).buildApi, isNull);
+    });
+
+    test('from a server, it is the header, and an empty one is none', () {
+      expect(BuiltFile.apiIn({'x-qu-build-api': ' 88.24 '}), '88.24');
+      expect(BuiltFile.apiIn({'x-qu-build-api': ''}), isNull);
+      expect(BuiltFile.apiIn(const {}), isNull);
+    });
+  });
+
   group('FapInfo.parse', () {
     test('reads the manifest of a well-formed fap', () {
       final info = FapInfo.parse(_buildFap());

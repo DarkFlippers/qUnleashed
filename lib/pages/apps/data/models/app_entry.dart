@@ -31,15 +31,8 @@ class CatalogApp {
   final int? buildSize;
   final String? bundleUri;
 
-  /// Whether [versionUid], a `.fim`'s `Version UID`, names a version of this
-  /// app: its public id, or the `<id>@<version>` a `.fim` written before the
-  /// server gave out public ids holds.
-  bool owns(String versionUid) =>
-      versionUid == versionId || versionUid.startsWith('$id@');
-
-  /// Whether [versionUid] is this app's current version, in either shape.
-  bool isVersion(String versionUid) =>
-      versionUid == versionId || versionUid == '$id@$version';
+  /// Whether [versionUid], a `.fim`'s `Version UID`, is this app's version.
+  bool isVersion(String? versionUid) => versionUid == versionId;
 
   static CatalogApp? tryFrom(Object? raw) {
     if (raw is! Map<String, dynamic>) return null;

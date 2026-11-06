@@ -3,6 +3,7 @@ import '../../../services/localization/l10n.dart';
 import 'dart:convert';
 
 import '../../../services/assembler/app_build_router.dart';
+import '../../../services/assembler/built_file.dart';
 import '../../../services/http/app_http.dart';
 import 'catalog_api.dart';
 import 'catalog_context.dart';
@@ -12,17 +13,8 @@ enum BinaryStage { queued, download, build }
 
 typedef BinaryProgress = void Function(BinaryStage stage, double progress);
 
-/// A file to install and the API it was built for, major and minor: what the
-/// `.fim` records as Version Build API.
-class FetchedBinary {
-  const FetchedBinary(this.bytes, {required this.buildApi});
-
-  final List<int> bytes;
-  final String? buildApi;
-}
-
 abstract class AppBinarySource {
-  Future<FetchedBinary> fetch(
+  Future<BuiltFile> fetch(
     AppCard card, {
     required AppCurrentVersion version,
     required BinaryProgress onProgress,
@@ -52,7 +44,7 @@ class CatalogBinarySource implements AppBinarySource {
   }
 
   @override
-  Future<FetchedBinary> fetch(
+  Future<BuiltFile> fetch(
     AppCard card, {
     required AppCurrentVersion version,
     required BinaryProgress onProgress,
@@ -62,10 +54,8 @@ class CatalogBinarySource implements AppBinarySource {
     // routes: the application ones do not know its versions.
     final family =
         CatalogFamily.byServerName(card.family) ?? CatalogFamily.apps;
-    String? built;
-    void heard(String buildApi) => built = buildApi;
     if (catalog.sourceBuildEnabled) {
-      final bytes = await AppBuildRouter.build(
+      return AppBuildRouter.build(
         alias: card.alias,
         bundleUrl: api.sourceBundleUri(version.id, family: family).toString(),
         target: catalog.deviceTarget ?? 'f7',
@@ -83,10 +73,7 @@ class CatalogBinarySource implements AppBinarySource {
           AppBuildStage.download => BinaryStage.download,
           AppBuildStage.build => BinaryStage.build,
         }, progress),
-        onBuildApi: heard,
       );
-      // Built here: the device's own API is what it was built against.
-      return FetchedBinary(bytes, buildApi: built ?? catalog.deviceApi);
     }
 
     void report(int received, int? total) {
@@ -94,30 +81,31 @@ class CatalogBinarySource implements AppBinarySource {
       onProgress(BinaryStage.download, received / total);
     }
 
+    // Only Archivarius does not say what a file was built for. Then the API
+    // is what the official app writes (its getSdkApi): the version's, else
+    // the one asked for.
     try {
-      final bytes = await api.fetchFapBuild(
+      final file = await api.fetchFapBuild(
         version.id,
         onProgress: report,
         family: family,
-        onBuildApi: heard,
       );
-      return FetchedBinary(
-        bytes,
-        buildApi: built ?? version.currentBuild?.sdk?.api ?? api.api,
+      return BuiltFile(
+        file.bytes,
+        buildApi: file.buildApi ?? version.currentBuild?.sdk?.api ?? api.api,
       );
     } on AppHttpException catch (e) {
       if (e.statusCode != 404) rethrow;
       final appApi = await _appApi(card, version);
       final canFallback = appApi.isNotEmpty && appApi != api.api;
       if (canFallback && catalog.apiFallbackEnabled) {
-        final bytes = await api.fetchFapBuild(
+        final file = await api.fetchFapBuild(
           version.id,
           onProgress: report,
           apiOverride: appApi,
           family: family,
-          onBuildApi: heard,
         );
-        return FetchedBinary(bytes, buildApi: built ?? appApi);
+        return BuiltFile(file.bytes, buildApi: file.buildApi ?? appApi);
       }
       throw StateError(
         canFallback

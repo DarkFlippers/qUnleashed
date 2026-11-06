@@ -120,8 +120,7 @@ class UpdateRegistry extends ChangeNotifier {
     notifyListeners();
     try {
       await catalog.ensureDeviceFilters(required: true);
-      final registries = [manifests, if (api.hasV1) engine.styleManifests];
-      for (final registry in registries) {
+      for (final registry in _registries) {
         if (force) await registry.refresh(force: true);
         await _awaitManifests(registry);
       }
@@ -191,13 +190,21 @@ class UpdateRegistry extends ChangeNotifier {
     }
   }
 
+  /// The device's manifests the catalog in use is asked about: the menu
+  /// styles' only where it has them.
+  List<ManifestRegistry> get _registries => [
+    manifests,
+    if (api.serves(CatalogFamily.menuStyles)) engine.styleManifests,
+  ];
+
   /// Every installed app the catalogue in use can know by uid: what its
   /// `.fim` says came from it, or does not say where it came from. Two entries
   /// of one item (ProtoPirate and ProtoPirate Extra) share the uid, so this is
   /// a list. The rest are kept in [otherCatalogs].
   List<AppManifest> _installedWithUid() {
-    final styles = api.hasV1 ? engine.styleManifests.all : const [];
-    final split = splitByCatalog([...manifests.all, ...styles], api.server);
+    final split = splitByCatalog([
+      for (final registry in _registries) ...registry.all,
+    ], api.server);
     _otherCatalogs = split.elsewhere;
     return split.here;
   }
