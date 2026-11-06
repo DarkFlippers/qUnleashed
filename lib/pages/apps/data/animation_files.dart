@@ -28,8 +28,8 @@ class AnimationFiles {
     String name, {
     required bool Function() wanted,
   }) {
-    final server = api.server;
-    final key = '$server/$versionId/$name';
+    final endpoint = api.endpoint;
+    final key = '$endpoint/$versionId/$name';
     final hit = _cache.remove(key);
     if (hit != null) {
       _cache[key] = hit;
@@ -40,7 +40,7 @@ class AnimationFiles {
       pending.wanted.add(wanted);
       return pending.done.future;
     }
-    final job = _FileJob(key, server, versionId, name)..wanted.add(wanted);
+    final job = _FileJob(key, endpoint, versionId, name)..wanted.add(wanted);
     _pending[key] = job;
     _queue.add(job);
     _pump();
@@ -52,7 +52,7 @@ class AnimationFiles {
     _wake = null;
     while (_running < _maxRunning && _queue.isNotEmpty) {
       final job = _queue.first;
-      if (!job.isWanted || job.server != api.server) {
+      if (!job.isWanted || job.endpoint != api.endpoint) {
         _queue.removeFirst();
         _finish(job, null);
         continue;
@@ -72,7 +72,7 @@ class AnimationFiles {
   Future<void> _run(_FileJob job) async {
     try {
       final bytes = await api.fetchAnimationFile(job.versionId, job.name);
-      if (job.server != api.server) {
+      if (job.endpoint != api.endpoint) {
         _finish(job, null);
         return;
       }
@@ -103,10 +103,10 @@ class AnimationFiles {
 }
 
 class _FileJob {
-  _FileJob(this.key, this.server, this.versionId, this.name);
+  _FileJob(this.key, this.endpoint, this.versionId, this.name);
 
   final String key;
-  final String server;
+  final String endpoint;
   final String versionId;
   final String name;
   final List<bool Function()> wanted = [];

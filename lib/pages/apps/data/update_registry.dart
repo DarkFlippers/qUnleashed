@@ -114,7 +114,7 @@ class UpdateRegistry extends ChangeNotifier {
 
   Future<void> _refresh({required bool force}) async {
     final token = client.deviceToken;
-    final server = api.server;
+    final endpoint = api.endpoint;
     _loading = true;
     _failed = false;
     notifyListeners();
@@ -124,7 +124,7 @@ class UpdateRegistry extends ChangeNotifier {
         if (force) await registry.refresh(force: true);
         await _awaitManifests(registry);
       }
-      if (token.isStale || server != api.server) return;
+      if (token.isStale || endpoint != api.endpoint) return;
 
       final installed = _installedWithUid();
 
@@ -145,7 +145,7 @@ class UpdateRegistry extends ChangeNotifier {
             family: group.key,
           ),
         );
-        if (token.isStale || server != api.server) return;
+        if (token.isStale || endpoint != api.endpoint) return;
       }
       _cards.replace(cards);
       _rebuild(installed);

@@ -8512,6 +8512,20 @@
   "appsCatalogOfficial": "Official catalog",
   "appsCatalogCustom": "Custom domain",
   "appsCatalogInvalidDomain": "Enter a domain, optionally with http:// or https://",
+  "appsCatalogProtocol": "Catalog API",
+  "@appsCatalogProtocol": {
+    "description": "Title of the setting that picks which API the app speaks to the catalog server: v1, this project's own, or v0, the official catalog's."
+  },
+  "appsProtocolV1": "v1",
+  "appsProtocolV1Subtitle": "Every section, search and authors",
+  "@appsProtocolV1Subtitle": {
+    "description": "Subtitle of the v1 catalog API option."
+  },
+  "appsProtocolV0": "v0",
+  "appsProtocolV0Subtitle": "As the official catalog: apps only",
+  "@appsProtocolV0Subtitle": {
+    "description": "Subtitle of the v0 catalog API option: the app then works with the server exactly as with the official catalog."
+  },
   "appsSortUnsupported": "This catalog server can''t sort by downloads",
   "@appsSortUnsupported": {
   "description": "Shown instead of the app list when a popularity sort is picked on a catalog server without the v1 API, such as the official one."

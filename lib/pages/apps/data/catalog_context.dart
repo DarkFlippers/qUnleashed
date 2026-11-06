@@ -106,6 +106,9 @@ class CatalogContext {
         LogService.warn('[Catalog] ignored stored domain: $e');
       }
     }
+    api.protocol = CatalogProtocol.parse(
+      prefs.orNull<String>(CatalogProtocol.preferenceKey),
+    );
     prefs.report('[Catalog]');
     _preferenceLoaded = true;
   }
@@ -114,17 +117,38 @@ class CatalogContext {
     await loadPreference();
     final normalized = CatalogServer.normalize(server);
     if (api.server == normalized) return;
+    final before = api.endpoint;
     api.server = normalized;
+    await persistSetting(
+      CatalogServer.preferenceKey,
+      (prefs) => prefs.setString(CatalogServer.preferenceKey, normalized),
+    );
+    await _switched(before);
+  }
+
+  /// The protocol spoken to a server of ours; Official speaks v0 whatever
+  /// is chosen (AppsCatalogApi.protocol).
+  Future<void> setProtocol(CatalogProtocol protocol) async {
+    await loadPreference();
+    final before = api.endpoint;
+    api.protocol = protocol;
+    await persistSetting(
+      CatalogProtocol.preferenceKey,
+      (prefs) => prefs.setString(CatalogProtocol.preferenceKey, protocol.name),
+    );
+    await _switched(before);
+  }
+
+  /// What was read from the catalog at [before] is dropped and the mode
+  /// resolved again, when requests now go elsewhere.
+  Future<void> _switched(String before) async {
+    if (api.endpoint == before) return;
     api.unfiltered = false;
     serverSdks = const [];
     serverLatestSdk = null;
     _compatApi = null;
     resolvedForDeviceId = null;
     mode.value = CatalogMode.resolving;
-    await persistSetting(
-      CatalogServer.preferenceKey,
-      (prefs) => prefs.setString(CatalogServer.preferenceKey, normalized),
-    );
     await resolveMode(force: true);
   }
 
@@ -151,17 +175,17 @@ class CatalogContext {
     _modeResolving = true;
     if (force) mode.value = CatalogMode.resolving;
     final token = client.deviceToken;
-    String? server;
+    String? endpoint;
     try {
       await loadPreference();
-      server = api.server;
+      endpoint = api.endpoint;
       await ensureDeviceFilters();
-      if (token.isStale || server != api.server) return;
+      if (token.isStale || endpoint != api.endpoint) return;
 
       var offline = false;
       try {
         final sdks = await api.fetchSdks().timeout(kCatalogTimeout);
-        if (server != api.server) return;
+        if (endpoint != api.endpoint) return;
         serverSdks = sdks;
       } catch (e) {
         // catalogOffline is read only by Settings -> Apps. On the apps
@@ -171,7 +195,7 @@ class CatalogContext {
         LogService.warn('[AppsBackend] fetchSdks failed: $e');
         offline = true;
       }
-      if (token.isStale || server != api.server) return;
+      if (token.isStale || endpoint != api.endpoint) return;
       _catalogOffline = offline;
 
       final target = _deviceTarget;
@@ -199,7 +223,7 @@ class CatalogContext {
       final builderAvailable = needsBuilder
           ? await AssemblerController.instance.builderAvailable()
           : false;
-      if (token.isStale || server != api.server) return;
+      if (token.isStale || endpoint != api.endpoint) return;
       _builderAvailable = builderAvailable;
       final next = resolveCatalogMode(
         verdict: res.verdict,
@@ -225,7 +249,7 @@ class CatalogContext {
         'builder=$_builderAvailable pref=${_preference.name}',
       );
     } catch (e) {
-      if (server != null && server != api.server) return;
+      if (endpoint != null && endpoint != api.endpoint) return;
       // Without this the mode stayed at `resolving`, which it was set to above
       // when forced - so Settings -> Apps rendered its Recheck button as
       // `resolving ? null : ...` and it was dead for as long as the page was
@@ -245,7 +269,7 @@ class CatalogContext {
       _useManagerOnly();
     } finally {
       _modeResolving = false;
-      if (token.isStale || (server != null && server != api.server)) {
+      if (token.isStale || (endpoint != null && endpoint != api.endpoint)) {
         // The device changed under this resolution, so what it worked out
         // describes the Flipper that was attached when it started and the one
         // attached now has nothing resolved for it. Nobody else will start

@@ -8,6 +8,7 @@ import 'binary_sources.dart';
 import 'catalog_api.dart';
 import 'catalog_context.dart';
 import 'catalog_mode.dart';
+import 'catalog_server.dart';
 import 'device_source.dart';
 import 'dolphin_registry.dart';
 import 'install_engine.dart';
@@ -89,11 +90,19 @@ class AppsBackend {
   }
 
   Future<void> loadPreference() => catalog.loadPreference();
-  Future<void> setServer(String server) async {
+  Future<void> setServer(String server) =>
+      _switching(() => catalog.setServer(server));
+
+  Future<void> setProtocol(CatalogProtocol protocol) =>
+      _switching(() => catalog.setProtocol(protocol));
+
+  /// Updates were looked up in the catalog requests went to before [change]:
+  /// another one is asked again.
+  Future<void> _switching(Future<void> Function() change) async {
     await loadPreference();
-    final previous = api.server;
-    await catalog.setServer(server);
-    if (previous != api.server) {
+    final previous = api.endpoint;
+    await change();
+    if (previous != api.endpoint) {
       updates.handleDeviceChange();
       if (isReady) await updates.refresh(force: true);
     }

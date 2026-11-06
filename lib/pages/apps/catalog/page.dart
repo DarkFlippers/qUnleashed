@@ -87,7 +87,7 @@ class _AppsCatalogPageState extends State<AppsCatalogPage>
                 TickerMode(
                   enabled: _view == AppsView.catalog,
                   child: CatalogView(
-                    key: ValueKey(AppsBackend.instance.api.server),
+                    key: ValueKey(AppsBackend.instance.api.endpoint),
                     active: _view == AppsView.catalog,
                     onOpenManager: () => _show(AppsView.manager),
                   ),

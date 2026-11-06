@@ -266,7 +266,8 @@ abstract class _CatalogProtocol {
 }
 
 /// One stable API reference for the backend's registries and install queue.
-/// Official speaks v0; every community/custom origin speaks v1.
+/// Official speaks v0; a community/custom origin speaks the [protocol]
+/// chosen.
 class AppsCatalogApi {
   static const officialServer = CatalogServer.official;
   static const defaultServer = CatalogServer.defaultServer;
@@ -275,6 +276,7 @@ class AppsCatalogApi {
   AppsCatalogApi({
     String server = defaultServer,
     String? baseUrl,
+    this._protocol = CatalogProtocol.v1,
     this.userAgent = AppHttp.userAgent,
     this.api,
     this.target,
@@ -293,12 +295,29 @@ class AppsCatalogApi {
     unfiltered = false;
   }
 
+  CatalogProtocol _protocol;
+
+  /// What is spoken to [server]: the one chosen, except to Official, which
+  /// has v0 only.
+  CatalogProtocol get protocol =>
+      server == officialServer ? CatalogProtocol.v0 : _protocol;
+  set protocol(CatalogProtocol value) {
+    if (value == _protocol) return;
+    _protocol = value;
+    unfiltered = false;
+  }
+
+  /// Where requests go: the server and the protocol spoken to it. A switch
+  /// of either is a different catalog, and what was read from the last one
+  /// is dropped by comparing this.
+  String get endpoint => '$server/api/${protocol.name}';
+
   final String userAgent;
   String? api;
   String? target;
   bool unfiltered = false;
   String get baseUrl => '$server/api/v0';
-  bool get hasV1 => server != officialServer;
+  bool get hasV1 => protocol == CatalogProtocol.v1;
   bool ranksOnServer(AppsSort sort, CatalogFamily family) => hasV1;
 
   CatalogV0Api get _v0 => CatalogV0Api(

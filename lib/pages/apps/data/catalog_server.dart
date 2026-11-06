@@ -1,3 +1,17 @@
+/// What the app speaks to a catalog: v0 is Archivarius's API, the only one
+/// Official has, and our servers answer it as Archivarius does; v1 is ours,
+/// with every family, search and authors.
+enum CatalogProtocol {
+  v0,
+  v1;
+
+  static const preferenceKey = 'apps_catalog_protocol';
+
+  /// v1 for what is not a protocol's name: what a catalog of ours speaks
+  /// unless it is told otherwise.
+  static CatalogProtocol parse(String? name) => name == v0.name ? v0 : v1;
+}
+
 /// A catalog origin. API paths belong to the clients, not to the setting.
 class CatalogServer {
   static const official = 'https://catalog.flipperzero.one';

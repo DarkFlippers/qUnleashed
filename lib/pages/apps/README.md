@@ -6,8 +6,12 @@ Settings → Apps chooses Official, one of `CatalogServer.community`, or a custo
 HTTP(S) domain. A bare domain uses HTTPS. The setting stores an origin, without
 an API path, credentials, query or fragment. New installations use qUnleashed.
 Add further known domains to `data/catalog_server.dart`; a custom domain is
-remembered separately as the selected origin. Every community/custom origin
-must implement v1; Official uses v0. There is no endpoint probing.
+remembered separately as the selected origin. The protocol is a setting of its
+own (`CatalogProtocol`): a community/custom origin is spoken to in v1 unless
+v0 is picked, and then the app treats it exactly as it treats Official, which
+speaks v0 only. There is no endpoint probing. A switch of either is a different
+`AppsCatalogApi.endpoint`, which is what every screen compares to drop what it
+read from the last catalog.
 
 `data/catalog_api.dart` keeps the stable API reference the backend uses. Each
 request captures its origin and firmware filters. The protocol implementations

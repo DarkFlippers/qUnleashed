@@ -32,7 +32,7 @@ class AppsCatalogController extends ChangeNotifier {
     this.authorId,
     this._family = CatalogFamily.apps,
   }) {
-    _server = api.server;
+    _endpoint = api.endpoint;
     _backend.manifests.addListener(notifyListeners);
     _backend.engine.addListener(notifyListeners);
     _backend.dolphin.addListener(notifyListeners);
@@ -55,7 +55,7 @@ class AppsCatalogController extends ChangeNotifier {
   late CatalogFeed _catalogFeed = CatalogFeed(api);
   int _generation = 0;
   bool _disposed = false;
-  String? _server;
+  String? _endpoint;
   int _categoryGeneration = 0;
   Future<void>? _inFlight;
 
@@ -179,14 +179,14 @@ class AppsCatalogController extends ChangeNotifier {
       _categoryGeneration++;
       return;
     }
-    if (_server != api.server) {
-      _server = api.server;
+    if (_endpoint != api.endpoint) {
+      _endpoint = api.endpoint;
       _categories = const [];
       _currentCategory = null;
       _searchView = null;
       _family = CatalogFamily.apps;
       _sort = AppsSort.newUpdates;
-      CategoryRegistry.instance.useServer(api.server);
+      CategoryRegistry.instance.useEndpoint(api.endpoint);
     }
     unawaited(guarded('[AppsCatalog] refresh on mode change', refresh));
     if (showsCatalog(_backend.mode.value)) {
@@ -196,16 +196,16 @@ class AppsCatalogController extends ChangeNotifier {
 
   Future<void> loadCategories() async {
     final generation = ++_categoryGeneration;
-    final server = api.server;
+    final endpoint = api.endpoint;
     final family = _family;
     bool stale() =>
         _disposed ||
         generation != _categoryGeneration ||
         family != _family ||
-        server != api.server;
+        endpoint != api.endpoint;
     _categoriesLoading = true;
     if (family == CatalogFamily.apps) {
-      CategoryRegistry.instance.useServer(api.server);
+      CategoryRegistry.instance.useEndpoint(api.endpoint);
       final bundled = await CategoryRegistry.instance.ensureBundled();
       if (stale()) return;
       _categories = bundled;

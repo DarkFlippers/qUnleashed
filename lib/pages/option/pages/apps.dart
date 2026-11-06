@@ -720,6 +720,14 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _applyProtocol(_Choice<CatalogProtocol> choice) async {
+    if (choice.value == _backend.api.protocol) return;
+    final pending = _backend.setProtocol(choice.value);
+    if (mounted) setState(() {});
+    await pending;
+    if (mounted) setState(() {});
+  }
+
   Future<void> _applyMode(_Choice<CatalogModePreference> choice) async {
     if (choice.value == _backend.preference) return;
     await _backend.setPreference(choice.value);
@@ -777,6 +785,27 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
         ),
         area: 'pick catalog',
         apply: _applyServer,
+      ),
+      _ChoiceSpec<CatalogProtocol>(
+        icon: Icons.swap_horiz,
+        title: s.appsCatalogProtocol,
+        current: _backend.api.protocol,
+        options: [
+          _Option(
+            CatalogProtocol.v1,
+            s.appsProtocolV1,
+            subtitle: s.appsProtocolV1Subtitle,
+          ),
+          _Option(
+            CatalogProtocol.v0,
+            s.appsProtocolV0,
+            subtitle: s.appsProtocolV0Subtitle,
+          ),
+        ],
+        // Official has v0 only.
+        enabled: server != CatalogServer.official,
+        area: 'pick catalog protocol',
+        apply: _applyProtocol,
       ),
       _ChoiceSpec<CatalogModePreference>(
         icon: Icons.tune,

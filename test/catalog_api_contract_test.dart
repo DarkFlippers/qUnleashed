@@ -7,6 +7,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/apps/data/artifact_signature.dart';
 import 'package:qunleashed/pages/apps/data/catalog_api.dart';
+import 'package:qunleashed/pages/apps/data/catalog_server.dart';
 import 'package:qunleashed/pages/apps/data/catalog_state.dart';
 import 'package:qunleashed/pages/apps/data/models/card.dart';
 import 'package:qunleashed/pages/apps/data/models/manifest.dart';
@@ -339,6 +340,35 @@ void main() {
       throwsA(isA<CatalogNeedsV1Exception>()),
     );
   });
+
+  test(
+    'our server in v0 is asked as Official is, and for nothing of v1',
+    () async {
+      api.protocol = CatalogProtocol.v0;
+      await api.fetchSdks();
+      await api.fetchCategories();
+      await api.fetchApps();
+      await api.fetchApp('pair');
+      expect(api.serves(CatalogFamily.menuStyles), isFalse);
+      expect(
+        await api.fetchAppsByUids([
+          '64971d0f6617ba37a4bc79b3',
+        ], family: CatalogFamily.cli),
+        isEmpty,
+      );
+      expect(await api.fetchDevCatalog(), isFalse);
+      await expectLater(
+        api.search('pair'),
+        throwsA(isA<CatalogNeedsV1Exception>()),
+      );
+      expect(requests.map((uri) => uri.path), [
+        '/api/v0/sdk',
+        '/api/v0/category',
+        '/api/v0/0/application',
+        '/api/v0/application/pair',
+      ]);
+    },
+  );
 
   test(
     'signed artifacts verify their digest and reject a modified body',

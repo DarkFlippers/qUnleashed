@@ -16,11 +16,13 @@ class CategoryRegistry {
 
   List<AppCategory> _bundled = const [];
   List<AppCategory> _all = const [];
-  String? _server;
+  String? _endpoint;
 
-  void useServer(String server) {
-    if (_server == server) return;
-    _server = server;
+  /// The catalog the list is for (AppsCatalogApi.endpoint): another one
+  /// starts again from the bundled list.
+  void useEndpoint(String endpoint) {
+    if (_endpoint == endpoint) return;
+    _endpoint = endpoint;
     _all = _bundled;
   }
 
@@ -87,7 +89,7 @@ class CategoryRegistry {
   /// Resolves a category name by id, going to the catalog only when the id is
   /// not in the list already loaded.
   Future<String?> nameFor(AppsCatalogApi api, String id) async {
-    useServer(api.server);
+    useEndpoint(api.endpoint);
     if (id.isEmpty) return null;
     String? pick(List<AppCategory> list) {
       for (final category in list) {
@@ -100,11 +102,11 @@ class CategoryRegistry {
   }
 
   Future<List<AppCategory>> refreshFromCatalog(AppsCatalogApi api) async {
-    final server = api.server;
-    useServer(server);
+    final endpoint = api.endpoint;
+    useEndpoint(endpoint);
     await ensureBundled();
     final fetched = await api.fetchCategories();
-    if (server != api.server) return _all;
+    if (endpoint != api.endpoint) return _all;
     if (fetched.isEmpty) return _all;
     final byId = {for (final c in _bundled) c.id: c};
     final out = <AppCategory>[];
