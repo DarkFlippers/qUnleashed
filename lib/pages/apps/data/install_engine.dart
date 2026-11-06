@@ -16,6 +16,7 @@ import 'binary_sources.dart';
 import 'categories.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
+import 'catalog_state.dart' show catalogManifest;
 import 'dolphin_registry.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
@@ -336,17 +337,7 @@ class InstallEngine extends ChangeNotifier {
           );
         }
 
-        final manifest = AppManifest(
-          uid: app.id,
-          versionUid: cv.id,
-          fullName: cv.name.isNotEmpty ? cv.name : app.name,
-          path: fapPath,
-          iconBase64: await source.iconBase64(app, cv),
-          sdkApi: source.buildApi(app, cv),
-          devCatalog: false,
-        );
-
-        final fapBytes = await source.fetch(
+        final fetched = await source.fetch(
           app,
           version: cv,
           onProgress: (stage, progress) {
@@ -367,6 +358,15 @@ class InstallEngine extends ChangeNotifier {
         );
         _throwIfCancelled(app.alias);
         _setActionState(app.alias, stage: AppActionStage.download, progress: 1);
+        final fapBytes = fetched.bytes;
+
+        final manifest = await _manifestFor(
+          app,
+          cv,
+          path: fapPath,
+          buildApi: fetched.buildApi,
+          icon: await source.iconBase64(app, cv),
+        );
 
         unawaited(
           guarded(
@@ -501,9 +501,15 @@ class InstallEngine extends ChangeNotifier {
         );
       }
 
+      String? built;
+      void heard(String buildApi) => built = buildApi;
       final List<int> fal;
       try {
-        fal = await api.fetchMenuStyleBuild(cv.id, onProgress: report);
+        fal = await api.fetchMenuStyleBuild(
+          cv.id,
+          onProgress: report,
+          onBuildApi: heard,
+        );
       } on AppHttpException catch (e) {
         if (e.statusCode != 404) rethrow;
         final styleApi = cv.currentBuild?.sdk?.api ?? '';
@@ -515,15 +521,17 @@ class InstallEngine extends ChangeNotifier {
                 : l10n.appsErrorNoBuild(api.api ?? '?'),
           );
         }
+        final fallback = await api.fetchMenuStyleBuild(
+          cv.id,
+          onProgress: report,
+          apiOverride: styleApi,
+          onBuildApi: heard,
+        );
         return await _writeMenuStyle(
           app,
           cv,
-          await api.fetchMenuStyleBuild(
-            cv.id,
-            onProgress: report,
-            apiOverride: styleApi,
-          ),
-          styleApi,
+          fallback,
+          built ?? styleApi,
           token,
         );
       }
@@ -531,7 +539,7 @@ class InstallEngine extends ChangeNotifier {
         app,
         cv,
         fal,
-        cv.currentBuild?.sdk?.api ?? api.api ?? '',
+        built ?? cv.currentBuild?.sdk?.api ?? api.api,
         token,
       );
     } catch (e) {
@@ -555,7 +563,7 @@ class InstallEngine extends ChangeNotifier {
     AppCard app,
     AppCurrentVersion cv,
     List<int> fal,
-    String buildApi,
+    String? buildApi,
     DeviceToken token,
   ) async {
     _throwIfCancelled(app.alias);
@@ -564,14 +572,12 @@ class InstallEngine extends ChangeNotifier {
 
     final falPath = '$kMenuStylesRoot/${app.alias}.fal';
     final fimPath = '$kMenuStyleManifestsRoot/${app.alias}.fim';
-    final manifest = AppManifest(
-      uid: app.id,
-      versionUid: cv.id,
-      fullName: cv.name.isNotEmpty ? cv.name : app.name,
+    final manifest = await _manifestFor(
+      app,
+      cv,
       path: falPath,
-      iconBase64: '',
-      sdkApi: buildApi,
-      devCatalog: false,
+      buildApi: buildApi,
+      icon: await source.iconBase64(app, cv),
     );
     final manifestBytes = utf8.encode(manifest.encode());
 
@@ -961,6 +967,35 @@ class InstallEngine extends ChangeNotifier {
     final parts = path.split('/').where((p) => p.isNotEmpty).toList();
     for (var i = 2; i <= parts.length; i++) {
       await _ensureDir('/${parts.sublist(0, i).join('/')}');
+    }
+  }
+
+  /// The `.fim` an install from the catalog writes (models/manifest.dart).
+  Future<AppManifest> _manifestFor(
+    AppCard app,
+    AppCurrentVersion cv, {
+    required String path,
+    required String? buildApi,
+    required String? icon,
+  }) async => catalogManifest(
+    card: app,
+    version: cv,
+    path: path,
+    buildApi: buildApi,
+    icon: icon,
+    devCatalog: await _devCatalog(),
+    server: api.server,
+  );
+
+  /// What the catalog says it is. Its status is cached, so this costs no
+  /// request after the first; one that cannot be read leaves our servers as
+  /// what they have been so far, builds of the firmware's development tree.
+  Future<bool> _devCatalog() async {
+    try {
+      return await api.fetchDevCatalog();
+    } catch (e) {
+      LogService.caught('[InstallEngine] catalog status unread: $e');
+      return api.hasV1;
     }
   }
 

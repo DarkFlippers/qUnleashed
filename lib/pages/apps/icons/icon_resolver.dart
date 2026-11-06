@@ -75,10 +75,11 @@ class IconResolver {
   }
 
   Future<bool> ensureFromManifest(String alias, AppManifest manifest) async {
-    if (alias.isEmpty || manifest.iconBase64.isEmpty) return false;
+    final icon = manifest.iconBase64;
+    if (alias.isEmpty || icon == null || icon.isEmpty) return false;
     try {
       if (await hasFapIcon(alias)) return true;
-      final raw = Uint8List.fromList(base64Decode(manifest.iconBase64));
+      final raw = Uint8List.fromList(base64Decode(icon));
       final bits = decodeCatalogIconToFapBits(raw) ?? _fapMetaIcon(raw);
       if (bits == null) return false;
       await writeFapIcon(alias, bits);

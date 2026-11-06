@@ -1,5 +1,7 @@
 import '../../../components/codec/fap/api_version.dart';
+import 'catalog_api.dart' show CatalogFamily;
 import 'catalog_context.dart' show aliasFromFapPath;
+import 'catalog_server.dart';
 import 'models/card.dart';
 import 'models/manifest.dart';
 import 'models/app_entry.dart';
@@ -17,7 +19,7 @@ CatalogApp? installedApp(AppCard card, AppManifest manifest) {
   final alias = base.endsWith('.fap')
       ? base.substring(0, base.length - 4)
       : card.alias;
-  return card.appInstalledAs(manifest.versionUid, alias);
+  return card.appInstalledAs(manifest.versionUid ?? '', alias);
 }
 
 /// Whether [versionUid] is [version] when no entry of the card says which app
@@ -30,6 +32,38 @@ bool isCurrentVersion(String versionUid, AppCurrentVersion version) {
       version.version.isNotEmpty &&
       versionUid.substring(at + 1) == version.version;
 }
+
+/// The `.fim` an install of [card] from the catalog at [server] writes.
+///
+/// [buildApi] is the API the file was built for as its source said it, and
+/// [devCatalog] what the catalog says it is (AppsCatalogApi.fetchDevCatalog).
+AppManifest catalogManifest({
+  required AppCard card,
+  required AppCurrentVersion version,
+  required String path,
+  required String server,
+  required bool devCatalog,
+  String? buildApi,
+  String? icon,
+}) => AppManifest(
+  uid: card.id,
+  versionUid: version.id,
+  fullName: version.name.isNotEmpty ? version.name : card.name,
+  path: path,
+  iconBase64: icon,
+  sdkApi: buildApi,
+  devCatalog: devCatalog,
+  appId: card.alias.isNotEmpty ? card.alias : null,
+  appVersion: version.version.isNotEmpty ? version.version : null,
+  family: switch (CatalogFamily.byServerName(card.family)) {
+    CatalogFamily.cli => ManifestFamily.cli,
+    CatalogFamily.menuStyles => ManifestFamily.style,
+    CatalogFamily.apps ||
+    CatalogFamily.animations ||
+    null => ManifestFamily.app,
+  },
+  catalog: CatalogServer.manifestName(server),
+);
 
 CatalogAppState catalogAppState({
   required AppCard card,
@@ -51,7 +85,8 @@ CatalogAppState catalogAppState({
     return CatalogAppState.install;
   }
   final versionUid = manifest.versionUid;
-  if (versionUid.isNotEmpty &&
+  if (versionUid != null &&
+      versionUid.isNotEmpty &&
       cv.id.isNotEmpty &&
       !(installed?.isVersion(versionUid) ?? isCurrentVersion(versionUid, cv))) {
     return CatalogAppState.update;

@@ -29,10 +29,10 @@ class AppUpdate {
     final full = card.name;
     if (full.isNotEmpty) return full;
     final mf = manifest.fullName;
-    return mf.isNotEmpty ? mf : alias;
+    return mf != null && mf.isNotEmpty ? mf : alias;
   }
 
-  String get installedApi => manifest.sdkApi;
+  String? get installedApi => manifest.sdkApi;
 }
 
 class UpdateRegistry extends ChangeNotifier {
@@ -132,7 +132,7 @@ class UpdateRegistry extends ChangeNotifier {
       _cards.replace(cards);
       _rebuild(installed);
       _loaded = true;
-      final withVer = installed.where((m) => m.versionUid.isNotEmpty).length;
+      final withVer = installed.where((m) => m.versionUid != null).length;
       LogService.info(
         '[Updates] installed=${installed.length} withVersionUid=$withVer '
         'cards=${cards.length} updates=${_updates.length}',

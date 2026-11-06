@@ -5,6 +5,12 @@ class CatalogServer {
   static const defaultServer = 'https://qunleashed.aperturefox.ru';
   static const preferenceKey = 'apps_catalog_server';
 
+  /// What an installed app's `.fim` names [origin] by (Catalog): its host,
+  /// with the port when it has one. Short, because every manifest is read
+  /// over BLE, and the same for one server however its origin is spelled.
+  static String manifestName(String origin) =>
+      Uri.parse(normalize(origin)).authority;
+
   static String normalize(String input) {
     final text = input.trim();
     if (text.isEmpty) throw const FormatException('Empty catalog domain');

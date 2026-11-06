@@ -150,6 +150,7 @@ class RemoteBuildService {
     String? indexUrl,
     void Function(RemoteBuildPhase phase, double progress)? onPhase,
     bool Function()? isCancelled,
+    void Function(String api)? onBuildApi,
   }) async {
     if (!canBuild) {
       throw RemoteBuildException(l10n.remoteNoSigningKey);
@@ -184,6 +185,9 @@ class RemoteBuildService {
         }
         switch (status['status'] as String? ?? '') {
           case 'ready':
+            // The API of the tree it was built in, which the .fim records.
+            final built = status['api'];
+            if (built is String && built.isNotEmpty) onBuildApi?.call(built);
             return await _downloadArtifact(id, clientId, onPhase);
           case 'failed':
             throw RemoteBuildException(

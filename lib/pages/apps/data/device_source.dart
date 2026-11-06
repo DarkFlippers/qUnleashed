@@ -582,7 +582,7 @@ class DeviceSource extends ChangeNotifier {
   void _warmManifestIcons() {
     for (final app in apps) {
       final m = app.manifest;
-      if (m != null && m.iconBase64.isNotEmpty) {
+      if (m != null && (m.iconBase64?.isNotEmpty ?? false)) {
         unawaited(
           guarded(
             '[AppsDevice] cache icon from manifest',

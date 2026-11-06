@@ -252,12 +252,16 @@ class ManifestRegistry extends ChangeNotifier {
       alias,
       AppManifest(
         uid: _text(raw['uid']) ?? '',
-        versionUid: _text(raw['version_uid']) ?? '',
-        fullName: _text(raw['full_name']) ?? '',
+        versionUid: _text(raw['version_uid']),
+        fullName: _text(raw['full_name']),
         path: path,
-        iconBase64: _text(raw['icon_base64']) ?? '',
-        sdkApi: _text(raw['sdk_api']) ?? '',
+        iconBase64: _text(raw['icon_base64']),
+        sdkApi: _text(raw['sdk_api']),
         devCatalog: raw['dev_catalog'] == true,
+        appId: _text(raw['app_id']),
+        appVersion: _text(raw['app_version']),
+        family: ManifestFamily.byCode(_text(raw['family'])),
+        catalog: _text(raw['catalog']),
       ),
     );
     final md5 = _text(raw['md5']);
@@ -286,13 +290,17 @@ class ManifestRegistry extends ChangeNotifier {
         return {
           'alias': e.key,
           'uid': m.uid,
-          'version_uid': m.versionUid,
-          'full_name': m.fullName,
+          'version_uid': ?m.versionUid,
+          'full_name': ?m.fullName,
           'path': m.path,
-          'sdk_api': m.sdkApi,
-          'icon_base64': m.iconBase64,
+          'sdk_api': ?m.sdkApi,
+          'icon_base64': ?m.iconBase64,
           'dev_catalog': m.devCatalog,
-          if (_md5[e.key] != null) 'md5': _md5[e.key],
+          'app_id': ?m.appId,
+          'app_version': ?m.appVersion,
+          'family': ?m.family?.code,
+          'catalog': ?m.catalog,
+          'md5': ?_md5[e.key],
         };
       }).toList();
       final file = await installedCatalogFile(name);

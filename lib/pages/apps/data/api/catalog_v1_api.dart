@@ -36,9 +36,17 @@ class CatalogV1Api extends _CatalogProtocol {
     return body;
   }
 
+  Future<Map<String, dynamic>> _status() =>
+      _object(_uri('/status', const {}), ttl: const Duration(hours: 6));
+
+  Future<bool> fetchDevCatalog() async {
+    final flag = (await _status())['dev_catalog'];
+    return flag is bool ? flag : true;
+  }
+
   Future<List<AppSdk>> fetchSdks() async {
     final uri = _uri('/status', const {});
-    final body = await _object(uri, ttl: const Duration(hours: 6));
+    final body = await _status();
     final sdks = body['sdk'];
     if (sdks is! List) {
       throw AppsCatalogException(0, uri.toString(), 'expected sdk list');
@@ -197,6 +205,7 @@ class CatalogV1Api extends _CatalogProtocol {
     CatalogFamily family = CatalogFamily.apps,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
+    void Function(String api)? onBuildApi,
   }) {
     final t = target, a = apiOverride ?? api;
     if (t == null || a == null) {
@@ -205,6 +214,7 @@ class CatalogV1Api extends _CatalogProtocol {
     return _signedBytes(
       buildDownloadUri(versionId, api: a, target: t, family: family),
       onProgress: onProgress,
+      onBuildApi: onBuildApi,
     );
   }
 

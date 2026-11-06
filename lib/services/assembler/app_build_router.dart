@@ -27,6 +27,7 @@ class AppBuildRouter {
     String? versionUid,
     void Function(AppBuildStage stage, double progress)? onStage,
     bool Function()? isCancelled,
+    void Function(String api)? onBuildApi,
   }) async {
     final controller = AssemblerController.instance;
     // The SDK or the toolchain may have been deleted since the last build.
@@ -55,6 +56,7 @@ class AppBuildRouter {
       versionUid: versionUid,
       onStage: onStage,
       isCancelled: isCancelled,
+      onBuildApi: onBuildApi,
     );
   }
 
@@ -89,6 +91,7 @@ class AppBuildRouter {
     String? versionUid,
     void Function(AppBuildStage stage, double progress)? onStage,
     bool Function()? isCancelled,
+    void Function(String api)? onBuildApi,
   }) {
     onStage?.call(AppBuildStage.queued, 0);
     return RemoteBuildService.instance.build(
@@ -99,6 +102,7 @@ class AppBuildRouter {
       uid: uid,
       versionUid: versionUid,
       isCancelled: isCancelled,
+      onBuildApi: onBuildApi,
       onPhase: (phase, progress) => onStage?.call(switch (phase) {
         RemoteBuildPhase.queued => AppBuildStage.queued,
         RemoteBuildPhase.building => AppBuildStage.build,
