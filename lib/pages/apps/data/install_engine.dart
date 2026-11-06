@@ -344,9 +344,9 @@ class InstallEngine extends ChangeNotifier {
         final devCatalog = await api.fetchDevCatalog();
         _throwIfCancelled(app.alias);
 
-        final fetched = await source.fetch(
+        Future<BuiltFile> fetch(AppCurrentVersion version) => source.fetch(
           app,
-          version: cv,
+          version: version,
           onProgress: (stage, progress) {
             // Throwing out of a progress callback tears down the HTTP stream,
             // which is the only way to stop a download in flight.
@@ -363,6 +363,14 @@ class InstallEngine extends ChangeNotifier {
           },
           isCancelled: () => _cancelling.contains(app.alias),
         );
+
+        BuiltFile fetched;
+        try {
+          fetched = await fetch(cv);
+        } on CatalogVersionGoneException {
+          cv = await _replacing(app, cv);
+          fetched = await fetch(cv);
+        }
         _throwIfCancelled(app.alias);
         _setActionState(app.alias, stage: AppActionStage.download, progress: 1);
         final fapBytes = fetched.bytes;
@@ -512,28 +520,36 @@ class InstallEngine extends ChangeNotifier {
       final devCatalog = await api.fetchDevCatalog();
       _throwIfCancelled(app.alias);
 
-      final BuiltFile fal;
-      try {
-        fal = await api.fetchMenuStyleBuild(cv.id, onProgress: report);
-      } on AppHttpException catch (e) {
-        if (e.statusCode != 404) rethrow;
-        final styleApi = cv.currentBuild?.sdk?.api ?? '';
-        final canFallback = styleApi.isNotEmpty && styleApi != api.api;
-        if (!canFallback || !catalog.apiFallbackEnabled) {
-          throw StateError(
-            canFallback
-                ? l10n.appsErrorApiMismatch(styleApi, api.api ?? '?')
-                : l10n.appsErrorNoBuild(api.api ?? '?'),
+      Future<bool> install(AppCurrentVersion cv) async {
+        final BuiltFile fal;
+        try {
+          fal = await api.fetchMenuStyleBuild(cv.id, onProgress: report);
+        } on AppHttpException catch (e) {
+          if (e.statusCode != 404) rethrow;
+          final styleApi = cv.currentBuild?.sdk?.api ?? '';
+          final canFallback = styleApi.isNotEmpty && styleApi != api.api;
+          if (!canFallback || !catalog.apiFallbackEnabled) {
+            throw StateError(
+              canFallback
+                  ? l10n.appsErrorApiMismatch(styleApi, api.api ?? '?')
+                  : l10n.appsErrorNoBuild(api.api ?? '?'),
+            );
+          }
+          final fallback = await api.fetchMenuStyleBuild(
+            cv.id,
+            onProgress: report,
+            apiOverride: styleApi,
           );
+          return await _writeMenuStyle(app, cv, fallback, devCatalog, token);
         }
-        final fallback = await api.fetchMenuStyleBuild(
-          cv.id,
-          onProgress: report,
-          apiOverride: styleApi,
-        );
-        return await _writeMenuStyle(app, cv, fallback, devCatalog, token);
+        return await _writeMenuStyle(app, cv, fal, devCatalog, token);
       }
-      return await _writeMenuStyle(app, cv, fal, devCatalog, token);
+
+      try {
+        return await install(cv);
+      } on CatalogVersionGoneException {
+        return await install(await _replacing(app, cv));
+      }
     } catch (e) {
       if (e is _DeviceChangedException) rethrow;
       if (_cancelling.contains(app.alias)) {
@@ -962,6 +978,34 @@ class InstallEngine extends ChangeNotifier {
     for (var i = 2; i <= parts.length; i++) {
       await _ensureDir('/${parts.sublist(0, i).join('/')}');
     }
+  }
+
+  /// The version that took [gone]'s place in the catalog since [app]'s card
+  /// was read: its card read again, not the copy kept. One that names no
+  /// other version, or none with a build, is the error it was.
+  Future<AppCurrentVersion> _replacing(
+    AppCard app,
+    AppCurrentVersion gone,
+  ) async {
+    final detail = await api.fetchApp(
+      app.alias,
+      family: _familyOf(app),
+      app: app.selectedAppId,
+      fresh: true,
+    );
+    _throwIfCancelled(app.alias);
+    final current = detail.card.currentVersion;
+    if (current == null ||
+        current.id.isEmpty ||
+        current.id == gone.id ||
+        current.currentBuild == null) {
+      throw CatalogVersionGoneException(gone.id);
+    }
+    LogService.info(
+      '[InstallEngine] ${app.alias}: ${gone.id} is gone, '
+      'installing ${current.id} (${current.version})',
+    );
+    return current;
   }
 
   /// The `.fim` an install from the catalog writes (models/manifest.dart).

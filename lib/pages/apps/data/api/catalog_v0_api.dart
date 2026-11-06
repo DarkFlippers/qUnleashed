@@ -123,14 +123,21 @@ class CatalogV0Api extends _CatalogProtocol {
     });
   }
 
-  Future<AppDetail> fetchApp(String idOrAlias, {bool? isLatestReleaseVersion}) {
+  Future<AppDetail> fetchApp(
+    String idOrAlias, {
+    bool? isLatestReleaseVersion,
+    bool fresh = false,
+  }) {
     return _withApiFallback(() async {
       final uri = _uri('/application/$idOrAlias', {
         if (isLatestReleaseVersion != null)
           'is_latest_release_version': '$isLatestReleaseVersion',
         ..._apiParams(),
       });
-      final body = await _getJson(uri, ttl: const Duration(minutes: 5));
+      final body = await _getJson(
+        uri,
+        ttl: fresh ? null : const Duration(minutes: 5),
+      );
       if (body is! Map<String, dynamic>) {
         throw AppsCatalogException(0, uri.toString(), 'expected object');
       }

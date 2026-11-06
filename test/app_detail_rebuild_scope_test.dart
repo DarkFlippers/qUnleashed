@@ -219,6 +219,7 @@ class _FixedApi extends AppsCatalogApi {
     bool? isLatestReleaseVersion,
     CatalogFamily family = CatalogFamily.apps,
     String? app,
+    bool fresh = false,
   }) async => detail;
 }
 

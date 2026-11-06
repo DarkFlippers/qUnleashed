@@ -120,13 +120,14 @@ class CatalogV1Api extends _CatalogProtocol {
     String idOrAlias, {
     required CatalogFamily family,
     String? app,
+    bool fresh = false,
   }) async => AppDetail.fromJson(
     await _object(
       _uri('/${family.v1Root}/${Uri.encodeComponent(idOrAlias)}', {
         if (family.usesDevice) ..._apiParams(),
         'app': ?app,
       }),
-      ttl: const Duration(minutes: 5),
+      ttl: fresh ? null : const Duration(minutes: 5),
     ),
   );
 

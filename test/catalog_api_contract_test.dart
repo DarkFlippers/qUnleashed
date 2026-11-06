@@ -44,6 +44,38 @@ void main() {
     server.listen((request) async {
       requests.add(request.uri);
       final path = Uri.decodeComponent(request.uri.path);
+      // A build download's 404s, as each server words them (curl, 2026-11):
+      // the version gone, and the version there without a build.
+      final missing = <String, Object>{
+        '/api/v1/application/version/gone/build/compatible': {
+          'detail': 'Version not found',
+        },
+        '/api/v1/application/version/unbuilt/build/compatible': {
+          'detail': {'status': 'never'},
+        },
+        '/api/v0/application/version/gone/build/compatible': {
+          'detail': {
+            'status': 'error',
+            'code': 2001,
+            'details': 'Application Version with id `gone` not found!',
+          },
+        },
+        '/api/v0/application/version/unbuilt/build/compatible': {
+          'detail': {
+            'status': 'error',
+            'code': 1008,
+            'details': 'Compatible Application Version Build not found!',
+          },
+        },
+      }[path];
+      if (missing != null) {
+        request.response
+          ..statusCode = 404
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode(missing));
+        await request.response.close();
+        return;
+      }
       String key;
       switch (path) {
         case '/api/v1/status':
@@ -369,6 +401,34 @@ void main() {
       ]);
     },
   );
+
+  test('a build download tells a version that is gone from no build', () async {
+    for (final protocol in CatalogProtocol.values) {
+      api.protocol = protocol;
+      await expectLater(
+        api.fetchFapBuild('gone'),
+        throwsA(isA<CatalogVersionGoneException>()),
+        reason: protocol.name,
+      );
+      await expectLater(
+        api.fetchFapBuild('unbuilt'),
+        throwsA(
+          isA<AppHttpException>().having((e) => e.statusCode, 'status', 404),
+        ),
+        reason: protocol.name,
+      );
+    }
+  });
+
+  test('what a 404 body says about the build', () {
+    expect(saysNoBuild('{"detail":{"status":"never"}}'), isTrue);
+    expect(saysNoBuild('{"detail":{"status":"error","code":1008}}'), isTrue);
+    expect(saysNoBuild('{"detail":{"status":"error","code":2001}}'), isFalse);
+    expect(saysNoBuild('{"detail":"Version not found"}'), isFalse);
+    expect(saysNoBuild('{"detail":"Not Found"}'), isFalse);
+    expect(saysNoBuild('not json'), isFalse);
+    expect(saysNoBuild(null), isFalse);
+  });
 
   test(
     'signed artifacts verify their digest and reject a modified body',
