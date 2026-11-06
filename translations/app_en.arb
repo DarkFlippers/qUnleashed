@@ -3159,6 +3159,17 @@
     "description": "Toast shown when there is no downloaded copy to restore from."
   },
 
+  "appFromOtherCatalog": "Installed from {catalog}: updates come from there",
+  "@appFromOtherCatalog": {
+    "description": "Under an installed app's path in its action sheet, when it was installed from another catalog than the one in use, which is therefore not asked about its updates. {catalog} is that catalog's domain.",
+    "placeholders": {
+      "catalog": {
+        "type": "String",
+        "example": "catalog.flipperzero.one"
+      }
+    }
+  },
+
   "appActionRestore": "Restore",
   "@appActionRestore": {
     "description": "Button that writes the local copy of the app back to the Flipper."

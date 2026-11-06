@@ -149,6 +149,60 @@ DevCatalog: false
     );
   });
 
+  group('the family a .fim is looked up in', () {
+    AppManifest at(String path, [ManifestFamily? family]) =>
+        AppManifest(uid: 'u', path: path, family: family);
+
+    test('is what it says', () {
+      expect(
+        catalogFamilyOf(at('/ext/apps/Tools/x.fap', ManifestFamily.cli)),
+        CatalogFamily.cli,
+      );
+      expect(
+        catalogFamilyOf(at('/ext/apps/Tools/x.fap', ManifestFamily.style)),
+        CatalogFamily.menuStyles,
+      );
+    });
+
+    test('or, written before it said, where its file is', () {
+      expect(catalogFamilyOf(at('/ext/apps/Tools/x.fap')), CatalogFamily.apps);
+      expect(
+        catalogFamilyOf(at('/ext/apps_data/cli/plugins/cli_x.fal')),
+        CatalogFamily.cli,
+      );
+      expect(
+        catalogFamilyOf(at('/ext/apps_data/loader/plugins/menu_style_x.fal')),
+        CatalogFamily.menuStyles,
+      );
+    });
+
+    test('groups what is installed, apps first', () {
+      final grouped = groupByFamily([
+        at('/ext/apps_data/cli/plugins/cli_x.fal'),
+        at('/ext/apps/Tools/a.fap'),
+        at('/ext/apps/Tools/b.fap', ManifestFamily.app),
+      ]);
+      expect(grouped.keys, [CatalogFamily.apps, CatalogFamily.cli]);
+      expect(grouped[CatalogFamily.apps], hasLength(2));
+    });
+  });
+
+  test('only what came from the catalog in use is asked about there', () {
+    const ours = 'qunleashed.aperturefox.ru';
+    final split = splitByCatalog([
+      const AppManifest(uid: 'a', path: '/ext/apps/T/a.fap', catalog: ours),
+      const AppManifest(uid: 'b', path: '/ext/apps/T/b.fap'),
+      const AppManifest(
+        uid: 'c',
+        path: '/ext/apps/T/c.fap',
+        catalog: 'catalog.flipperzero.one',
+      ),
+      const AppManifest(uid: '', path: '/ext/apps/T/d.fap', catalog: ours),
+    ], 'https://$ours');
+    expect(split.here.map((m) => m.uid), ['a', 'b']);
+    expect(split.elsewhere, {'c': 'catalog.flipperzero.one'});
+  });
+
   group('what an install writes', () {
     AppCard cardOf(String? family, String alias) => AppCard.fromJson({
       'id': '66a1f0c2e4b0a1b2c3d4e5f6',

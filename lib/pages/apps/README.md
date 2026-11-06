@@ -13,7 +13,8 @@ must implement v1; Official uses v0. There is no endpoint probing.
 request captures its origin and firmware filters. The protocol implementations
 live in `data/api/catalog_v0_api.dart` and `catalog_v1_api.dart`. The v0 client
 retains Archivarius paths and bodies, including `POST /1/application` with
-`applications`; v1 uses `POST /application/lookup` with `ids`.
+`applications`; v1 uses `POST /{root}/lookup` with `ids`, each installed app
+under its own family's root.
 
 Both protocols use the same catalog page and detail page. Official (v0) has
 the apps only, so the page shows no section tabs there and no popularity
@@ -33,10 +34,10 @@ files are `app/api/routers/v1/catalog.py`, `search.py`, `authors.py`, `plan.py`,
 
 | Request | Response / use |
 |---|---|
-| `GET /api/v1/status` | `sdk[] {version, target, api, channel}` |
+| `GET /api/v1/status` | `sdk[] {version, target, api, channel}`, `dev_catalog` |
 | `GET /api/v1/{root}/category` | Categories with `parent_id`, icon, color, counts |
 | `GET /api/v1/{root}` | Cards; filters: `target`, `api`, `category_id`, `query`, `author_id`, sorting and pagination |
-| `POST /api/v1/application/lookup` | `{ids: [...], target, api}` → installed items with their apps |
+| `POST /api/v1/{root}/lookup` | `{ids: [...], target, api}` → installed items with their apps |
 | `GET /api/v1/{root}/{idOrAlias}?app=...` | Detail, with the selected external app in front |
 | `GET /api/v1/search?query=...` | `{items, totals, authors}` across families |
 | `GET /api/v1/authors` and `/authors/{id}` | Author summaries and family counts |
@@ -57,6 +58,14 @@ come from the shared `current_version`. There is no `/meta` endpoint and no
 while preserving these shared texts. Update checks follow the installed app,
 including secondary apps of the same item.
 
+Ids are Archivarius's shape on both protocols: an entry's `id` and every
+version id are 24-hex ObjectIds, derived on the server from its own names, so
+they survive a rebuilt database. The readable names stay in `alias`, `appid`
+and `apps[].id` (what `app=` takes). Lookups, detail pages and downloads also
+take the ids a device's `.fim` held before, so nothing installed earlier is
+orphaned. Every built file comes with `X-QU-Build-Api`, the API of the tree it
+was built in.
+
 Signed downloads verify Ed25519 over SHA-256. Release builds supply the trusted
 public keys through `--dart-define=QU_SIGNING_KEYS=kid:public_key_hex,...`, matching
 the server's signing key. Unknown or missing signatures fail installation.
@@ -67,6 +76,38 @@ value is the temporary firmware repository path. `catalog_api_contract_test.dart
 serves these answers over local HTTP and checks decoding, request parameters,
 app selection, update identity and installation plans. It also checks the v0
 request paths/body and signed artifact verification.
+
+## The installed-app manifest (`.fim`)
+
+`/ext/apps_manifests/<alias>.fim` for apps and CLI commands,
+`/ext/apps_data/loader/manifests/<alias>.fim` for menu styles; animations have
+none. The official apps read the same files: they need `UID`, `Version UID`
+and `Path`, ignore keys they do not know, and send every `UID` back to
+Archivarius, which answers a batch holding one id that is not an ObjectId with
+a 422 for all of it. So ours keeps their keys and their meaning, and adds its
+own after them (`models/manifest.dart`):
+
+```
+Filetype: Flipper Application Installation Manifest
+Version: 1
+Full Name: ProtoPirate Extra
+Icon: <base64>                  the catalog icon, v0 and v1 alike
+Version Build API: 87.1         what the server says it built the file for
+UID: <ObjectId of the entry>
+Version UID: <ObjectId of the installed app's version>
+Path: /ext/apps/Sub-GHz/proto_pirate_extra.fap
+DevCatalog: true                always written: `dev_catalog` from our status, false on Official
+App ID: proto_pirate_extra
+App Version: 3.0.2
+Family: app                     app | cli | stl
+Catalog: qunleashed.aperturefox.ru
+```
+
+A key without a value is left out, never written empty. Manifests are read over
+BLE one by one, so nothing goes in that the app does not use. Updates are
+looked up per `Family` and only on the server `Catalog` names; one from another
+catalog says so in the manager instead of reading as current. A `.fim` written
+before these keys is placed by its path and matched by its appid.
 
 ## Catalog / firmware API compatibility
 

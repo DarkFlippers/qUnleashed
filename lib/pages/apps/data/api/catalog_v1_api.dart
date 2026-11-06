@@ -91,11 +91,14 @@ class CatalogV1Api extends _CatalogProtocol {
     );
   }
 
-  Future<List<AppCard>> fetchAppsByUids(List<String> uids) async {
+  Future<List<AppCard>> fetchAppsByUids(
+    List<String> uids, {
+    CatalogFamily family = CatalogFamily.apps,
+  }) async {
     final ids = uids.where((id) => id.isNotEmpty).toSet().toList();
     final out = <AppCard>[];
     for (var i = 0; i < ids.length; i += 500) {
-      final uri = _uri('/application/lookup', const {});
+      final uri = _uri('/${family.v1Root}/lookup', const {});
       final body = await AppHttp.postJson(
         uri,
         {'ids': ids.sublist(i, math.min(i + 500, ids.length)), ..._apiParams()},

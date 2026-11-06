@@ -1,6 +1,7 @@
 import '../../../components/codec/fap/api_version.dart';
 import 'catalog_api.dart' show CatalogFamily;
-import 'catalog_context.dart' show aliasFromFapPath;
+import 'catalog_context.dart'
+    show aliasFromFapPath, kCliPluginsRoot, kMenuStylesRoot;
 import 'catalog_server.dart';
 import 'models/card.dart';
 import 'models/manifest.dart';
@@ -147,4 +148,54 @@ class InstalledCards {
     final alias = manifest.path.isEmpty ? '' : aliasFromFapPath(manifest.path);
     return _byAppid[manifest.uid] ?? _byAppid[alias];
   }
+}
+
+/// The catalog family [manifest] is looked up in: what its `.fim` says, or,
+/// in one written before it said, where its file is.
+CatalogFamily catalogFamilyOf(AppManifest manifest) =>
+    switch (manifest.family) {
+      ManifestFamily.app => CatalogFamily.apps,
+      ManifestFamily.cli => CatalogFamily.cli,
+      ManifestFamily.style => CatalogFamily.menuStyles,
+      null when manifest.path.startsWith('$kCliPluginsRoot/') =>
+        CatalogFamily.cli,
+      null when manifest.path.startsWith('$kMenuStylesRoot/') =>
+        CatalogFamily.menuStyles,
+      null => CatalogFamily.apps,
+    };
+
+/// [installed] split by the family each is looked up in, in a stable order.
+Map<CatalogFamily, List<AppManifest>> groupByFamily(
+  Iterable<AppManifest> installed,
+) {
+  final out = <CatalogFamily, List<AppManifest>>{};
+  for (final m in installed) {
+    (out[catalogFamilyOf(m)] ??= []).add(m);
+  }
+  return {
+    for (final family in CatalogFamily.values)
+      if (out[family] != null) family: out[family]!,
+  };
+}
+
+/// [installed] that the catalog at [server] can know by uid - what says it
+/// came from there, or does not say where it came from - and, by alias, the
+/// catalog each of the others says it came from.
+({List<AppManifest> here, Map<String, String> elsewhere}) splitByCatalog(
+  Iterable<AppManifest> installed,
+  String server,
+) {
+  final name = CatalogServer.manifestName(server);
+  final here = <AppManifest>[];
+  final elsewhere = <String, String>{};
+  for (final m in installed) {
+    if (m.uid.isEmpty) continue;
+    final from = m.catalog;
+    if (from == null || from == name) {
+      here.add(m);
+    } else if (m.path.isNotEmpty) {
+      elsewhere[aliasFromFapPath(m.path)] = from;
+    }
+  }
+  return (here: here, elsewhere: elsewhere);
 }

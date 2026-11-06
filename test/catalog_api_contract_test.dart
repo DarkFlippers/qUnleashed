@@ -63,6 +63,12 @@ void main() {
           key = 'lookup';
         case '/api/v1/menustyles/menu_style_wave':
           key = 'style';
+        case '/api/v1/menustyles/lookup' || '/api/v1/cli/lookup':
+          bodies.add(
+            jsonDecode(await utf8.decoder.bind(request).join())
+                as Map<String, dynamic>,
+          );
+          key = path == '/api/v1/cli/lookup' ? 'none' : 'style_lookup';
         case '/api/v1/animations/dance':
           key = 'animation';
         case '/api/v1/search':
@@ -94,13 +100,14 @@ void main() {
       }
       request.response.headers.contentType = ContentType.json;
       request.response.write(
-        jsonEncode(
-          key == 'v0_sdk'
-              ? [
-                  {'id': 'sdk', 'name': 'dev', 'api': '88.16', 'target': 'f7'},
-                ]
-              : fixture[key],
-        ),
+        jsonEncode(switch (key) {
+          'v0_sdk' => [
+            {'id': 'sdk', 'name': 'dev', 'api': '88.16', 'target': 'f7'},
+          ],
+          'style_lookup' => [fixture['style']],
+          'none' => const [],
+          _ => fixture[key],
+        }),
       );
       await request.response.close();
     });
@@ -282,6 +289,29 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  test('installed apps are looked up under their own family', () async {
+    final style = (fixture['style'] as Map<String, dynamic>);
+    final styles = await api.fetchAppsByUids([
+      style['id'] as String,
+    ], family: CatalogFamily.menuStyles);
+    expect(styles.single.alias, 'menu_style_wave');
+    expect(requests.last.path, '/api/v1/menustyles/lookup');
+    expect(
+      await api.fetchAppsByUids(['cli:x'], family: CatalogFamily.cli),
+      isEmpty,
+    );
+    expect(requests.last.path, '/api/v1/cli/lookup');
+
+    // Archivarius has the apps only: nothing else is asked for there.
+    api.server = AppsCatalogApi.officialServer;
+    final before = requests.length;
+    expect(
+      await api.fetchAppsByUids(['0' * 24], family: CatalogFamily.cli),
+      isEmpty,
+    );
+    expect(requests, hasLength(before));
   });
 
   test('v0 retains its original endpoints and lookup body', () async {

@@ -375,12 +375,17 @@ class AppsCatalogApi {
     );
   }
 
+  /// What a device has installed, looked up under [family]'s own root: an
+  /// entry is found only in its family. Archivarius has the apps only.
   Future<List<AppCard>> fetchAppsByUids(
     List<String> uids, {
     AppsSort sortBy = AppsSort.newUpdates,
-  }) => hasV1
-      ? _v1.fetchAppsByUids(uids)
-      : _official((api) => api.fetchAppsByUids(uids, sortBy: sortBy));
+    CatalogFamily family = CatalogFamily.apps,
+  }) async {
+    if (hasV1) return _v1.fetchAppsByUids(uids, family: family);
+    if (family != CatalogFamily.apps) return const [];
+    return _official((api) => api.fetchAppsByUids(uids, sortBy: sortBy));
+  }
 
   Future<AppDetail> fetchApp(
     String idOrAlias, {

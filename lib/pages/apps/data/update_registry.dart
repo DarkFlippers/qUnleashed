@@ -19,10 +19,14 @@ class AppUpdate {
   final AppCard card;
   final AppManifest manifest;
 
+  /// Where the update is installed from: a menu style has its own install.
+  final CatalogFamily family;
+
   const AppUpdate({
     required this.alias,
     required this.card,
     required this.manifest,
+    required this.family,
   });
 
   String get name {
@@ -44,6 +48,7 @@ class UpdateRegistry extends ChangeNotifier {
     required this.catalog,
   }) {
     manifests.addListener(_recompute);
+    engine.styleManifests.addListener(_recompute);
     engine.addListener(_onEngineChanged);
   }
 
@@ -70,6 +75,12 @@ class UpdateRegistry extends ChangeNotifier {
   /// The card [manifest] was installed from, as the app it installed.
   AppCard? cardFor(AppManifest? manifest) => _cards.cardFor(manifest);
   Set<String> get updatableAliases => _updates.map((u) => u.alias).toSet();
+
+  /// Installed apps whose `.fim` names another catalog than the one in use,
+  /// by alias, with that catalog: this one is not asked about them, so they
+  /// are neither current nor out of date here.
+  Map<String, String> get otherCatalogs => Map.unmodifiable(_otherCatalogs);
+  Map<String, String> _otherCatalogs = const {};
 
   bool _loading = false;
   bool _loaded = false;
@@ -109,10 +120,11 @@ class UpdateRegistry extends ChangeNotifier {
     notifyListeners();
     try {
       await catalog.ensureDeviceFilters(required: true);
-      if (force) {
-        await manifests.refresh(force: true);
+      final registries = [manifests, if (api.hasV1) engine.styleManifests];
+      for (final registry in registries) {
+        if (force) await registry.refresh(force: true);
+        await _awaitManifests(registry);
       }
-      await _awaitManifests();
       if (token.isStale || server != api.server) return;
 
       final installed = _installedWithUid();
@@ -125,10 +137,17 @@ class UpdateRegistry extends ChangeNotifier {
         return;
       }
 
-      final cards = await api.fetchAppsByUids(
-        installed.map((m) => m.uid).toSet().toList(),
-      );
-      if (token.isStale || server != api.server) return;
+      // An entry is found only under its own family's root.
+      final cards = <AppCard>[];
+      for (final group in groupByFamily(installed).entries) {
+        cards.addAll(
+          await api.fetchAppsByUids(
+            group.value.map((m) => m.uid).toSet().toList(),
+            family: group.key,
+          ),
+        );
+        if (token.isStale || server != api.server) return;
+      }
       _cards.replace(cards);
       _rebuild(installed);
       _loaded = true;
@@ -149,7 +168,7 @@ class UpdateRegistry extends ChangeNotifier {
     }
   }
 
-  Future<void> _awaitManifests() async {
+  Future<void> _awaitManifests(ManifestRegistry manifests) async {
     await manifests.ensureFresh();
     if (!manifests.loading) return;
     final completer = Completer<void>();
@@ -172,12 +191,16 @@ class UpdateRegistry extends ChangeNotifier {
     }
   }
 
-  /// Every installed app the catalogue knows by uid. Two entries of one item
-  /// (ProtoPirate and ProtoPirate Extra) share the uid, so this is a list.
-  List<AppManifest> _installedWithUid() => [
-    for (final m in manifests.all)
-      if (m.uid.isNotEmpty) m,
-  ];
+  /// Every installed app the catalogue in use can know by uid: what its
+  /// `.fim` says came from it, or does not say where it came from. Two entries
+  /// of one item (ProtoPirate and ProtoPirate Extra) share the uid, so this is
+  /// a list. The rest are kept in [otherCatalogs].
+  List<AppManifest> _installedWithUid() {
+    final styles = api.hasV1 ? engine.styleManifests.all : const [];
+    final split = splitByCatalog([...manifests.all, ...styles], api.server);
+    _otherCatalogs = split.elsewhere;
+    return split.here;
+  }
 
   void _recompute() {
     if (_cards.isEmpty) return;
@@ -204,6 +227,7 @@ class UpdateRegistry extends ChangeNotifier {
           alias: _aliasFor(card, manifest),
           card: card,
           manifest: manifest,
+          family: catalogFamilyOf(manifest),
         ),
       );
     }
@@ -218,7 +242,11 @@ class UpdateRegistry extends ChangeNotifier {
 
   void updateAll() {
     for (final u in _updates) {
-      engine.installOrUpdate(u.card);
+      if (u.family == CatalogFamily.menuStyles) {
+        engine.installMenuStyle(u.card);
+      } else {
+        engine.installOrUpdate(u.card);
+      }
     }
   }
 
@@ -234,6 +262,7 @@ class UpdateRegistry extends ChangeNotifier {
   void handleDeviceChange() {
     _cards.clear();
     _updates = const [];
+    _otherCatalogs = const {};
     _loaded = false;
     notifyListeners();
   }
@@ -241,6 +270,7 @@ class UpdateRegistry extends ChangeNotifier {
   @override
   void dispose() {
     manifests.removeListener(_recompute);
+    engine.styleManifests.removeListener(_recompute);
     engine.removeListener(_onEngineChanged);
     super.dispose();
   }

@@ -162,6 +162,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       ),
       title: app.name,
       subtitle: app.path.isNotEmpty ? app.path : '/ext/apps/${app.folder}',
+      // Not asked about here, so neither current nor out of date.
+      note: switch (_updates.otherCatalogs[app.alias]) {
+        final catalog? => context.l10n.appFromOtherCatalog(catalog),
+        null => null,
+      },
       details: FapFactsPanel(
         info: app.fap,
         checked: app.fapChecked,

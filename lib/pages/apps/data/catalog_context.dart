@@ -34,10 +34,13 @@ const Duration kTaskCooldown = Duration(seconds: 1);
 /// How long the catalog has to answer before the apps manager takes over.
 const Duration kCatalogTimeout = Duration(seconds: 15);
 
-/// `/ext/apps/Tools/foo.fap` -> `foo`.
+/// `/ext/apps/Tools/foo.fap` -> `foo`; a plugin's `.fal` (a CLI command, a
+/// menu style) the same way.
 String aliasFromFapPath(String path) {
   final base = basename(path);
-  return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
+  return base.endsWith('.fap') || base.endsWith('.fal')
+      ? base.substring(0, base.length - 4)
+      : base;
 }
 
 /// Which catalog the device may talk to: the firmware API/target read from the
