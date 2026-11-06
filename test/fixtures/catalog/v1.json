@@ -4,7 +4,7 @@
     "queue_length": 0,
     "sdk": [
       {
-        "version": "dev@953268e22e53",
+        "version": "dev@69605a3f20a9",
         "target": "f7",
         "api": "88.16",
         "channel": "dev"
@@ -14,13 +14,13 @@
     "firmware": {
       "repo": "file:///fixture/firmware-origin",
       "branch": "dev",
-      "commit": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-      "updated_at": 1793960195.772331,
+      "commit": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+      "updated_at": 1793962420.119654,
       "ready": true,
       "targets": {
         "f7": {
           "api": "88.16",
-          "major_since": 1793960195.772331
+          "major_since": 1793962420.119654
         }
       }
     },
@@ -39,7 +39,7 @@
       "id": "64971d0f6617ba37a4bc79b3",
       "name": "Sub-GHz",
       "color": "A5F4BE",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d0f6617ba37a4bc79b3/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d0f6617ba37a4bc79b3/icon",
       "icon": "subghz",
       "priority": 0,
       "parent_id": null,
@@ -50,7 +50,7 @@
       "id": "64971d10577d519190ede5c2",
       "name": "RFID",
       "color": "FFF493",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d10577d519190ede5c2/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d10577d519190ede5c2/icon",
       "icon": "rfid",
       "priority": 1,
       "parent_id": null,
@@ -61,7 +61,7 @@
       "id": "64971d10be1a76c06747de26",
       "name": "NFC",
       "color": "98CEFE",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d10be1a76c06747de26/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d10be1a76c06747de26/icon",
       "icon": "nfc",
       "priority": 2,
       "parent_id": null,
@@ -72,7 +72,7 @@
       "id": "64971d106617ba37a4bc79b6",
       "name": "Infrared",
       "color": "FE938C",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d106617ba37a4bc79b6/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d106617ba37a4bc79b6/icon",
       "icon": "infrared",
       "priority": 3,
       "parent_id": null,
@@ -83,7 +83,7 @@
       "id": "64971d106617ba37a4bc79b9",
       "name": "GPIO",
       "color": "A7F2EA",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d106617ba37a4bc79b9/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d106617ba37a4bc79b9/icon",
       "icon": "gpio",
       "priority": 4,
       "parent_id": null,
@@ -105,7 +105,7 @@
       "id": "64971d11be1a76c06747de29",
       "name": "iButton",
       "color": "E1BBA6",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d11be1a76c06747de29/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d11be1a76c06747de29/icon",
       "icon": "ibutton",
       "priority": 5,
       "parent_id": null,
@@ -116,7 +116,7 @@
       "id": "64971d11be1a76c06747de2c",
       "name": "USB",
       "color": "FFBEE9",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d11be1a76c06747de2c/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d11be1a76c06747de2c/icon",
       "icon": "usb",
       "priority": 6,
       "parent_id": null,
@@ -127,7 +127,7 @@
       "id": "64971d11be1a76c06747de2f",
       "name": "Games",
       "color": "FFC486",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d11be1a76c06747de2f/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d11be1a76c06747de2f/icon",
       "icon": "games",
       "priority": 7,
       "parent_id": null,
@@ -138,7 +138,7 @@
       "id": "64971d116617ba37a4bc79bc",
       "name": "Media",
       "color": "DFB5FF",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d116617ba37a4bc79bc/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d116617ba37a4bc79bc/icon",
       "icon": "media",
       "priority": 8,
       "parent_id": null,
@@ -149,7 +149,7 @@
       "id": "64971d11577d519190ede5c5",
       "name": "Tools",
       "color": "DFF159",
-      "icon_uri": "https://catalog.test/api/v0/category/64971d11577d519190ede5c5/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64971d11577d519190ede5c5/icon",
       "icon": "tools",
       "priority": 9,
       "parent_id": null,
@@ -160,7 +160,7 @@
       "id": "64a69817effe1f448a4053b4",
       "name": "Bluetooth",
       "color": "8BACFF",
-      "icon_uri": "https://catalog.test/api/v0/category/64a69817effe1f448a4053b4/icon",
+      "icon_uri": "https://catalog.test/api/v1/application/category/64a69817effe1f448a4053b4/icon",
       "icon": "bluetooth",
       "priority": 10,
       "parent_id": null,
@@ -174,8 +174,8 @@
       "alias": "pair",
       "category_id": "GPIO/ESP32",
       "author": "@Ann & @Bob",
-      "created_at": 1793960195,
-      "updated_at": 1793960195,
+      "created_at": 1793962420,
+      "updated_at": 1793962420,
       "current_version": {
         "_id": "741ce95b675883834c3b802f",
         "id": "741ce95b675883834c3b802f",
@@ -191,8 +191,8 @@
           "id": "274a89ac564492068e4314c1",
           "_id": "274a89ac564492068e4314c1",
           "sdk": {
-            "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-            "name": "953268e22e53",
+            "id": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+            "name": "69605a3f20a9",
             "target": "f7",
             "api": "88.16",
             "is_latest_release": true
@@ -231,10 +231,10 @@
         {
           "target": "f7",
           "api": "88.16",
-          "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+          "firmware": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
           "size": 14,
           "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-          "built_at": 1793960195,
+          "built_at": 1793962420,
           "cached": true
         }
       ],
@@ -251,8 +251,8 @@
     "alias": "pair",
     "category_id": "GPIO/ESP32",
     "author": "@Ann & @Bob",
-    "created_at": 1793960195,
-    "updated_at": 1793960195,
+    "created_at": 1793962420,
+    "updated_at": 1793962420,
     "current_version": {
       "_id": "741ce95b675883834c3b802f",
       "id": "741ce95b675883834c3b802f",
@@ -268,8 +268,8 @@
         "id": "274a89ac564492068e4314c1",
         "_id": "274a89ac564492068e4314c1",
         "sdk": {
-          "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-          "name": "953268e22e53",
+          "id": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+          "name": "69605a3f20a9",
           "target": "f7",
           "api": "88.16",
           "is_latest_release": true
@@ -317,10 +317,10 @@
       {
         "target": "f7",
         "api": "88.16",
-        "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+        "firmware": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
         "size": 14,
         "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-        "built_at": 1793960195,
+        "built_at": 1793962420,
         "cached": true
       }
     ],
@@ -373,8 +373,8 @@
     "alias": "pair_extra",
     "category_id": "GPIO/ESP32",
     "author": "@Ann & @Bob",
-    "created_at": 1793960195,
-    "updated_at": 1793960195,
+    "created_at": 1793962420,
+    "updated_at": 1793962420,
     "current_version": {
       "_id": "bceb5eafa33f96cf1ea96f29",
       "id": "bceb5eafa33f96cf1ea96f29",
@@ -390,8 +390,8 @@
         "id": "274a89ac564492068e4314c1",
         "_id": "274a89ac564492068e4314c1",
         "sdk": {
-          "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-          "name": "953268e22e53",
+          "id": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+          "name": "69605a3f20a9",
           "target": "f7",
           "api": "88.16",
           "is_latest_release": true
@@ -439,10 +439,10 @@
       {
         "target": "f7",
         "api": "88.16",
-        "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+        "firmware": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
         "size": 14,
         "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-        "built_at": 1793960195,
+        "built_at": 1793962420,
         "cached": true
       }
     ],
@@ -495,8 +495,8 @@
     "alias": "menu_style_wave",
     "category_id": "theme",
     "author": "@me",
-    "created_at": 1793960195,
-    "updated_at": 1793960195,
+    "created_at": 1793962420,
+    "updated_at": 1793962420,
     "current_version": {
       "_id": "674102ba5af2a99d86697231",
       "id": "674102ba5af2a99d86697231",
@@ -512,8 +512,8 @@
         "id": "4adc5035888d15c287ff87a0",
         "_id": "4adc5035888d15c287ff87a0",
         "sdk": {
-          "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-          "name": "953268e22e53",
+          "id": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+          "name": "69605a3f20a9",
           "target": "f7",
           "api": "88.16",
           "is_latest_release": true
@@ -557,10 +557,10 @@
       {
         "target": "f7",
         "api": "88.16",
-        "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+        "firmware": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
         "size": 25,
         "sha256": "0a592969eda4aba965a7d99252c9d8c2205bef81e6e4b10b8d914c31edc0c9dc",
-        "built_at": 1793960195,
+        "built_at": 1793962420,
         "cached": true
       }
     ],
@@ -596,8 +596,8 @@
     "alias": "dance",
     "category_id": "pack",
     "author": "@me",
-    "created_at": 1793960195,
-    "updated_at": 1793960195,
+    "created_at": 1793962420,
+    "updated_at": 1793962420,
     "current_version": {
       "_id": "786762f12d58c6dc3ceec4d0",
       "id": "786762f12d58c6dc3ceec4d0",
@@ -689,8 +689,8 @@
         "alias": "pair",
         "category_id": "GPIO/ESP32",
         "author": "@Ann & @Bob",
-        "created_at": 1793960195,
-        "updated_at": 1793960195,
+        "created_at": 1793962420,
+        "updated_at": 1793962420,
         "current_version": {
           "_id": "741ce95b675883834c3b802f",
           "id": "741ce95b675883834c3b802f",
@@ -706,8 +706,8 @@
             "id": "274a89ac564492068e4314c1",
             "_id": "274a89ac564492068e4314c1",
             "sdk": {
-              "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-              "name": "953268e22e53",
+              "id": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+              "name": "69605a3f20a9",
               "target": "f7",
               "api": "88.16",
               "is_latest_release": true
@@ -746,10 +746,10 @@
           {
             "target": "f7",
             "api": "88.16",
-            "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+            "firmware": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
             "size": 14,
             "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-            "built_at": 1793960195,
+            "built_at": 1793962420,
             "cached": true
           }
         ],
@@ -802,8 +802,8 @@
       "alias": "pair",
       "category_id": "GPIO/ESP32",
       "author": "@Ann & @Bob",
-      "created_at": 1793960195,
-      "updated_at": 1793960195,
+      "created_at": 1793962420,
+      "updated_at": 1793962420,
       "current_version": {
         "_id": "741ce95b675883834c3b802f",
         "id": "741ce95b675883834c3b802f",
@@ -819,8 +819,8 @@
           "id": "274a89ac564492068e4314c1",
           "_id": "274a89ac564492068e4314c1",
           "sdk": {
-            "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
-            "name": "953268e22e53",
+            "id": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
+            "name": "69605a3f20a9",
             "target": "f7",
             "api": "88.16",
             "is_latest_release": true
@@ -859,10 +859,10 @@
         {
           "target": "f7",
           "api": "88.16",
-          "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+          "firmware": "69605a3f20a91da6761c50c2aecd9d09456e2b05",
           "size": 14,
           "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-          "built_at": 1793960195,
+          "built_at": 1793962420,
           "cached": true
         }
       ],
