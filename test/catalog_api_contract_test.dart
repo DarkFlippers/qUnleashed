@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/apps/data/artifact_signature.dart';
 import 'package:qunleashed/pages/apps/data/catalog_api.dart';
 import 'package:qunleashed/pages/apps/data/catalog_state.dart';
+import 'package:qunleashed/pages/apps/data/models/card.dart';
 import 'package:qunleashed/pages/apps/data/models/manifest.dart';
 import 'package:qunleashed/services/http/app_http.dart';
 
@@ -20,6 +21,13 @@ void main() {
   late AppsCatalogApi api;
   final requests = <Uri>[];
   final bodies = <Map<String, dynamic>>[];
+  // Public ids, as the server hands them out (Archivarius ObjectIds).
+  String versionOf(String key) =>
+      ((fixture[key] as Map<String, dynamic>)['current_version']
+              as Map<String, dynamic>)['id']
+          as String;
+  final danceVersion = versionOf('animation');
+  final extraVersion = versionOf('extra');
 
   setUp(() async {
     requests.clear();
@@ -57,8 +65,6 @@ void main() {
           key = 'style';
         case '/api/v1/animations/dance':
           key = 'animation';
-        case '/api/v1/animations/version/anim:dance@1.0/plan':
-          key = 'plan';
         case '/api/v1/search':
           key = 'search';
         case '/api/v1/authors':
@@ -78,6 +84,9 @@ void main() {
                 as Map<String, dynamic>,
           );
           key = 'lookup';
+        case final path
+            when path == '/api/v1/animations/version/$danceVersion/plan':
+          key = 'plan';
         default:
           request.response.statusCode = 404;
           await request.response.close();
@@ -127,7 +136,9 @@ void main() {
       ]);
       final extra = detail.forApp(detail.card.entries.last);
       expect(extra.card.alias, 'pair_extra');
-      expect(extra.card.currentVersion!.id, 'pair_extra@1.0');
+      expect(extra.card.currentVersion!.id, extraVersion);
+      expect(extra.card.id, detail.card.id);
+      expect(detail.card.id, matches(RegExp(r'^[0-9a-f]{24}$')));
       expect(extra.description, detail.description);
       expect(extra.links!.sourceCode!.uri, 'https://git.example.org/pair');
       final selected = await api.fetchApp('pair', app: 'pair_extra');
@@ -158,7 +169,7 @@ void main() {
       );
       expect(animation.card.family, 'animation');
       expect(requests.last.queryParameters, isEmpty);
-      final plan = await api.fetchAnimationPlan('anim:dance@1.0');
+      final plan = await api.fetchAnimationPlan(danceVersion);
       expect(
         plan.files.map((file) => file.devicePath),
         contains('/ext/dolphin/dance/meta.txt'),
@@ -200,6 +211,76 @@ void main() {
         targetSdk: (88, 16),
       ),
       CatalogAppState.install,
+    );
+  });
+
+  test('a .fim names its version by the public id or the old one', () async {
+    final detail = await api.fetchApp('pair');
+    final list = (await api.fetchApps()).items.single;
+    AppManifest installed(String uid, String versionUid) => AppManifest(
+      uid: uid,
+      versionUid: versionUid,
+      fullName: 'Pair Extra',
+      path: '/ext/apps/GPIO/pair_extra.fap',
+      sdkApi: '88.16',
+      iconBase64: '',
+      devCatalog: false,
+    );
+    CatalogAppState stateOf(AppCard card, AppManifest manifest) =>
+        catalogAppState(card: card, manifest: manifest, targetSdk: (88, 16));
+
+    final extra = detail.card.forApp(detail.card.entries.last);
+    final current = installed(detail.card.id, extraVersion);
+    expect(installedApp(detail.card, current)!.appid, 'pair_extra');
+    expect(stateOf(extra, current), CatalogAppState.open);
+
+    // Written before public ids: the appid as UID, <app>@<version> as its
+    // version. The same version is not an update, an older one is.
+    final legacy = installed('pair', 'pair_extra@1.0');
+    expect(installedApp(detail.card, legacy)!.appid, 'pair_extra');
+    expect(stateOf(extra, legacy), CatalogAppState.open);
+    expect(
+      stateOf(extra, installed('pair', 'pair_extra@0.9')),
+      CatalogAppState.update,
+    );
+
+    final older = installed(detail.card.id, '0' * 24);
+    expect(stateOf(extra, older), CatalogAppState.update);
+    expect(stateOf(list, older), CatalogAppState.update);
+  });
+
+  test('installed apps find their card by either uid', () async {
+    final lookup = await api.fetchAppsByUids(['pair']);
+    final cards = InstalledCards()..replace(lookup);
+    AppManifest installed(String uid) => AppManifest(
+      uid: uid,
+      versionUid: extraVersion,
+      fullName: 'Pair Extra',
+      path: '/ext/apps/GPIO/pair_extra.fap',
+      sdkApi: '88.16',
+      iconBase64: '',
+      devCatalog: false,
+    );
+
+    final byPublicId = cards.cardFor(installed(lookup.single.id))!;
+    expect(byPublicId.alias, 'pair_extra');
+    expect(byPublicId.currentVersion!.id, extraVersion);
+    // The uid a .fim held before public ids: the item's appid.
+    expect(cards.cardFor(installed('pair'))!.alias, 'pair_extra');
+    expect(cards.cardFor(installed('something_else')), isNotNull);
+    expect(
+      cards.cardFor(
+        AppManifest(
+          uid: 'unknown',
+          versionUid: '',
+          fullName: '',
+          path: '/ext/apps/GPIO/unknown.fap',
+          sdkApi: '',
+          iconBase64: '',
+          devCatalog: false,
+        ),
+      ),
+      isNull,
     );
   });
 

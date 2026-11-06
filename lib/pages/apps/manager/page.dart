@@ -65,7 +65,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   Future<void> _update(InstalledApp app) async {
-    final card = _updates.cardForUid(app.uid);
+    final card = _updates.cardFor(app.manifest);
     if (card == null) return;
     await _engine.installOrUpdate(card);
   }
@@ -149,7 +149,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
 
   void _showActions(InstalledApp app) {
     final colors = context.appColors;
-    final card = _updates.cardForUid(app.uid);
+    final card = _updates.cardFor(app.manifest);
     final updatable = _updates.updatableAliases.contains(app.alias);
     final busy = _engine.actions.containsKey(app.alias);
     AppActionSheet.show(

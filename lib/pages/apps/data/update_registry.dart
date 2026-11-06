@@ -53,7 +53,7 @@ class UpdateRegistry extends ChangeNotifier {
   final InstallEngine engine;
   final CatalogContext catalog;
 
-  final Map<String, AppCard> _cardsByUid = {};
+  final InstalledCards _cards = InstalledCards();
 
   List<AppUpdate> _updates = const [];
   int get count => _updates.length;
@@ -67,7 +67,8 @@ class UpdateRegistry extends ChangeNotifier {
   /// looks exactly like being up to date. #112.
   bool get failed => _failed;
 
-  AppCard? cardForUid(String uid) => uid.isEmpty ? null : _cardsByUid[uid];
+  /// The card [manifest] was installed from, as the app it installed.
+  AppCard? cardFor(AppManifest? manifest) => _cards.cardFor(manifest);
   Set<String> get updatableAliases => _updates.map((u) => u.alias).toSet();
 
   bool _loading = false;
@@ -88,7 +89,7 @@ class UpdateRegistry extends ChangeNotifier {
   Future<void> refresh({bool force = false}) {
     if (_loading || !isReady) return Future.value();
     if (catalog.mode.value == CatalogMode.managerOnly) {
-      _cardsByUid.clear();
+      _cards.clear();
       _updates = const [];
       _loaded = true;
       notifyListeners();
@@ -117,7 +118,7 @@ class UpdateRegistry extends ChangeNotifier {
       final installed = _installedWithUid();
 
       if (installed.isEmpty) {
-        _cardsByUid.clear();
+        _cards.clear();
         _updates = const [];
         _loaded = true;
         LogService.info('[Updates] no installed apps with UID');
@@ -128,11 +129,7 @@ class UpdateRegistry extends ChangeNotifier {
         installed.map((m) => m.uid).toSet().toList(),
       );
       if (token.isStale || server != api.server) return;
-      _cardsByUid
-        ..clear()
-        ..addEntries(
-          cards.where((c) => c.id.isNotEmpty).map((c) => MapEntry(c.id, c)),
-        );
+      _cards.replace(cards);
       _rebuild(installed);
       _loaded = true;
       final withVer = installed.where((m) => m.versionUid.isNotEmpty).length;
@@ -183,7 +180,7 @@ class UpdateRegistry extends ChangeNotifier {
   ];
 
   void _recompute() {
-    if (_cardsByUid.isEmpty) return;
+    if (_cards.isEmpty) return;
     _rebuild(_installedWithUid());
     notifyListeners();
   }
@@ -191,12 +188,10 @@ class UpdateRegistry extends ChangeNotifier {
   void _rebuild(List<AppManifest> installed) {
     final out = <AppUpdate>[];
     for (final manifest in installed) {
-      final listed = _cardsByUid[manifest.uid];
-      if (listed == null) continue;
       // The update is the installed entry's newer version, never a switch
       // to the entry the card happens to lead with.
-      final entry = installedApp(listed, manifest);
-      final card = entry == null ? listed : listed.forApp(entry);
+      final card = cardFor(manifest);
+      if (card == null) continue;
       final state = catalogAppState(
         card: card,
         manifest: manifest,
@@ -237,7 +232,7 @@ class UpdateRegistry extends ChangeNotifier {
   }
 
   void handleDeviceChange() {
-    _cardsByUid.clear();
+    _cards.clear();
     _updates = const [];
     _loaded = false;
     notifyListeners();

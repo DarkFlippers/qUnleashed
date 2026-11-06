@@ -121,11 +121,12 @@ class AppsCatalogController extends ChangeNotifier {
         ? _backend.styleManifests
         : manifests;
     // Variants of one item share its uid; a card made for one of them asks
-    // about that app's own file.
+    // about that app's own file. A `.fim` written before the server gave out
+    // public ids holds the appid as its uid, so the file is found by name.
     return catalogAppState(
       card: app,
       manifest: app.id.isNotEmpty && app.selectedAppId == null
-          ? registry.byUid(app.id)
+          ? registry.byUid(app.id) ?? registry.byAlias(app.alias)
           : registry.byAlias(app.alias),
       targetSdk: _backend.targetSdk,
       ignoreSdkMismatch: _backend.ignoreSdkMismatch,

@@ -1,4 +1,5 @@
 import '../../../components/codec/fap/api_version.dart';
+import 'catalog_context.dart' show aliasFromFapPath;
 import 'models/card.dart';
 import 'models/manifest.dart';
 import 'models/app_entry.dart';
@@ -17,6 +18,17 @@ CatalogApp? installedApp(AppCard card, AppManifest manifest) {
       ? base.substring(0, base.length - 4)
       : card.alias;
   return card.appInstalledAs(manifest.versionUid, alias);
+}
+
+/// Whether [versionUid] is [version] when no entry of the card says which app
+/// it was installed as: its public id, or, from a `.fim` written before the
+/// server gave out public ids, `<id>@<version>` with the same version.
+bool isCurrentVersion(String versionUid, AppCurrentVersion version) {
+  if (versionUid == version.id) return true;
+  final at = versionUid.lastIndexOf('@');
+  return at > 0 &&
+      version.version.isNotEmpty &&
+      versionUid.substring(at + 1) == version.version;
 }
 
 CatalogAppState catalogAppState({
@@ -38,10 +50,10 @@ CatalogAppState catalogAppState({
       installed.id != card.selectedAppId) {
     return CatalogAppState.install;
   }
-  final latest = installed?.versionId ?? cv.id;
-  if (manifest.versionUid.isNotEmpty &&
-      latest.isNotEmpty &&
-      manifest.versionUid != latest) {
+  final versionUid = manifest.versionUid;
+  if (versionUid.isNotEmpty &&
+      cv.id.isNotEmpty &&
+      !(installed?.isVersion(versionUid) ?? isCurrentVersion(versionUid, cv))) {
     return CatalogAppState.update;
   }
 
@@ -53,4 +65,51 @@ CatalogAppState catalogAppState({
   }
 
   return CatalogAppState.open;
+}
+
+/// The catalogue's cards for what a device has installed, found from its
+/// `.fim`s.
+class InstalledCards {
+  final Map<String, AppCard> _byUid = {};
+
+  /// The same cards by every appid they offer: a `.fim` written before the
+  /// server gave out public ids names its entry by the appid, not by the
+  /// ObjectId the card now carries.
+  final Map<String, AppCard> _byAppid = {};
+
+  bool get isEmpty => _byUid.isEmpty && _byAppid.isEmpty;
+
+  void replace(Iterable<AppCard> cards) {
+    clear();
+    for (final card in cards) {
+      if (card.id.isNotEmpty) _byUid[card.id] = card;
+      if (card.alias.isNotEmpty) _byAppid[card.alias] = card;
+      for (final entry in card.entries) {
+        _byAppid[entry.appid] = card;
+        _byAppid[entry.id] = card;
+      }
+    }
+  }
+
+  void clear() {
+    _byUid.clear();
+    _byAppid.clear();
+  }
+
+  /// The card [manifest] was installed from, as the app it installed: the
+  /// one entry of a multi-app item whose file is on the device.
+  AppCard? cardFor(AppManifest? manifest) {
+    if (manifest == null) return null;
+    final listed = _listedFor(manifest);
+    if (listed == null) return null;
+    final entry = installedApp(listed, manifest);
+    return entry == null ? listed : listed.forApp(entry);
+  }
+
+  AppCard? _listedFor(AppManifest manifest) {
+    final byUid = manifest.uid.isEmpty ? null : _byUid[manifest.uid];
+    if (byUid != null) return byUid;
+    final alias = manifest.path.isEmpty ? '' : aliasFromFapPath(manifest.path);
+    return _byAppid[manifest.uid] ?? _byAppid[alias];
+  }
 }

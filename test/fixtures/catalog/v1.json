@@ -4,22 +4,23 @@
     "queue_length": 0,
     "sdk": [
       {
-        "version": "dev@851c6bf870f7",
+        "version": "dev@953268e22e53",
         "target": "f7",
         "api": "88.16",
         "channel": "dev"
       }
     ],
+    "dev_catalog": true,
     "firmware": {
       "repo": "file:///fixture/firmware-origin",
       "branch": "dev",
-      "commit": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-      "updated_at": 1793360006.7297962,
+      "commit": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+      "updated_at": 1793960195.772331,
       "ready": true,
       "targets": {
         "f7": {
           "api": "88.16",
-          "major_since": 1793360006.7297962
+          "major_since": 1793960195.772331
         }
       }
     },
@@ -168,16 +169,16 @@
   ],
   "list": [
     {
-      "_id": "pair",
-      "id": "pair",
+      "_id": "c76abb8bc19262f1c42c8e49",
+      "id": "c76abb8bc19262f1c42c8e49",
       "alias": "pair",
       "category_id": "GPIO/ESP32",
       "author": "@Ann & @Bob",
-      "created_at": 1793360006,
-      "updated_at": 1793360006,
+      "created_at": 1793960195,
+      "updated_at": 1793960195,
       "current_version": {
-        "_id": "pair@1.0",
-        "id": "pair@1.0",
+        "_id": "741ce95b675883834c3b802f",
+        "id": "741ce95b675883834c3b802f",
         "name": "Pair",
         "version": "1.0",
         "short_description": "s",
@@ -187,11 +188,11 @@
         ],
         "status": "READY",
         "current_build": {
-          "id": "pair@1.0:f7:88",
-          "_id": "pair@1.0:f7:88",
+          "id": "274a89ac564492068e4314c1",
+          "_id": "274a89ac564492068e4314c1",
           "sdk": {
-            "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-            "name": "851c6bf870f7",
+            "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+            "name": "953268e22e53",
             "target": "f7",
             "api": "88.16",
             "is_latest_release": true
@@ -200,8 +201,8 @@
             "length": 14
           }
         },
-        "application_id": "pair",
-        "bundle_id": "pair@1.0"
+        "application_id": "c76abb8bc19262f1c42c8e49",
+        "bundle_id": "741ce95b675883834c3b802f"
       },
       "family": "application",
       "install_path": "GPIO/ESP32",
@@ -230,10 +231,10 @@
         {
           "target": "f7",
           "api": "88.16",
-          "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
           "size": 14,
           "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-          "built_at": 1793360006,
+          "built_at": 1793960195,
           "cached": true
         }
       ],
@@ -245,16 +246,16 @@
     }
   ],
   "detail": {
-    "_id": "pair",
-    "id": "pair",
+    "_id": "c76abb8bc19262f1c42c8e49",
+    "id": "c76abb8bc19262f1c42c8e49",
     "alias": "pair",
     "category_id": "GPIO/ESP32",
     "author": "@Ann & @Bob",
-    "created_at": 1793360006,
-    "updated_at": 1793360006,
+    "created_at": 1793960195,
+    "updated_at": 1793960195,
     "current_version": {
-      "_id": "pair@1.0",
-      "id": "pair@1.0",
+      "_id": "741ce95b675883834c3b802f",
+      "id": "741ce95b675883834c3b802f",
       "name": "Pair",
       "version": "1.0",
       "short_description": "s",
@@ -264,11 +265,11 @@
       ],
       "status": "READY",
       "current_build": {
-        "id": "pair@1.0:f7:88",
-        "_id": "pair@1.0:f7:88",
+        "id": "274a89ac564492068e4314c1",
+        "_id": "274a89ac564492068e4314c1",
         "sdk": {
-          "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-          "name": "851c6bf870f7",
+          "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+          "name": "953268e22e53",
           "target": "f7",
           "api": "88.16",
           "is_latest_release": true
@@ -277,12 +278,12 @@
           "length": 14
         }
       },
-      "application_id": "pair",
-      "bundle_id": "pair@1.0",
+      "application_id": "c76abb8bc19262f1c42c8e49",
+      "bundle_id": "741ce95b675883834c3b802f",
       "description": "d",
       "changelog": "c",
       "links": {
-        "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/741ce95b675883834c3b802f/bundle",
         "manifest_uri": null,
         "source_code": {
           "uri": "https://git.example.org/pair"
@@ -316,10 +317,10 @@
       {
         "target": "f7",
         "api": "88.16",
-        "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+        "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
         "size": 14,
         "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-        "built_at": 1793360006,
+        "built_at": 1793960195,
         "cached": true
       }
     ],
@@ -338,9 +339,9 @@
         "name": "Pair",
         "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
         "version": "1.0",
-        "version_id": "pair@1.0",
+        "version_id": "741ce95b675883834c3b802f",
         "install_path": "GPIO/ESP32",
-        "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/741ce95b675883834c3b802f/bundle",
         "status": "ready",
         "build": {
           "api": "88.16",
@@ -355,9 +356,9 @@
         "name": "Pair_Extra",
         "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
         "version": "1.0",
-        "version_id": "pair_extra@1.0",
+        "version_id": "bceb5eafa33f96cf1ea96f29",
         "install_path": "GPIO/ESP32",
-        "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/bceb5eafa33f96cf1ea96f29/bundle",
         "status": "ready",
         "build": {
           "api": "88.16",
@@ -367,16 +368,16 @@
     ]
   },
   "extra": {
-    "_id": "pair",
-    "id": "pair",
+    "_id": "c76abb8bc19262f1c42c8e49",
+    "id": "c76abb8bc19262f1c42c8e49",
     "alias": "pair_extra",
     "category_id": "GPIO/ESP32",
     "author": "@Ann & @Bob",
-    "created_at": 1793360006,
-    "updated_at": 1793360006,
+    "created_at": 1793960195,
+    "updated_at": 1793960195,
     "current_version": {
-      "_id": "pair_extra@1.0",
-      "id": "pair_extra@1.0",
+      "_id": "bceb5eafa33f96cf1ea96f29",
+      "id": "bceb5eafa33f96cf1ea96f29",
       "name": "Pair_Extra",
       "version": "1.0",
       "short_description": "s",
@@ -386,11 +387,11 @@
       ],
       "status": "READY",
       "current_build": {
-        "id": "pair@1.0:f7:88",
-        "_id": "pair@1.0:f7:88",
+        "id": "274a89ac564492068e4314c1",
+        "_id": "274a89ac564492068e4314c1",
         "sdk": {
-          "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-          "name": "851c6bf870f7",
+          "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+          "name": "953268e22e53",
           "target": "f7",
           "api": "88.16",
           "is_latest_release": true
@@ -399,12 +400,12 @@
           "length": 20
         }
       },
-      "application_id": "pair",
-      "bundle_id": "pair@1.0",
+      "application_id": "c76abb8bc19262f1c42c8e49",
+      "bundle_id": "741ce95b675883834c3b802f",
       "description": "d",
       "changelog": "c",
       "links": {
-        "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/bceb5eafa33f96cf1ea96f29/bundle",
         "manifest_uri": null,
         "source_code": {
           "uri": "https://git.example.org/pair"
@@ -438,10 +439,10 @@
       {
         "target": "f7",
         "api": "88.16",
-        "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+        "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
         "size": 14,
         "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-        "built_at": 1793360006,
+        "built_at": 1793960195,
         "cached": true
       }
     ],
@@ -460,9 +461,9 @@
         "name": "Pair",
         "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
         "version": "1.0",
-        "version_id": "pair@1.0",
+        "version_id": "741ce95b675883834c3b802f",
         "install_path": "GPIO/ESP32",
-        "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/741ce95b675883834c3b802f/bundle",
         "status": "ready",
         "build": {
           "api": "88.16",
@@ -477,9 +478,9 @@
         "name": "Pair_Extra",
         "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
         "version": "1.0",
-        "version_id": "pair_extra@1.0",
+        "version_id": "bceb5eafa33f96cf1ea96f29",
         "install_path": "GPIO/ESP32",
-        "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v0/application/version/bceb5eafa33f96cf1ea96f29/bundle",
         "status": "ready",
         "build": {
           "api": "88.16",
@@ -489,16 +490,16 @@
     ]
   },
   "style": {
-    "_id": "style:menu_style_wave",
-    "id": "style:menu_style_wave",
+    "_id": "f3220c216770264270e448e0",
+    "id": "f3220c216770264270e448e0",
     "alias": "menu_style_wave",
-    "category_id": "animated",
+    "category_id": "theme",
     "author": "@me",
-    "created_at": 1793360006,
-    "updated_at": 1793360006,
+    "created_at": 1793960195,
+    "updated_at": 1793960195,
     "current_version": {
-      "_id": "style:menu_style_wave@1.0",
-      "id": "style:menu_style_wave@1.0",
+      "_id": "674102ba5af2a99d86697231",
+      "id": "674102ba5af2a99d86697231",
       "name": "Menu_Style_Wave",
       "version": "1.0",
       "short_description": "s",
@@ -508,11 +509,11 @@
       ],
       "status": "READY",
       "current_build": {
-        "id": "style:menu_style_wave@1.0:f7:88",
-        "_id": "style:menu_style_wave@1.0:f7:88",
+        "id": "4adc5035888d15c287ff87a0",
+        "_id": "4adc5035888d15c287ff87a0",
         "sdk": {
-          "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-          "name": "851c6bf870f7",
+          "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+          "name": "953268e22e53",
           "target": "f7",
           "api": "88.16",
           "is_latest_release": true
@@ -521,12 +522,12 @@
           "length": 25
         }
       },
-      "application_id": "style:menu_style_wave",
-      "bundle_id": "style:menu_style_wave@1.0",
+      "application_id": "f3220c216770264270e448e0",
+      "bundle_id": "674102ba5af2a99d86697231",
       "description": "d",
       "changelog": "c",
       "links": {
-        "bundle_uri": "https://catalog.test/api/v1/menustyles/version/style:menu_style_wave@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v1/menustyles/version/674102ba5af2a99d86697231/bundle",
         "manifest_uri": null,
         "source_code": {
           "uri": ""
@@ -535,8 +536,8 @@
     },
     "family": "menustyle",
     "install_path": "/ext/apps_data/loader/plugins",
-    "category_path": "animated",
-    "top_category_id": "animated",
+    "category_path": "theme",
+    "top_category_id": "theme",
     "authors": [
       {
         "id": "me",
@@ -556,10 +557,10 @@
       {
         "target": "f7",
         "api": "88.16",
-        "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+        "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
         "size": 25,
         "sha256": "0a592969eda4aba965a7d99252c9d8c2205bef81e6e4b10b8d914c31edc0c9dc",
-        "built_at": 1793360006,
+        "built_at": 1793960195,
         "cached": true
       }
     ],
@@ -578,9 +579,9 @@
         "name": "Menu_Style_Wave",
         "icon_uri": "https://catalog.test/api/v0/application/version/assets/b4ebee2db7db736e99981640",
         "version": "1.0",
-        "version_id": "style:menu_style_wave@1.0",
+        "version_id": "674102ba5af2a99d86697231",
         "install_path": "/ext/apps_data/loader/plugins",
-        "bundle_uri": "https://catalog.test/api/v1/menustyles/version/style:menu_style_wave@1.0/bundle",
+        "bundle_uri": "https://catalog.test/api/v1/menustyles/version/674102ba5af2a99d86697231/bundle",
         "status": "ready",
         "build": {
           "api": "88.16",
@@ -590,16 +591,16 @@
     ]
   },
   "animation": {
-    "_id": "anim:dance",
-    "id": "anim:dance",
+    "_id": "2fce2a64ae6d004d7b5042f1",
+    "id": "2fce2a64ae6d004d7b5042f1",
     "alias": "dance",
-    "category_id": "unleashed",
+    "category_id": "pack",
     "author": "@me",
-    "created_at": 1793360006,
-    "updated_at": 1793360006,
+    "created_at": 1793960195,
+    "updated_at": 1793960195,
     "current_version": {
-      "_id": "anim:dance@1.0",
-      "id": "anim:dance@1.0",
+      "_id": "786762f12d58c6dc3ceec4d0",
+      "id": "786762f12d58c6dc3ceec4d0",
       "name": "Dance",
       "version": "1.0",
       "short_description": "s",
@@ -607,8 +608,8 @@
       "screenshots": [],
       "status": "READY",
       "current_build": null,
-      "application_id": "anim:dance",
-      "bundle_id": "anim:dance@1.0",
+      "application_id": "2fce2a64ae6d004d7b5042f1",
+      "bundle_id": "786762f12d58c6dc3ceec4d0",
       "description": "d",
       "changelog": "c",
       "links": {
@@ -621,8 +622,8 @@
     },
     "family": "animation",
     "install_path": "/ext/dolphin/dance",
-    "category_path": "unleashed",
-    "top_category_id": "unleashed",
+    "category_path": "pack",
+    "top_category_id": "pack",
     "authors": [
       {
         "id": "me",
@@ -648,7 +649,7 @@
         "name": "Dance",
         "icon_uri": "",
         "version": "1.0",
-        "version_id": "anim:dance@1.0",
+        "version_id": "786762f12d58c6dc3ceec4d0",
         "install_path": "/ext/dolphin/dance",
         "bundle_uri": null,
         "status": "ready",
@@ -660,13 +661,13 @@
     "files": [
       {
         "device_path": "/ext/dolphin/dance/meta.txt",
-        "uri": "https://catalog.test/api/v1/animations/version/anim:dance@1.0/file/meta.txt",
+        "uri": "https://catalog.test/api/v1/animations/version/786762f12d58c6dc3ceec4d0/file/meta.txt",
         "size": 28,
         "sha256": "7cd6375c2e7560ed8e4113599d76b8dfe310e727d9347c063ddafe4d1446d320"
       },
       {
         "device_path": "/ext/dolphin/dance/frame_0.bm",
-        "uri": "https://catalog.test/api/v1/animations/version/anim:dance@1.0/file/frame_0.bm",
+        "uri": "https://catalog.test/api/v1/animations/version/786762f12d58c6dc3ceec4d0/file/frame_0.bm",
         "size": 1,
         "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
       }
@@ -683,16 +684,16 @@
   "search": {
     "items": [
       {
-        "_id": "pair",
-        "id": "pair",
+        "_id": "c76abb8bc19262f1c42c8e49",
+        "id": "c76abb8bc19262f1c42c8e49",
         "alias": "pair",
         "category_id": "GPIO/ESP32",
         "author": "@Ann & @Bob",
-        "created_at": 1793360006,
-        "updated_at": 1793360006,
+        "created_at": 1793960195,
+        "updated_at": 1793960195,
         "current_version": {
-          "_id": "pair@1.0",
-          "id": "pair@1.0",
+          "_id": "741ce95b675883834c3b802f",
+          "id": "741ce95b675883834c3b802f",
           "name": "Pair",
           "version": "1.0",
           "short_description": "s",
@@ -702,11 +703,11 @@
           ],
           "status": "READY",
           "current_build": {
-            "id": "pair@1.0:f7:88",
-            "_id": "pair@1.0:f7:88",
+            "id": "274a89ac564492068e4314c1",
+            "_id": "274a89ac564492068e4314c1",
             "sdk": {
-              "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-              "name": "851c6bf870f7",
+              "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+              "name": "953268e22e53",
               "target": "f7",
               "api": "88.16",
               "is_latest_release": true
@@ -715,8 +716,8 @@
               "length": 14
             }
           },
-          "application_id": "pair",
-          "bundle_id": "pair@1.0"
+          "application_id": "c76abb8bc19262f1c42c8e49",
+          "bundle_id": "741ce95b675883834c3b802f"
         },
         "family": "application",
         "install_path": "GPIO/ESP32",
@@ -745,10 +746,10 @@
           {
             "target": "f7",
             "api": "88.16",
-            "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+            "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
             "size": 14,
             "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-            "built_at": 1793360006,
+            "built_at": 1793960195,
             "cached": true
           }
         ],
@@ -762,7 +763,8 @@
     "totals": {
       "application": 1,
       "menustyle": 0,
-      "animation": 0
+      "animation": 0,
+      "cli": 0
     },
     "authors": []
   },
@@ -795,16 +797,16 @@
   ],
   "lookup": [
     {
-      "_id": "pair",
-      "id": "pair",
+      "_id": "c76abb8bc19262f1c42c8e49",
+      "id": "c76abb8bc19262f1c42c8e49",
       "alias": "pair",
       "category_id": "GPIO/ESP32",
       "author": "@Ann & @Bob",
-      "created_at": 1793360006,
-      "updated_at": 1793360006,
+      "created_at": 1793960195,
+      "updated_at": 1793960195,
       "current_version": {
-        "_id": "pair@1.0",
-        "id": "pair@1.0",
+        "_id": "741ce95b675883834c3b802f",
+        "id": "741ce95b675883834c3b802f",
         "name": "Pair",
         "version": "1.0",
         "short_description": "s",
@@ -814,11 +816,11 @@
         ],
         "status": "READY",
         "current_build": {
-          "id": "pair@1.0:f7:88",
-          "_id": "pair@1.0:f7:88",
+          "id": "274a89ac564492068e4314c1",
+          "_id": "274a89ac564492068e4314c1",
           "sdk": {
-            "id": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
-            "name": "851c6bf870f7",
+            "id": "953268e22e5358a3d1961b5b549a8ea2460fc275",
+            "name": "953268e22e53",
             "target": "f7",
             "api": "88.16",
             "is_latest_release": true
@@ -827,8 +829,8 @@
             "length": 14
           }
         },
-        "application_id": "pair",
-        "bundle_id": "pair@1.0"
+        "application_id": "c76abb8bc19262f1c42c8e49",
+        "bundle_id": "741ce95b675883834c3b802f"
       },
       "family": "application",
       "install_path": "GPIO/ESP32",
@@ -857,10 +859,10 @@
         {
           "target": "f7",
           "api": "88.16",
-          "firmware": "851c6bf870f7b341b18fa8cbf23c2f3dda5a8eb6",
+          "firmware": "953268e22e5358a3d1961b5b549a8ea2460fc275",
           "size": 14,
           "sha256": "9792dd9152da1709b0b17cb47ad26262b0117ca70a90002465e293717db44a8b",
-          "built_at": 1793360006,
+          "built_at": 1793960195,
           "cached": true
         }
       ],
@@ -879,9 +881,9 @@
           "name": "Pair",
           "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
           "version": "1.0",
-          "version_id": "pair@1.0",
+          "version_id": "741ce95b675883834c3b802f",
           "install_path": "GPIO/ESP32",
-          "bundle_uri": "https://catalog.test/api/v0/application/version/pair@1.0/bundle",
+          "bundle_uri": "https://catalog.test/api/v0/application/version/741ce95b675883834c3b802f/bundle",
           "status": "ready",
           "build": {
             "api": "88.16",
@@ -896,9 +898,9 @@
           "name": "Pair_Extra",
           "icon_uri": "https://catalog.test/api/v0/application/version/assets/c6f762f4da57f83cf1131b7c",
           "version": "1.0",
-          "version_id": "pair_extra@1.0",
+          "version_id": "bceb5eafa33f96cf1ea96f29",
           "install_path": "GPIO/ESP32",
-          "bundle_uri": "https://catalog.test/api/v0/application/version/pair_extra@1.0/bundle",
+          "bundle_uri": "https://catalog.test/api/v0/application/version/bceb5eafa33f96cf1ea96f29/bundle",
           "status": "ready",
           "build": {
             "api": "88.16",
