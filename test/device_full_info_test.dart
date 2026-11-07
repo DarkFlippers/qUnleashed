@@ -57,8 +57,33 @@ void main() {
     return (device, client);
   }
 
+  /// Scrolled to first, which is the difference between this file testing the
+  /// sheet and testing the page's height.
+  ///
+  /// The button sits near the bottom of this file's 1400-tall window - its box
+  /// ended at 1372 and `tap` aimed at the label's centre, 1348 - and this
+  /// branch moved it down by 67, to a centre of 1415 in a 1400-tall window.
+  /// The tap then landed on nothing, the sheet never opened, and the two cases
+  /// that open it failed on `findsOneWidget` and `findsWidgets` with nothing
+  /// to say that the page above them was what had moved. The third case here
+  /// never taps, and its own `findsNothing` *passes* while the sheet is shut,
+  /// which is the direction this file is least able to notice.
+  ///
+  /// 53 of the 67 are #471, the carousel growing from 110 to 163 at a 400-wide
+  /// window in this font. The other 14 are #474: with `trailingValue` the
+  /// title and the chip take separate runs at that width. Neither is 400 dp of
+  /// a real phone - only the text doubles in this font, not the image or the
+  /// paddings - but neither is purely an artefact either, and
+  /// `firmware_card.dart` has what a device actually sees.
+  ///
+  /// `ensureVisible` and not a taller window: what this file is about starts
+  /// at the tap, and a window sized to clear whatever the page happens to
+  /// hold is the same fragility one number further out.
   Future<void> openSheet(WidgetTester tester) async {
-    await tester.tap(find.text(l10n.deviceFullInfo).first);
+    final button = find.text(l10n.deviceFullInfo).first;
+    await tester.ensureVisible(button);
+    await tester.pump();
+    await tester.tap(button);
     await settle(tester);
   }
 

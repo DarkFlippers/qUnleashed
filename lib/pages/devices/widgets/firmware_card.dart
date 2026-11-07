@@ -305,7 +305,11 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
     return FlipperPageCard(
       title: context.l10n.firmwareUpdateTitle,
-      trailing: hasChangelog
+      // `trailingValue`, not `trailing`: this chip is text in a border, so it
+      // grows with the text scale while the card's width does not, and in the
+      // pinned slot it took the title's room and then ran the header off the
+      // right edge. `page_card.dart` has both slots' contracts. #474
+      trailingValue: hasChangelog
           ? _WhatsNewButton(
               onTap: () {
                 if (latestFirmware != null) {
@@ -316,14 +320,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
           : null,
       child: Column(
         children: [
-          if (config.isSingle)
-            _FirmwareSlide(
-              entry: entry,
-              fetchState: fetchState,
-              latestVersion: latestVersion,
-            )
-          else
-            _carousel(config),
+          if (config.isSingle) _slide(entry) else _carousel(config),
           _FirmwareControls(
             entry: entry,
             fetchState: fetchState,
@@ -354,57 +351,110 @@ class _FirmwareCardState extends State<FirmwareCard> {
     );
   }
 
+  /// The height the carousel keeps whether or not its slides need it.
+  ///
+  /// The 110 the carousel was *fixed* at before #471, which is the whole
+  /// reason the number survives: as a cap it clipped, and as a floor it means
+  /// the card looks exactly as it did at the default text size while still
+  /// growing when a wrapped name needs more. It is not a measurement of
+  /// anything - a slide at the default scale wants 76 - which is why it is a
+  /// floor and not the height.
+  static const double _carouselMinHeight = 110;
+
+  /// One slide, built the same way wherever it is needed.
+  ///
+  /// Two places need it, and that they build the same thing is the whole of
+  /// why [_carousel]'s height is right: see the `Stack` there.
+  Widget _slide(FirmwareEntry firmware) => _FirmwareSlide(
+    entry: firmware,
+    fetchState: _fw.fetchStateFor(firmware),
+    latestVersion: _fw.latestVersionFor(firmware),
+  );
+
   Widget _carousel(FirmwareConfig config) {
-    return SizedBox(
-      // **A known overflow, not an open question.** A fixed height holding
-      // text that scales is the same class of bug as #463, which filed it as
-      // "same card, not confirmed" on the strength of a screenshot. A
-      // screenshot is the one instrument that cannot see it, for two reasons
-      // that are not the same reason: the overflow report lives inside an
-      // `assert` in `RenderFlex.paint`, so a release build says nothing
-      // whether or not anything clips; and the excess is clipped anyway -
-      // by the slide's own `Column`, whose `Flex.clipBehavior` is
-      // `Clip.hardEdge`, by the `PageView`'s viewport, and by the card's
-      // `Clip.antiAlias`. `device_header_fit_test.dart` records the same trap.
-      //
-      // Pumped through `test/firmware_fixture.dart` at a 360 dp window, this
-      // overflows by 10 pixels at a scaler of 1.3, 163 at 2.0 and 555 at 3.1,
-      // and by 73 at 1.3 on a 320. Fixing it means deciding what the carousel
-      // does instead - a `PageView` needs a bounded height, and the slide's
-      // 22pt name wraps before the box runs out - which is a design question
-      // rather than the one-line change #463's two rows were. It is #471;
-      // this note is here so the 110 is not read as a number that was
-      // measured.
-      height: 110,
-      child: Row(
-        children: [
-          _CarouselNavButton(
-            icon: Icons.chevron_left,
-            enabled: _page > 0,
-            onTap: () => _goToPage(_page - 1),
-          ),
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: config.firmwares.length,
-              onPageChanged: _onPageChanged,
-              itemBuilder: (_, i) {
-                final firmware = config.firmwares[i];
-                return _FirmwareSlide(
-                  entry: firmware,
-                  fetchState: _fw.fetchStateFor(firmware),
-                  latestVersion: _fw.latestVersionFor(firmware),
-                );
-              },
+    return Row(
+      children: [
+        _CarouselNavButton(
+          icon: Icons.chevron_left,
+          enabled: _page > 0,
+          onTap: () => _goToPage(_page - 1),
+        ),
+        Expanded(
+          // **The height is the tallest slide's, measured, not a constant.**
+          // This was `SizedBox(height: 110)` around the whole row, and 110 was
+          // never measured: a slide's 22pt name wraps as soon as its slot gets
+          // narrow, so the height a slide needs is set by how many lines that
+          // name takes - which depends on the firmware's own name and on the
+          // text scale, and no multiple of 110 predicts it. Pumped through
+          // `test/firmware_fixture.dart` at a 360 dp window it overflowed by
+          // 10 pixels at a scaler of 1.3, 163 at 2.0 and 555 at 3.1, and by 73
+          // at 1.3 on a 320. 1.3 is one step up from default in Android's own
+          // settings, so this was never an accessibility corner. #471
+          //
+          // A `PageView` is a viewport and has no height of its own, so
+          // "size to the content" has to be arranged. Every slide is built
+          // here, kept in the layout by `maintainSize` and painted by nothing,
+          // so this `Stack` is as tall as the tallest of them - a `Stack`
+          // sizes to its largest non-positioned child - and the viewport fills
+          // that.
+          //
+          // The tallest of all of them rather than the current one, which
+          // would be less whitespace and is the wrong trade: the height would
+          // then change under the slide mid-swipe, moving the controls below
+          // it while a finger is down. This way the card is one height for a
+          // given width and scale, which is what it looked like before - it
+          // just stops being 110 of them.
+          //
+          // The cost is every slide built per **rebuild** - not per layout,
+          // which never rebuilds them - against the one or two a
+          // `PageView.builder` builds on its own. That is two extra slides
+          // here, `config.firmwares` being a const list of two, and this card
+          // rebuilds often: `DeviceScope` is driven by a five-second battery
+          // poll. A slide is an `Image.asset` the cache already holds plus two
+          // `Text`s, and the hidden copies are never painted, never hit-tested
+          // and not in the semantics tree. Measuring only the text would be
+          // cheaper and would be a second copy of the slide's geometry to keep
+          // in step - [_slide] is what both sides build so that cannot drift.
+          //
+          // [_carouselMinHeight] keeps the 110 as a **floor**, which is the
+          // difference between fixing the overflow and redesigning the card.
+          // Where the name fits beside its image a slide wants 76 - the image
+          // and the padding - so sizing purely to content would have taken 34
+          // pixels of breathing room off the carousel for every user wide
+          // enough for that, which is every phone from about 350 dp up. The
+          // floor does not bind below that: see [_FirmwareSlide], where the
+          // longer of the two names moves under its image and the slide wants
+          // about 124.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _carouselMinHeight),
+            child: Stack(
+              children: [
+                for (final firmware in config.firmwares)
+                  Visibility(
+                    visible: false,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: _slide(firmware),
+                  ),
+                Positioned.fill(
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: config.firmwares.length,
+                    onPageChanged: _onPageChanged,
+                    itemBuilder: (_, i) => _slide(config.firmwares[i]),
+                  ),
+                ),
+              ],
             ),
           ),
-          _CarouselNavButton(
-            icon: Icons.chevron_right,
-            enabled: _page < config.firmwares.length - 1,
-            onTap: () => _goToPage(_page + 1),
-          ),
-        ],
-      ),
+        ),
+        _CarouselNavButton(
+          icon: Icons.chevron_right,
+          enabled: _page < config.firmwares.length - 1,
+          onTap: () => _goToPage(_page + 1),
+        ),
+      ],
     );
   }
 }
@@ -425,45 +475,87 @@ class _FirmwareSlide extends StatelessWidget {
     final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
-      child: Row(
+      // **A `Wrap`, so the name can take a line of its own below the image.**
+      // It was a `Row` of the image and an `Expanded` column, which left the
+      // name `window - 186` to work in - 28 of card margin, 56 of nav buttons,
+      // 28 of slide padding, the 62 image and the 12 gap - so 174 dp on a 360
+      // dp phone. It wrapped there first and drove the slide past the
+      // carousel's old fixed height from a scaler of 1.3.
+      //
+      // Not because the name is unbounded: `entry.name` is one of two
+      // compile-time constants in `components/config.dart`, and only the 12pt
+      // version line below it comes from the feed. It is because of what the
+      // longer of the two measures. 'Official firmware' at 22/w700 in the
+      // engine's own Roboto is **164.2 dp**, so it fits that slot from about
+      // 350 dp of window up and not below, and no fixed slot survives a
+      // scaler of 3.1 at any width.
+      //
+      // The same answer as #463's rows and this card's `trailingValue`, and it
+      // works for the reason that one does: a soft-wrapping `Text` reports its
+      // intrinsic width while it fits one line, so a name with room stays
+      // beside the image; once it wraps it claims the whole run, which drops
+      // it below the image and hands it the full width.
+      //
+      // **What that changes at the default text size**, which is the one thing
+      // here a user sees without touching a setting: from about 350 dp up,
+      // nothing - both names sit beside their image as before, on one line.
+      // Below it, on a 320 dp phone or a 390 dp iPhone with Display Zoom on,
+      // 'Official firmware' moves from two wrapped lines beside its image to
+      // one line under it, and that slide wants about 124 where the old box
+      // gave it 110. #471
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: _imageGap,
+        runSpacing: _runGap,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: Image.asset(
               entry.assetPath,
-              width: 62,
-              height: 62,
+              width: _imageSide,
+              height: _imageSide,
               fit: BoxFit.cover,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.name,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: colors.accent,
-                  ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.name,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: colors.accent,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  fetchState.isLoading
-                      ? context.l10n.firmwareChecking
-                      : (latestVersion ?? '—'),
-                  style: TextStyle(fontSize: 12, color: colors.textMuted),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                fetchState.isLoading
+                    ? context.l10n.firmwareChecking
+                    : (latestVersion ?? '—'),
+                style: TextStyle(fontSize: 12, color: colors.textMuted),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+
+  /// The firmware image's side, and the gap between it and the name while the
+  /// two share a line.
+  ///
+  /// Both were literals in the `Row` this replaced. They are constants now
+  /// because the `Wrap` reads the gap as its `spacing` rather than as a
+  /// `SizedBox` between two children, and because `firmware_card_fit_test`
+  /// asserts the image keeps its size at every scale - an image that grew
+  /// with the text would be a different fix from this one.
+  static const double _imageSide = 62;
+  static const double _imageGap = 12;
+
+  /// The gap between the image and a name that has dropped below it.
+  static const double _runGap = 6;
 
   static String _variantLabel(UnleashedVariant v) => switch (v) {
     UnleashedVariant.base => l10n.firmwareVariantDefault,
@@ -846,12 +938,28 @@ class _WhatsNewButton extends StatelessWidget {
             children: [
               Icon(Icons.error_outline, size: 13, color: colors.textSecondary),
               const SizedBox(width: 4),
-              Text(
-                context.l10n.firmwareWhatsNew,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textSecondary,
+              // **`Flexible`, or the chip overflows itself.** The header
+              // bounds this widget now - a `Wrap` hands each child its own
+              // `maxWidth` - but an inflexible `Text` inside this `Row` is
+              // laid out with an unbounded main axis whatever the `Row` was
+              // given, so it demanded its full single-line width and this
+              // `Row` reported the same 102 pixels the header used to: the
+              // overflow moved one widget inwards rather than going away.
+              // Measured at a 360 dp window and a scaler of 3.1, plus 9.5 at
+              // 320/2.0 and 142 at 320/3.1. #474
+              //
+              // `Flexible` and not `Expanded`: a loose fit, so the chip is
+              // still only as wide as its label while the label fits, which
+              // is what keeps the border tight around two words at the
+              // default scale.
+              Flexible(
+                child: Text(
+                  context.l10n.firmwareWhatsNew,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textSecondary,
+                  ),
                 ),
               ),
             ],
