@@ -500,10 +500,7 @@ class AppsCatalogApi {
         family: family,
       );
     }
-    return _v0._uri(
-      '/application/version/${Uri.encodeComponent(versionId)}/build/compatible',
-      {'target': target, 'api': api},
-    );
+    return _v0.buildDownloadUri(versionId, target: target, api: api);
   }
 
   /// The file and, from our servers, the API it was built for; Archivarius

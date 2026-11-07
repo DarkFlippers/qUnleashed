@@ -38,7 +38,7 @@ class CatalogV0Api extends _CatalogProtocol {
 
   Future<List<AppCategory>> fetchCategories({int limit = 500}) {
     return _withApiFallback(() async {
-      final uri = _uri('/category', {'limit': '$limit', ..._apiParams()});
+      final uri = _uri('/0/category', {'limit': '$limit', ..._apiParams()});
       final body = await _getJson(uri, ttl: const Duration(hours: 1));
       if (body is! List) {
         throw AppsCatalogException(0, uri.toString(), 'expected list');
@@ -125,7 +125,7 @@ class CatalogV0Api extends _CatalogProtocol {
 
   Future<AppDetail> fetchApp(String idOrAlias, {bool? isLatestReleaseVersion}) {
     return _withApiFallback(() async {
-      final uri = _uri('/application/$idOrAlias', {
+      final uri = _uri('/0/application/$idOrAlias', {
         if (isLatestReleaseVersion != null)
           'is_latest_release_version': '$isLatestReleaseVersion',
         ..._apiParams(),
@@ -137,6 +137,17 @@ class CatalogV0Api extends _CatalogProtocol {
       return AppDetail.fromJson(body);
     });
   }
+
+  /// Where a version's file for [target] and [api] is, as the official app
+  /// asks for it.
+  Uri buildDownloadUri(
+    String versionId, {
+    required String target,
+    required String api,
+  }) => _uri(
+    '/0/application/version/${Uri.encodeComponent(versionId)}/build/compatible',
+    {'target': target, 'api': api},
+  );
 
   Future<List<int>> fetchFapBuild(
     String versionId, {
@@ -150,12 +161,8 @@ class CatalogV0Api extends _CatalogProtocol {
         'AppsCatalogApi.target / .api must be set before fetching builds',
       );
     }
-    final uri = _uri('/application/version/$versionId/build/compatible', {
-      'target': t,
-      'api': a,
-    });
     return AppHttp.getBytes(
-      uri,
+      buildDownloadUri(versionId, target: t, api: a),
       headers: {io.HttpHeaders.userAgentHeader: userAgent},
       onProgress: onProgress,
     );

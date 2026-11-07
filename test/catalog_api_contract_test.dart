@@ -53,14 +53,14 @@ void main() {
         '/api/v1/application/version/unbuilt/build/compatible': {
           'detail': {'status': 'never'},
         },
-        '/api/v0/application/version/gone/build/compatible': {
+        '/api/v0/0/application/version/gone/build/compatible': {
           'detail': {
             'status': 'error',
             'code': 2001,
             'details': 'Application Version with id `gone` not found!',
           },
         },
-        '/api/v0/application/version/unbuilt/build/compatible': {
+        '/api/v0/0/application/version/unbuilt/build/compatible': {
           'detail': {
             'status': 'error',
             'code': 1008,
@@ -111,11 +111,11 @@ void main() {
         // The original v0 paths and bodies are tested through its protocol directly.
         case '/api/v0/sdk':
           key = 'v0_sdk';
-        case '/api/v0/category':
+        case '/api/v0/0/category':
           key = 'categories';
         case '/api/v0/0/application':
           key = 'list';
-        case '/api/v0/application/pair':
+        case '/api/v0/0/application/pair':
           key = 'detail';
         case '/api/v0/1/application':
           bodies.add(
@@ -360,9 +360,9 @@ void main() {
     expect(bodies.single.containsKey('ids'), isFalse);
     expect(requests.map((uri) => uri.path), [
       '/api/v0/sdk',
-      '/api/v0/category',
+      '/api/v0/0/category',
       '/api/v0/0/application',
-      '/api/v0/application/pair',
+      '/api/v0/0/application/pair',
       '/api/v0/1/application',
     ]);
     api.server = AppsCatalogApi.officialServer;
@@ -395,9 +395,9 @@ void main() {
       );
       expect(requests.map((uri) => uri.path), [
         '/api/v0/sdk',
-        '/api/v0/category',
+        '/api/v0/0/category',
         '/api/v0/0/application',
-        '/api/v0/application/pair',
+        '/api/v0/0/application/pair',
       ]);
     },
   );
