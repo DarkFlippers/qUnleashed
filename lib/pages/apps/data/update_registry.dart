@@ -274,6 +274,17 @@ class UpdateRegistry extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Requests go to another catalog now - another server, or another
+  /// protocol to the same one: what it says about the installed apps is
+  /// asked again. The apps on the Flipper are the same ones, so their
+  /// manifests are taken as they were read. Forcing them would read every
+  /// `.fim` off the Flipper again, one at a time, and the catalog would show
+  /// each app as not installed until its own came back.
+  Future<void> handleCatalogChange() async {
+    handleDeviceChange();
+    await refresh();
+  }
+
   @override
   void dispose() {
     manifests.removeListener(_recompute);

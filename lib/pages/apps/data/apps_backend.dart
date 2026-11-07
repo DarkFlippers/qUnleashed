@@ -102,10 +102,7 @@ class AppsBackend {
     await loadPreference();
     final previous = api.endpoint;
     await change();
-    if (previous != api.endpoint) {
-      updates.handleDeviceChange();
-      if (isReady) await updates.refresh(force: true);
-    }
+    if (previous != api.endpoint) await updates.handleCatalogChange();
   }
 
   Future<void> setPreference(CatalogModePreference value) =>
