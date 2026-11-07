@@ -116,6 +116,9 @@ class CatalogV1Api extends _CatalogProtocol {
     return out;
   }
 
+  /// [fresh] asks the server even when a copy younger than five minutes is
+  /// kept, and keeps what it answers: the screens that read the same card
+  /// next see it too, not the one it replaced.
   Future<AppDetail> fetchApp(
     String idOrAlias, {
     required CatalogFamily family,
@@ -127,7 +130,7 @@ class CatalogV1Api extends _CatalogProtocol {
         if (family.usesDevice) ..._apiParams(),
         'app': ?app,
       }),
-      ttl: fresh ? null : const Duration(minutes: 5),
+      ttl: fresh ? Duration.zero : const Duration(minutes: 5),
     ),
   );
 
