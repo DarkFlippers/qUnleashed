@@ -81,9 +81,6 @@ class CatalogBinarySource implements AppBinarySource {
       onProgress(BinaryStage.download, received / total);
     }
 
-    // Only Archivarius does not say what a file was built for. Then the API
-    // is what the official app writes (its getSdkApi): the version's, else
-    // the one asked for.
     try {
       final file = await api.fetchFapBuild(
         version.id,
@@ -92,7 +89,7 @@ class CatalogBinarySource implements AppBinarySource {
       );
       return BuiltFile(
         file.bytes,
-        buildApi: file.buildApi ?? version.currentBuild?.sdk?.api ?? api.api,
+        buildApi: file.buildApi ?? await _sdkApi(card, version),
       );
     } on AppHttpException catch (e) {
       if (e.statusCode != 404) rethrow;
@@ -113,6 +110,14 @@ class CatalogBinarySource implements AppBinarySource {
             : l10n.appsErrorNoBuild(api.api ?? '?'),
       );
     }
+  }
+
+  /// The API of a file from Archivarius, which does not say what it built it
+  /// for: what the official app writes there (its getSdkApi) - the
+  /// version's, else the catalog's current version's, else the one asked for.
+  Future<String?> _sdkApi(AppCard card, AppCurrentVersion version) async {
+    final known = await _appApi(card, version);
+    return known.isNotEmpty ? known : api.api;
   }
 
   Future<String> _appApi(AppCard card, AppCurrentVersion version) async {
