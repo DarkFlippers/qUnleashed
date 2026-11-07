@@ -407,7 +407,16 @@ void main() {
     () async {
       await expectLater(
         api.fetchFapBuild('gone'),
-        throwsA(isA<CatalogVersionGoneException>()),
+        throwsA(
+          isA<CatalogVersionGoneException>()
+              .having((e) => e.versionId, 'versionId', 'gone')
+              .having((e) => e.cause.statusCode, 'status', 404)
+              .having(
+                (e) => e.cause.body,
+                'body',
+                contains('Version not found'),
+              ),
+        ),
       );
       await expectLater(
         api.fetchFapBuild('unbuilt'),

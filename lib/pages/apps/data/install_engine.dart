@@ -367,8 +367,8 @@ class InstallEngine extends ChangeNotifier {
         BuiltFile fetched;
         try {
           fetched = await fetch(cv);
-        } on CatalogVersionGoneException {
-          cv = await _replacing(app, cv);
+        } on CatalogVersionGoneException catch (gone) {
+          cv = await _replacing(app, gone);
           fetched = await fetch(cv);
         }
         _throwIfCancelled(app.alias);
@@ -547,8 +547,8 @@ class InstallEngine extends ChangeNotifier {
 
       try {
         return await install(cv);
-      } on CatalogVersionGoneException {
-        return await install(await _replacing(app, cv));
+      } on CatalogVersionGoneException catch (gone) {
+        return await install(await _replacing(app, gone));
       }
     } catch (e) {
       if (e is _DeviceChangedException) rethrow;
@@ -980,12 +980,13 @@ class InstallEngine extends ChangeNotifier {
     }
   }
 
-  /// The version that took [gone]'s place in the catalog since [app]'s card
-  /// was read: its card read again, not the copy kept. One that names no
-  /// other version, or none with a build, is the error it was.
+  /// The version that took the place of the one [gone] names since [app]'s
+  /// card was read: its card read again, not the copy kept. One that names
+  /// no other version, or none with a build, fails with the 404 the server
+  /// sent, so what it said is what the install says.
   Future<AppCurrentVersion> _replacing(
     AppCard app,
-    AppCurrentVersion gone,
+    CatalogVersionGoneException gone,
   ) async {
     final detail = await api.fetchReplacement(
       app.alias,
@@ -996,12 +997,12 @@ class InstallEngine extends ChangeNotifier {
     final current = detail.card.currentVersion;
     if (current == null ||
         current.id.isEmpty ||
-        current.id == gone.id ||
+        current.id == gone.versionId ||
         current.currentBuild == null) {
-      throw CatalogVersionGoneException(gone.id);
+      throw gone.cause;
     }
     LogService.info(
-      '[InstallEngine] ${app.alias}: ${gone.id} is gone, '
+      '[InstallEngine] ${app.alias}: ${gone.versionId} is gone, '
       'installing ${current.id} (${current.version})',
     );
     return current;

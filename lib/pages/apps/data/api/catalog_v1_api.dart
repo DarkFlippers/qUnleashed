@@ -229,7 +229,7 @@ class CatalogV1Api extends _CatalogProtocol {
       file = await _signed(uri, onProgress: onProgress);
     } on AppHttpException catch (e) {
       if (e.statusCode == 404 && !saysNoBuild(e.body)) {
-        throw CatalogVersionGoneException(versionId);
+        throw CatalogVersionGoneException(versionId, e);
       }
       rethrow;
     }

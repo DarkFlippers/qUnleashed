@@ -127,12 +127,18 @@ enum CatalogFamily {
 /// card, read again. v0 never says this: the official app fails on any 404,
 /// and so does v0 here.
 class CatalogVersionGoneException implements Exception {
-  CatalogVersionGoneException(this.versionId);
+  CatalogVersionGoneException(this.versionId, this.cause);
 
   final String versionId;
 
+  /// The 404 that said so, as the server worded it: the error an install
+  /// fails with when nothing took the version's place. A body this app does
+  /// not know - a proxy's, an empty one - reads as gone too, and this is
+  /// what is left of it.
+  final AppHttpException cause;
+
   @override
-  String toString() => 'CatalogVersionGoneException($versionId)';
+  String toString() => 'CatalogVersionGoneException($versionId, $cause)';
 }
 
 /// Whether the body of a 404 from a v1 build download says the version is
