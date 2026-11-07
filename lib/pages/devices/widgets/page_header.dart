@@ -41,6 +41,27 @@ class DevicePageHeader extends StatelessWidget {
   /// The hero's own horizontal padding, which the button is outside of.
   static const _heroInset = 18.0;
 
+  /// The space above the hero always, and below it in the arrangement where
+  /// the button sits beside the hero rather than under it.
+  ///
+  /// The narrow row's mockup has carried its own 7 a side all along; the hero
+  /// never did, because until #418 it did not need to. It sat in the 114 the
+  /// page reserved - that same 7+100+7 - and `Align` centred the hero, 100
+  /// tall by its mockup's `SizedBox`, inside it. So the 7 a side was that
+  /// box's leftover at the default text scale, and from a scale of 1.3 the
+  /// hero was 123 in a 114 box and there was none left to leave: the overflow
+  /// #411 was about. Sizing the header to its content was the right answer to
+  /// that, and it took the leftover with it.
+  ///
+  /// 10 rather than the 7 it happened to be, judged at 900 and scale 1: there
+  /// the band is the hero's 100 plus this, and 7 read cramped against a 22 px
+  /// title. Below [_sideBySideWidth] the button takes a line of its own, so
+  /// the bottom edge is its `bottom: 14` and only the top is this one's.
+  /// `test/device_header_fit_test.dart` - 'the hero keeps a band above and
+  /// below it' - holds both edges at 900, which is what the old leftover
+  /// never had. #480.
+  static const _heroVerticalInset = 10.0;
+
   /// What the header keeps for the hero before the button may have anything,
   /// when the two are side by side.
   ///
@@ -104,7 +125,10 @@ class DevicePageHeader extends StatelessWidget {
             // reason the band below it cannot be solved by sharing the row
             // out differently.
             final hero = Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _heroInset),
+              padding: const EdgeInsets.symmetric(
+                horizontal: _heroInset,
+                vertical: _heroVerticalInset,
+              ),
               child: FlipperMockupHero(
                 active: active,
                 dfu: dfu,

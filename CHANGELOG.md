@@ -1,6 +1,7 @@
 ## Main changes
 - Version: 0.17.2
 ## Other changes
+- Fixed: on a wide window the device header drew the Flipper mockup flush against the top and bottom edges of the coloured band, with no room left around it; the spacing is back, and it is now a value of its own rather than the leftover of a header height that was removed two releases ago (by @mishamyte | PR #481 | Fixes #480)
 - Fixed: at a raised text-size setting the firmware card's "Update Channel" and "Build Variant" labels were drawn one character per line, as a column of letters that pushed the update button off the screen; a label and its value now share a line only while both fit it whole, and the label moves above the value instead of being squeezed (by @mishamyte | PR #473 | Fixes #463)
 - Interface: the device tab now reads "Device" with a coloured dot on its icon for the connection state, instead of fitting a status sentence into a quarter of the bar - which ignored a raised text-size setting in every locale and drew two different sync states as the same cut-down word; the state is still announced in full to screen readers (by @mishamyte | PR #462 | Closes #429)
 - Fixed: a Flipper terminal whose connection dropped while the cable stayed plugged in was never reopened, and the app dialled Bluetooth instead while the CLI page waited for a channel that was not coming back (by @mishamyte | PR #464 | Fixes #461)

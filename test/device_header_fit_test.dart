@@ -300,6 +300,34 @@ void main() {
     }
   });
 
+  // **The band above and below the hero, which nothing used to hold.** The
+  // 7 a side the hero had was the leftover of a header the page fixed at 114,
+  // not an inset anyone wrote; #418 was right to delete that height and took
+  // the spacing with it, and nothing here noticed for two releases. #480.
+  //
+  // 900, where the button is beside the hero rather than under it: there the
+  // header's bottom edge is the hero's padded bottom, so both edges are this
+  // layout's own. Below 720 the button takes a line underneath and only the
+  // top edge would still be the hero's to answer for.
+  testWidgets('the hero keeps a band above and below it', (tester) async {
+    expect(
+      await render(
+        tester,
+        900,
+        title: 'MyFlip42',
+        locale: const Locale('en'),
+        infoEntries: entries,
+        deviceInfo: info,
+      ),
+      isNull,
+    );
+
+    final header = tester.getRect(find.byType(DevicePageHeader));
+    final hero = tester.getRect(find.byType(FlipperMockupHero));
+    expect(hero.top - header.top, closeTo(10, 0.01));
+    expect(header.bottom - hero.bottom, closeTo(10, 0.01));
+  });
+
   group('the hero and its button keep out of each other', () {
     /// The UID line's box and the button's, which is the whole question.
     ///
