@@ -81,9 +81,22 @@ class KnownDevice {
     final id = json['id'];
     final name = json['name'];
     if (id is! String || name is! String) return null;
-    final lastConnectedAt = DateTime.tryParse(
-      json['lastConnectedAt'] as String? ?? '',
-    );
+    // Tested like [id] and [name] above, not cast. It was
+    // `json['lastConnectedAt'] as String? ?? ''`, which answers null for an
+    // absent field and **throws** for a present one of the wrong type - so a
+    // single entry carrying `"lastConnectedAt": 5` did not cost that entry,
+    // it threw a `TypeError` out of `_load`'s parse loop and cost the whole
+    // store, reported as `load failed` with no count and no retry. That is
+    // the opposite of what every other line on this path is built for, and
+    // ADR 0005 is the rule it broke: read entry by entry, and name what was
+    // skipped.
+    //
+    // Both readings of absence stay as they were: a missing field and an
+    // unparseable string are the same null answer, which `_load` counts as
+    // unreadable. #466
+    final storedAt = json['lastConnectedAt'];
+    if (storedAt is! String) return null;
+    final lastConnectedAt = DateTime.tryParse(storedAt);
     if (lastConnectedAt == null) return null;
     return KnownDevice(id: id, name: name, lastConnectedAt: lastConnectedAt);
   }
@@ -181,16 +194,43 @@ class KnownDevicesStore extends ChangeNotifier {
       // the one exit outside that: it writes nothing, which is only harmless
       // because the field starts and resets to `const []`.
       //
-      // Silent, and in the first case not even a degradation: a store nobody
-      // has written yet is the ordinary first launch. The second case is a
-      // degradation and the silence there is not defended - it is older than
-      // this method's rewrite and wants its own fix.
+      // Silent, and not a degradation: a store nobody has written yet is the
+      // ordinary first launch. The branch after it ends with the same empty
+      // list and is nothing like it, which is what #466 was about.
       if (raw == null) {
         _replace(const []);
         return;
       }
       final decoded = jsonDecode(raw);
       if (decoded is! List) {
+        // **The largest loss on this path, and the only silent one.** No entry
+        // survives, so the picker's list is empty and [lastDevice] is null -
+        // which takes the Bluetooth auto-connect with it, that being its
+        // target - and the first [remember] afterwards writes the emptiness
+        // over the stored array for good. Not because it is larger than the
+        // three drops below - each of those is unbounded too, and the
+        // unreadable one reaches this same end state when no entry in the
+        // store can be read. What is different is that it is *always* the
+        // whole store, where they are sometimes, and that it was the one on
+        // this path that said nothing in any build.
+        //
+        // What arrives here is valid JSON that is not an array: a restored
+        // backup, a hand-edited prefs file, or a `{"v":2,"devices":[...]}`
+        // from a future build - the same forward-compatible inputs the cap's
+        // comment below goes to some length to stay lossless for. Which of
+        // those it was is the thing a reader needs and the thing a count
+        // cannot carry, so the shape is named and the value never is: an
+        // entry holds a Bluetooth address.
+        //
+        // `caught` rather than the `warn` the `catch` uses, although both can
+        // lose the same everything. The split is exception against data: a
+        // throw is a fault, where this is a file this method could read and
+        // declined to trust - the same judgement, and so the same level, as
+        // the three drops below. #466
+        LogService.caught(
+          '[KnownDevices] discarded the whole stored list: expected a JSON '
+          'array, got ${_jsonShape(decoded)}',
+        );
         _replace(const []);
         return;
       }
@@ -281,11 +321,72 @@ class KnownDevicesStore extends ChangeNotifier {
           'remembered devices over the cap of $_maxEntries, oldest first',
         );
       }
-      notifyListeners();
-    } catch (e) {
-      LogService.warn('[KnownDevices] load failed: $e');
+    } catch (e, st) {
+      // With the stack, for the reason [_persist] gives further down the same
+      // class. This `try` runs from `SharedPreferences.getInstance()` to the
+      // end of the cap report above, and the message alone does not say which
+      // of the three faults that can reach here ran:
+      //
+      //  * a `PlatformException` out of the platform channel;
+      //  * a `TypeError` out of `getString`, which is
+      //    `_preferenceCache[key] as String?` - a cast and not a checked read,
+      //    so a key holding anything but a string throws instead of answering
+      //    null. `prefs_reader.dart`'s doc is where this project writes that
+      //    down, and the inputs it names there are the ones the
+      //    `decoded is! List` branch above is for: an older build that wrote
+      //    the key differently, a platform-side migration, an edited plist.
+      //    It ends here rather than in a branch of its own because there is no
+      //    list to read either way - what the branch above has and this does
+      //    not is a shape worth naming;
+      //  * a `FormatException` out of [jsonDecode].
+      //
+      // None of the three names itself, and a `PlatformException` arrives with
+      // none of that in its message.
+      //
+      // Three, and not the three #466 counted. A `TypeError` out of the parse
+      // loop was on its list and is now [KnownDevice.fromJson]'s business,
+      // where it costs one entry instead of the store. The fourth it counted
+      // was a listener throwing out of [notifyListeners] - where the load had
+      // in fact succeeded and `_devices` was written, so this line would have
+      // been false - and that one was never reachable:
+      // `ChangeNotifier.notifyListeners` wraps each listener and routes a
+      // throw to `FlutterError.reportError`, so nothing comes back out of it.
+      // [notifyListeners] moved below the `try` anyway, which costs one
+      // `return` and makes the scope this comment claims true by construction
+      // rather than by an argument about another library's internals.
+      //
+      // `warn` and not [LogService.error], which is the level [_persist] uses:
+      // a write that fails loses what the user just did, where a read that
+      // fails loses the order of a list they can rebuild by connecting. Once
+      // per process either way - [load] memoises, so a store that failed to
+      // load stays failed, and empty, for the life of the app with nothing
+      // retrying. That is the half of #466 left standing, and it is why this
+      // line has to carry enough to act on the first time.
+      LogService.warn(
+        '[KnownDevices] load failed: ${LogService.describe(e, st)}',
+      );
+      return;
     }
+    notifyListeners();
   }
+
+  /// Names [decoded]'s JSON shape, for the one line that reports a stored list
+  /// this class would not read.
+  ///
+  /// Not `runtimeType`: `jsonDecode` answers with private classes - a parsed
+  /// object is `_Map<String, dynamic>` or `_JsonMap` depending on which path
+  /// inside `dart:convert` ran - so the type name is noise to a reader and not
+  /// something a case can assert on. The arms cover every JSON shape but the
+  /// array, which the `is! List` above has already taken; the default is for
+  /// the day that stops being true.
+  static String _jsonShape(Object? decoded) => switch (decoded) {
+    null => 'null',
+    Map() => 'an object',
+    String() => 'a string',
+    num() => 'a number',
+    bool() => 'a boolean',
+    _ => '${decoded.runtimeType}',
+  };
 
   /// [parsed] sorted newest first, which is the order [_replace] then keeps.
   ///
