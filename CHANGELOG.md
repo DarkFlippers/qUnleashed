@@ -1,3 +1,3 @@
 ## Main changes
-- Version: 0.18.0
+- Version: 0.17.3
 ## Other changes
