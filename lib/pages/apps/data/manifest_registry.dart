@@ -64,6 +64,7 @@ class ManifestRegistry extends ChangeNotifier {
   Future<void> _refresh({required bool force}) async {
     final token = client.deviceToken;
     _loading = true;
+    _changed.clear();
     notifyListeners();
     try {
       if (_byAlias.isEmpty) await _loadCache();
@@ -81,11 +82,16 @@ class ManifestRegistry extends ChangeNotifier {
       }
       if (token.isStale) return;
 
-      final prevManifests = Map<String, AppManifest>.from(_byAlias);
-      final prevMd5 = Map<String, String>.from(_md5);
-      _byUid.clear();
-      _byAlias.clear();
-      _md5.clear();
+      // The new list is built beside the one shown, which stays whole until
+      // this one is. Cleared first, it left every app not yet read again
+      // looking not installed for as long as the reads over BLE took, and
+      // the catalog offered to install apps that were on the Flipper. What
+      // is read is still shown as it comes, so a first read fills the
+      // screen as before; only an app gone from the Flipper waits for the
+      // end to go.
+      final byAlias = <String, AppManifest>{};
+      final byUid = <String, AppManifest>{};
+      final md5s = <String, String>{};
 
       var reused = 0;
       var read = 0;
@@ -97,12 +103,10 @@ class ManifestRegistry extends ChangeNotifier {
           if (alias.isEmpty) continue;
 
           final md5 = f.md5sum;
+          final known = _byAlias[alias];
           AppManifest? manifest;
-          if (!force &&
-              md5.isNotEmpty &&
-              prevMd5[alias] == md5 &&
-              prevManifests[alias] != null) {
-            manifest = prevManifests[alias];
+          if (!force && md5.isNotEmpty && _md5[alias] == md5 && known != null) {
+            manifest = known;
             reused++;
           } else {
             manifest = await _readManifest('$root/${f.name}');
@@ -110,12 +114,33 @@ class ManifestRegistry extends ChangeNotifier {
             read++;
           }
           if (manifest != null) {
+            _indexInto(byAlias, byUid, alias, manifest);
+            if (md5.isNotEmpty) md5s[alias] = md5;
             _index(alias, manifest);
-            if (md5.isNotEmpty) _md5[alias] = md5;
           }
           notifyListeners();
         }
       }
+      // An install or a delete that ended while the list was read is newer
+      // than the list. Its file is read again on the next refresh.
+      for (final MapEntry(key: alias, value: manifest) in _changed.entries) {
+        md5s.remove(alias);
+        if (manifest != null) {
+          _indexInto(byAlias, byUid, alias, manifest);
+        } else {
+          final gone = byAlias.remove(alias);
+          if (gone != null && byUid[gone.uid] == gone) byUid.remove(gone.uid);
+        }
+      }
+      _byAlias
+        ..clear()
+        ..addAll(byAlias);
+      _byUid
+        ..clear()
+        ..addAll(byUid);
+      _md5
+        ..clear()
+        ..addAll(md5s);
       _loaded = true;
       _failed = false;
       LogService.info(
@@ -124,25 +149,40 @@ class ManifestRegistry extends ChangeNotifier {
       await _saveCache();
     } catch (e) {
       // _loaded is not cleared here, so after one good refresh a later
-      // failure leaves it true. The maps are cleared inside the try, so what
-      // survives is the previous list if storageList threw and a partial one
-      // if anything below it did. On a cold start with no cache it read as
-      // an ordinary empty catalogue - which is what [failed] is for.
+      // failure leaves it true. Nothing shown is taken away before the new
+      // list is whole, so what survives is the previous list, with what was
+      // read before the failure added to it. On a cold start with no cache it
+      // read as an ordinary empty catalogue - which is what [failed] is for.
       _failed = true;
       LogService.warn('[Manifests] refresh failed: $e');
     } finally {
       _loading = false;
+      _changed.clear();
       notifyListeners();
     }
   }
 
-  void _index(String alias, AppManifest manifest) {
-    _byAlias[alias] = manifest;
-    if (manifest.uid.isNotEmpty) _byUid[manifest.uid] = manifest;
+  void _index(String alias, AppManifest manifest) =>
+      _indexInto(_byAlias, _byUid, alias, manifest);
+
+  static void _indexInto(
+    Map<String, AppManifest> byAlias,
+    Map<String, AppManifest> byUid,
+    String alias,
+    AppManifest manifest,
+  ) {
+    byAlias[alias] = manifest;
+    if (manifest.uid.isNotEmpty) byUid[manifest.uid] = manifest;
   }
+
+  /// What [put] and [removeAlias] did while a refresh was reading the list,
+  /// alias -> the manifest put, or null for one removed: applied to the new
+  /// list before it takes the place of the one shown.
+  final Map<String, AppManifest?> _changed = {};
 
   void put(String alias, AppManifest manifest) {
     _index(alias, manifest);
+    if (_loading) _changed[alias] = manifest;
     unawaited(guarded('[Manifests] save cache', _saveCache));
     notifyListeners();
   }
@@ -151,6 +191,7 @@ class ManifestRegistry extends ChangeNotifier {
     final m = _byAlias.remove(alias);
     if (m != null && m.uid.isNotEmpty) _byUid.remove(m.uid);
     _md5.remove(alias);
+    if (_loading) _changed[alias] = null;
     unawaited(guarded('[Manifests] save cache', _saveCache));
     notifyListeners();
   }

@@ -196,4 +196,69 @@ void main() {
       expect(manifests.byUid('5607f1a9fef11f5e27bfc1de'), isNotNull);
     });
   });
+
+  group('a refresh that reads every manifest again', () {
+    const usb = '5607f1a9fef11f5e27bfc1de';
+
+    /// Starts a forced refresh and returns once it is held on its first
+    /// read, with the list it read already taken.
+    Future<({Future<void> done})> heldRefresh() async {
+      flipper.gate = Completer<void>();
+      final before = flipper.reads.length;
+      final running = manifests.refresh(force: true);
+      while (flipper.reads.length == before) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      return (done: running);
+    }
+
+    // Cleared first, an app read later in the pass looked not installed
+    // until its own .fim came back, and the catalog offered to install it.
+    test('keeps every installed app found while it reads', () async {
+      await manifests.refresh();
+      final running = (await heldRefresh()).done;
+
+      expect(manifests.loading, isTrue);
+      expect(manifests.byUid(usb), isNotNull);
+      expect(manifests.byAlias('other'), isNotNull);
+
+      flipper.gate!.complete();
+      await running;
+      expect(manifests.byUid(usb), isNotNull);
+    });
+
+    test(
+      'lets an app gone from the Flipper go once the list is read',
+      () async {
+        await manifests.refresh();
+        flipper.files.remove('other.fim');
+        final running = (await heldRefresh()).done;
+        expect(
+          manifests.byAlias('other'),
+          isNotNull,
+          reason: 'not before the end',
+        );
+
+        flipper.gate!.complete();
+        await running;
+        expect(manifests.byAlias('other'), isNull);
+        expect(manifests.byUid(usb), isNotNull);
+      },
+    );
+
+    test('keeps an install that ended while it read', () async {
+      await manifests.refresh();
+      final running = (await heldRefresh()).done;
+      final installed = AppManifest(
+        uid: '64971d11577d519190ede5c5',
+        path: '/ext/apps/Tools/fresh.fap',
+      );
+      manifests.put('fresh', installed);
+
+      flipper.gate!.complete();
+      await running;
+      expect(manifests.byAlias('fresh'), same(installed));
+      expect(manifests.byUid('64971d11577d519190ede5c5'), same(installed));
+    });
+  });
 }
