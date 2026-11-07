@@ -402,28 +402,41 @@ void main() {
     },
   );
 
-  test('a build download tells a version that is gone from no build', () async {
-    for (final protocol in CatalogProtocol.values) {
-      api.protocol = protocol;
+  test(
+    'a v1 build download tells a version that is gone from no build',
+    () async {
       await expectLater(
         api.fetchFapBuild('gone'),
         throwsA(isA<CatalogVersionGoneException>()),
-        reason: protocol.name,
       );
       await expectLater(
         api.fetchFapBuild('unbuilt'),
         throwsA(
           isA<AppHttpException>().having((e) => e.statusCode, 'status', 404),
         ),
-        reason: protocol.name,
       );
-    }
-  });
+    },
+  );
 
-  test('what a 404 body says about the build', () {
+  test(
+    'v0 hands every build 404 back as it came, as the official app does',
+    () async {
+      api.protocol = CatalogProtocol.v0;
+      for (final id in ['gone', 'unbuilt']) {
+        await expectLater(
+          api.fetchFapBuild(id),
+          throwsA(
+            isA<AppHttpException>().having((e) => e.statusCode, 'status', 404),
+          ),
+          reason: id,
+        );
+      }
+    },
+  );
+
+  test('what a v1 404 body says about the build', () {
     expect(saysNoBuild('{"detail":{"status":"never"}}'), isTrue);
-    expect(saysNoBuild('{"detail":{"status":"error","code":1008}}'), isTrue);
-    expect(saysNoBuild('{"detail":{"status":"error","code":2001}}'), isFalse);
+    expect(saysNoBuild('{"detail":{"status":"failed"}}'), isTrue);
     expect(saysNoBuild('{"detail":"Version not found"}'), isFalse);
     expect(saysNoBuild('{"detail":"Not Found"}'), isFalse);
     expect(saysNoBuild('not json'), isFalse);

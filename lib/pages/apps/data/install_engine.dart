@@ -987,11 +987,10 @@ class InstallEngine extends ChangeNotifier {
     AppCard app,
     AppCurrentVersion gone,
   ) async {
-    final detail = await api.fetchApp(
+    final detail = await api.fetchReplacement(
       app.alias,
       family: _familyOf(app),
       app: app.selectedAppId,
-      fresh: true,
     );
     _throwIfCancelled(app.alias);
     final current = detail.card.currentVersion;

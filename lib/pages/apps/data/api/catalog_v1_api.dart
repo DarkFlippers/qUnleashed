@@ -210,7 +210,9 @@ class CatalogV1Api extends _CatalogProtocol {
 
   /// The file, and the API it was built for, which our servers send with
   /// every built file: one without it is an error, as a status without
-  /// dev_catalog is.
+  /// dev_catalog is. A 404 with a build status is no build for the API asked
+  /// and stays an [AppHttpException]; any other is a version the catalog no
+  /// longer has, [CatalogVersionGoneException].
   Future<BuiltFile> fetchBuild(
     String versionId, {
     CatalogFamily family = CatalogFamily.apps,
@@ -222,7 +224,15 @@ class CatalogV1Api extends _CatalogProtocol {
       throw StateError('Set target and api before fetching builds');
     }
     final uri = buildDownloadUri(versionId, api: a, target: t, family: family);
-    final file = await _signed(uri, onProgress: onProgress);
+    final ({Uint8List bytes, Map<String, String> headers}) file;
+    try {
+      file = await _signed(uri, onProgress: onProgress);
+    } on AppHttpException catch (e) {
+      if (e.statusCode == 404 && !saysNoBuild(e.body)) {
+        throw CatalogVersionGoneException(versionId);
+      }
+      rethrow;
+    }
     final built = BuiltFile.apiIn(file.headers);
     if (built == null) {
       throw AppsCatalogException(

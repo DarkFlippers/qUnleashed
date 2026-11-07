@@ -122,9 +122,10 @@ enum CatalogFamily {
   }
 }
 
-/// A build download for a version the catalog no longer has: replaced by a
-/// newer one since its card was read. What the catalog has now is in its
-/// card, read again.
+/// A v1 build download for a version the catalog no longer has: replaced by
+/// a newer one since its card was read. What the catalog has now is in its
+/// card, read again. v0 never says this: the official app fails on any 404,
+/// and so does v0 here.
 class CatalogVersionGoneException implements Exception {
   CatalogVersionGoneException(this.versionId);
 
@@ -134,10 +135,9 @@ class CatalogVersionGoneException implements Exception {
   String toString() => 'CatalogVersionGoneException($versionId)';
 }
 
-/// Whether the body of a 404 from a build download says the version is there
-/// without a build for what was asked: Archivarius's code 1008, or a build
-/// status from our servers (`{"detail": {"status": "never"}}`). Every other
-/// 404 there is a version that is gone: Archivarius's code 2001, our v1's
+/// Whether the body of a 404 from a v1 build download says the version is
+/// there without a build for what was asked: a build status,
+/// `{"detail": {"status": "never"}}`. Any other is a version that is gone,
 /// "Version not found".
 bool saysNoBuild(String? body) {
   Object? detail;
@@ -147,9 +147,7 @@ bool saysNoBuild(String? body) {
   } on FormatException {
     return false;
   }
-  if (detail is! Map) return false;
-  final status = detail['status'];
-  return detail['code'] == 1008 || (status is String && status != 'error');
+  return detail is Map && detail['status'] is String;
 }
 
 class CatalogNeedsV1Exception implements Exception {
@@ -444,17 +442,13 @@ class AppsCatalogApi {
     return _official((api) => api.fetchAppsByUids(uids, sortBy: sortBy));
   }
 
-  /// [fresh] asks the catalog, not the copy kept for five minutes.
   Future<AppDetail> fetchApp(
     String idOrAlias, {
     bool? isLatestReleaseVersion,
     CatalogFamily family = CatalogFamily.apps,
     String? app,
-    bool fresh = false,
   }) async {
-    if (hasV1) {
-      return _v1.fetchApp(idOrAlias, family: family, app: app, fresh: fresh);
-    }
+    if (hasV1) return _v1.fetchApp(idOrAlias, family: family, app: app);
     if (family != CatalogFamily.apps) {
       throw CatalogNeedsV1Exception(server, family: family);
     }
@@ -462,10 +456,18 @@ class AppsCatalogApi {
       (api) => api.fetchApp(
         idOrAlias,
         isLatestReleaseVersion: isLatestReleaseVersion,
-        fresh: fresh,
       ),
     );
   }
+
+  /// The card as the catalog has it now, not the copy kept for five minutes:
+  /// what took the place of a version a build download said is gone. Only v1
+  /// says that ([CatalogVersionGoneException]), so only v1 is asked.
+  Future<AppDetail> fetchReplacement(
+    String idOrAlias, {
+    required CatalogFamily family,
+    String? app,
+  }) => _v1.fetchApp(idOrAlias, family: family, app: app, fresh: true);
 
   Future<CatalogSearch> search(String query, {int limit = 36}) async =>
       _v1.search(query, limit: limit);
@@ -499,61 +501,40 @@ class AppsCatalogApi {
   }
 
   /// The file and, from our servers, the API it was built for; Archivarius
-  /// does not say. A 404 is an [AppHttpException] when there is no build for
-  /// the API asked, and [CatalogVersionGoneException] when the version itself
-  /// is gone.
+  /// does not say. A 404 is an [AppHttpException]; on v1, one for a version
+  /// the catalog has replaced since is [CatalogVersionGoneException].
   Future<BuiltFile> fetchFapBuild(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
     CatalogFamily family = CatalogFamily.apps,
-  }) => _build(
-    versionId,
-    () async => hasV1
-        ? _v1.fetchBuild(
+  }) async => hasV1
+      ? _v1.fetchBuild(
+          versionId,
+          family: family,
+          onProgress: onProgress,
+          apiOverride: apiOverride,
+        )
+      : BuiltFile(
+          await _v0.fetchFapBuild(
             versionId,
-            family: family,
             onProgress: onProgress,
             apiOverride: apiOverride,
-          )
-        : BuiltFile(
-            await _v0.fetchFapBuild(
-              versionId,
-              onProgress: onProgress,
-              apiOverride: apiOverride,
-            ),
-            buildApi: null,
           ),
-  );
+          buildApi: null,
+        );
 
   /// As [fetchFapBuild], for a menu style.
   Future<BuiltFile> fetchMenuStyleBuild(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
     String? apiOverride,
-  }) => _build(
+  }) => _v1.fetchBuild(
     versionId,
-    () => _v1.fetchBuild(
-      versionId,
-      family: CatalogFamily.menuStyles,
-      onProgress: onProgress,
-      apiOverride: apiOverride,
-    ),
+    family: CatalogFamily.menuStyles,
+    onProgress: onProgress,
+    apiOverride: apiOverride,
   );
-
-  static Future<BuiltFile> _build(
-    String versionId,
-    Future<BuiltFile> Function() fetch,
-  ) async {
-    try {
-      return await fetch();
-    } on AppHttpException catch (e) {
-      if (e.statusCode == 404 && !saysNoBuild(e.body)) {
-        throw CatalogVersionGoneException(versionId);
-      }
-      rethrow;
-    }
-  }
 
   /// Whether what this catalog serves is built for a development firmware,
   /// which an installed app's `.fim` records as DevCatalog. Our servers say
