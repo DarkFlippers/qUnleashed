@@ -1,7 +1,7 @@
 import 'dart:io' as io;
 
-import '../../../../components/path.dart';
-import '../../../../services/storage/paths.dart';
+import '../../path.dart';
+import '../../../services/storage/paths.dart';
 
 /// Per-animation settings as stored in a Flipper `manifest.txt`
 /// (`Filetype: Flipper Animation Manifest`). Mirrors the editable fields of
@@ -143,22 +143,19 @@ abstract final class DolphinManifest {
     final sb = StringBuffer(header);
     for (final e in selected) {
       sb
-        ..write('\nName: ')
-        ..write(e.name)
-        ..write('\nMin butthurt: ')
-        ..write(e.minButthurt)
-        ..write('\nMax butthurt: ')
-        ..write(e.maxButthurt)
-        ..write('\nMin level: ')
-        ..write(e.minLevel)
-        ..write('\nMax level: ')
-        ..write(e.maxLevel)
-        ..write('\nWeight: ')
-        ..write(e.weight)
-        ..write('\n');
+        ..write('\n')
+        ..write(block(e));
     }
     return sb.toString();
   }
+
+  static String block(ManifestEntry e) =>
+      'Name: ${e.name}\n'
+      'Min butthurt: ${e.minButthurt}\n'
+      'Max butthurt: ${e.maxButthurt}\n'
+      'Min level: ${e.minLevel}\n'
+      'Max level: ${e.maxLevel}\n'
+      'Weight: ${e.weight}\n';
 
   /// Loads the manifest mirrored from the device on the last import
   /// (`Animations/dolphin/manifest.txt`). Returns an empty map when the folder

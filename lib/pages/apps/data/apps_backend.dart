@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 
-import 'atp/atp_source.dart';
+import 'animation_files.dart';
 import 'binary_sources.dart';
 import 'catalog_api.dart';
 import 'catalog_context.dart';
 import 'catalog_mode.dart';
+import 'catalog_server.dart';
 import 'device_source.dart';
+import 'dolphin_registry.dart';
 import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
@@ -26,22 +28,31 @@ class AppsBackend {
 
   final FlipperClient client = FlipperOneClient().get();
   final AppsCatalogApi api = AppsCatalogApi();
-  final AtpSource atp = AtpSource.instance;
 
   late final CatalogContext catalog = CatalogContext(client: client, api: api);
 
   late final ManifestRegistry manifests = ManifestRegistry(client: client);
-  late final AppSourceRegistry sources = AppSourceRegistry(
-    catalog: CatalogBinarySource(api: api, catalog: catalog),
-    atp: AtpBinarySource(atp),
+  late final DolphinRegistry dolphin = DolphinRegistry(client: client);
+  late final ManifestRegistry styleManifests = ManifestRegistry(
+    client: client,
+    root: kMenuStyleManifestsRoot,
+    cached: false,
+  );
+  bool _menuStylesWanted = false;
+  late final AnimationFiles animationFiles = AnimationFiles(api: api);
+  late final CatalogBinarySource source = CatalogBinarySource(
+    api: api,
+    catalog: catalog,
   );
   late final InstallEngine engine = InstallEngine(
     client: client,
     api: api,
     manifests: manifests,
     catalog: catalog,
-    sources: sources,
+    source: source,
     onInstalled: _adoptInstalled,
+    dolphin: dolphin,
+    styleManifests: styleManifests,
   );
   late final DeviceSource device = DeviceSource(
     client: client,
@@ -70,17 +81,30 @@ class AppsBackend {
   CatalogModePreference get preference => catalog.preference;
   (int, int)? get targetSdk => catalog.targetSdk;
 
-  Future<void> resolveMode({bool force = false}) async {
-    await catalog.resolveMode(force: force);
-    await ensureIndex();
-  }
+  Future<void> resolveMode({bool force = false}) =>
+      catalog.resolveMode(force: force);
 
-  Future<void> ensureIndex() async {
-    atp.bindTarget(deviceTarget);
-    await atp.ensureLoaded();
+  Future<void> watchMenuStyles() {
+    _menuStylesWanted = true;
+    return styleManifests.ensureFresh();
   }
 
   Future<void> loadPreference() => catalog.loadPreference();
+  Future<void> setServer(String server) =>
+      _switching(() => catalog.setServer(server));
+
+  Future<void> setProtocol(CatalogProtocol protocol) =>
+      _switching(() => catalog.setProtocol(protocol));
+
+  /// Updates were looked up in the catalog requests went to before [change]:
+  /// another one is asked again.
+  Future<void> _switching(Future<void> Function() change) async {
+    await loadPreference();
+    final previous = api.endpoint;
+    await change();
+    if (previous != api.endpoint) await updates.handleCatalogChange();
+  }
+
   Future<void> setPreference(CatalogModePreference value) =>
       catalog.setPreference(value);
 
@@ -105,6 +129,8 @@ class AppsBackend {
       catalog.resetDeviceState();
       catalog.resolvedForDeviceId = null;
       manifests.handleDeviceChange();
+      dolphin.handleDeviceChange();
+      styleManifests.handleDeviceChange();
       device.handleDeviceChange();
       updates.handleDeviceChange();
       engine.handleDeviceChange();
@@ -114,6 +140,8 @@ class AppsBackend {
       catalog.resolvedForDeviceId = null;
       catalog.mode.value = CatalogMode.normal;
       manifests.handleDisconnect();
+      dolphin.handleDisconnect();
+      styleManifests.handleDisconnect();
       device.handleDisconnect();
       updates.handleDisconnect();
       // A link that is coming back — a reconnect, a connect attempt or a mode
@@ -127,6 +155,12 @@ class AppsBackend {
     // Not after a switch: the caches were just emptied for the new Flipper, and
     // handleConnect exists to re-check a device that may have changed while the
     // link was down - a different question, already answered.
+    dolphin.handleConnect();
+    if (_menuStylesWanted) {
+      unawaited(
+        guarded('[AppsBackend] read menu styles', styleManifests.ensureFresh),
+      );
+    }
     if (state.event != FlipperConnectionEvent.deviceChanged) {
       device.handleConnect();
       engine.handleConnect();

@@ -3,7 +3,7 @@ import '../pages/about/page.dart';
 import '../pages/archive/map/page.dart';
 import '../pages/flibler/page.dart';
 import '../pages/flibler/project/page.dart';
-import '../pages/option/pages/flibler.dart';
+import '../pages/option/pages/apps.dart';
 import '../pages/option/pages/map.dart';
 import '../pages/option/page.dart';
 import '../pages/tools/paint/editor/page.dart';
@@ -40,6 +40,6 @@ void registerAppRoutes() {
   );
   registerRoute(
     AppRoute.assemblerSettings,
-    (_, args) => AssemblerSettingsPage(fromConsole: args == true),
+    (_, args) => AppsSettingsPage(fromConsole: args == true, focusBuild: true),
   );
 }

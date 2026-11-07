@@ -509,6 +509,31 @@ class AppHttp {
     return out.takeBytes();
   });
 
+  static Future<HttpBytes> getBytesWithHeaders(
+    Uri uri, {
+    Map<String, String> headers = const {},
+    void Function(int received, int? total)? onProgress,
+  }) => _observed('GET', uri, (noteStatus) async {
+    final res = await get(uri, headers: headers);
+    noteStatus(res.statusCode);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final text = await utf8.decoder.bind(_untilStalled(res, uri)).join();
+      throw AppHttpException(res.statusCode, uri.toString(), text);
+    }
+    final total = res.contentLength > 0 ? res.contentLength : null;
+    final out = BytesBuilder(copy: false);
+    onProgress?.call(0, total);
+    await for (final chunk in _untilStalled(res, uri)) {
+      out.add(chunk);
+      onProgress?.call(out.length, total);
+    }
+    final responseHeaders = <String, String>{};
+    res.headers.forEach((name, values) {
+      responseHeaders[name.toLowerCase()] = values.join(',');
+    });
+    return (bytes: out.takeBytes(), headers: responseHeaders);
+  });
+
   static Future<void> downloadToFile(
     Uri uri,
     String savePath, {
@@ -708,3 +733,5 @@ class _JsonCacheEntry {
     } catch (_) {}
   }
 }
+
+typedef HttpBytes = ({Uint8List bytes, Map<String, String> headers});

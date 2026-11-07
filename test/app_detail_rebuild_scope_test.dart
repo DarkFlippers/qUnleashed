@@ -137,7 +137,11 @@ void main() {
       wrapWithDevice(
         Stack(
           children: [
-            AppDetailPage(alias: 'test-app', controller: controller),
+            AppDetailPage(
+              alias: 'test-app',
+              controller: controller,
+              family: CatalogFamily.apps,
+            ),
             DeviceScopeProbe(onBuild: () => scopeBuilds++),
           ],
         ),
@@ -213,6 +217,9 @@ class _FixedApi extends AppsCatalogApi {
   Future<AppDetail> fetchApp(
     String idOrAlias, {
     bool? isLatestReleaseVersion,
+    CatalogFamily family = CatalogFamily.apps,
+    String? app,
+    bool fresh = false,
   }) async => detail;
 }
 

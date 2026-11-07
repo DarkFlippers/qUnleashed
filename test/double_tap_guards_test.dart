@@ -738,7 +738,6 @@ void main() {
   // written to close.
   group('the sites that guard with a flag', () {
     const guards = {
-      'lib/pages/apps/manager/install_page.dart': '_preparingSheet.add(',
       'lib/pages/tools/remote/desktop/page.dart':
           'if (_openingWristSettings) return;',
       'lib/pages/archive/overview/category/favorites_page.dart': 'ok == null',

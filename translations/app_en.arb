@@ -346,7 +346,7 @@
     "description": "Title of the apps settings screen, and of its tile on the Settings screen."
   },
 
-  "settingsAppsSubtitle": "Catalog mode, firmware API compatibility",
+  "settingsAppsSubtitle": "Catalog, firmware API, building from source",
   "@settingsAppsSubtitle": {
     "description": "Subtitle under the Apps tile on the Settings screen."
   },
@@ -675,6 +675,15 @@
   "@appsCatalogApis": {
     "description": "Heading above the list of firmware API versions the catalog can serve."
   },
+  "appsApiInUse": "{api} (in use)",
+  "@appsApiInUse": {
+    "description": "Marks, in Settings -> Apps, the catalog API version the app actually requests apps for. {api} is a version such as 87.1.",
+    "placeholders": {
+      "api": {
+        "type": "String"
+      }
+    }
+  },
 
   "appsRecheck": "Re-check",
   "@appsRecheck": {
@@ -894,6 +903,10 @@
   "fliblerCustomIndexTitle": "Custom SDK index",
   "@fliblerCustomIndexTitle": {
     "description": "Title of the dialog asking for a custom SDK index URL."
+  },
+  "fliblerInvalidIndexUrl": "Enter an http:// or https:// link to a directory.json",
+  "@fliblerInvalidIndexUrl": {
+    "description": "Error under the custom SDK index field in Settings -> Apps when the text is not an http(s) link."
   },
 
   "fliblerDownloadingSdk": "Downloading SDK…",
@@ -1324,6 +1337,10 @@
   "remoteEmptyArtifact": "Build server returned an empty artifact",
   "@remoteEmptyArtifact": {
     "description": "Error shown when the finished build downloaded as an empty file."
+  },
+  "remoteNoBuildApi": "Build server did not say which firmware API it built for",
+  "@remoteNoBuildApi": {
+    "description": "Error shown when the finished build came without the firmware API version it was built for, which the installed app's manifest needs."
   },
 
   "remoteUnexpectedResponse": "Unexpected build server response",
@@ -2827,22 +2844,22 @@
     "description": "Filter chip that clears the category filter."
   },
 
-  "sortNewUpdates": "New Updates",
+  "sortNewUpdates": "Recently updated",
   "@sortNewUpdates": {
     "description": "Sort order: recently updated apps first."
   },
 
-  "sortNewReleases": "New Releases",
+  "sortNewReleases": "Newest",
   "@sortNewReleases": {
     "description": "Sort order: recently published apps first."
   },
 
-  "sortOldUpdates": "Old Updates",
+  "sortOldUpdates": "Least recently updated",
   "@sortOldUpdates": {
     "description": "Sort order: least recently updated apps first."
   },
 
-  "sortOldReleases": "Old Releases",
+  "sortOldReleases": "Oldest",
   "@sortOldReleases": {
     "description": "Sort order: oldest published apps first."
   },
@@ -3146,6 +3163,17 @@
     "description": "Toast shown when there is no downloaded copy to restore from."
   },
 
+  "appFromOtherCatalog": "Installed from {catalog}: updates come from there",
+  "@appFromOtherCatalog": {
+    "description": "Under an installed app's path in its action sheet, when it was installed from another catalog than the one in use, which is therefore not asked about its updates. {catalog} is that catalog's domain.",
+    "placeholders": {
+      "catalog": {
+        "type": "String",
+        "example": "catalog.flipperzero.one"
+      }
+    }
+  },
+
   "appActionRestore": "Restore",
   "@appActionRestore": {
     "description": "Button that writes the local copy of the app back to the Flipper."
@@ -3292,6 +3320,36 @@
   "appsErrorNotConnected": "Device is not connected",
   "@appsErrorNotConnected": {
     "description": "Error shown when an operation needs a connected Flipper."
+  },
+
+  "appsErrorVersionGone": "The catalog replaced this version while it was being installed. Try again.",
+  "@appsErrorVersionGone": {
+    "description": "Shown when an install failed because the catalog no longer has the version it was installing, and the one that replaced it was gone as well by the time it was asked for."
+  },
+
+  "appsErrorCatalogHttp": "Install failed: the catalog server answered {status}",
+  "@appsErrorCatalogHttp": {
+    "description": "Shown when an install failed because the catalog server answered a request with an HTTP error. status is the HTTP status code, e.g. 404 or 500.",
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+
+  "appsErrorCatalogResponse": "Install failed: the catalog server sent an answer this version of the app cannot read",
+  "@appsErrorCatalogResponse": {
+    "description": "Shown when an install failed because a catalog response lacked something the app needs, for example a server older than the app."
+  },
+
+  "appsErrorInstallFailed": "Install failed: {reason}",
+  "@appsErrorInstallFailed": {
+    "description": "Shown when an install failed for a reason that has no message of its own. reason is the technical error text, not translated.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
   },
 
   "fliblerConsoleTitle": "Assembler",
@@ -8479,6 +8537,173 @@
   "seedEngineBrokenHint": "Nothing you do with this capture will help: the recovery engine in this build is not working. Please report it.",
   "@seedEngineBrokenHint": {
     "description": "Hint shown when the recovery engine in this build is not working: it failed its own checks, is missing from the build, or answered something this build cannot read. TRANSLATORS: the point is that nothing the user does with this capture will help."
+  },
+  "appsCatalogServer": "Catalog server",
+  "appsCatalogOfficial": "Official catalog",
+  "appsCatalogCustom": "Custom domain",
+  "appsCatalogInvalidDomain": "Enter a domain, optionally with http:// or https://",
+  "appsCatalogProtocol": "Catalog API",
+  "@appsCatalogProtocol": {
+    "description": "Title of the setting that picks which API the app speaks to the catalog server: v1, this project's own, or v0, the official catalog's."
+  },
+  "appsProtocolV1": "v1",
+  "appsProtocolV1Subtitle": "Every section, search and authors",
+  "@appsProtocolV1Subtitle": {
+    "description": "Subtitle of the v1 catalog API option."
+  },
+  "appsProtocolV0": "v0",
+  "appsProtocolV0Subtitle": "As the official catalog: apps only",
+  "@appsProtocolV0Subtitle": {
+    "description": "Subtitle of the v0 catalog API option: the app then works with the server exactly as with the official catalog."
+  },
+  "appsSortUnsupported": "This catalog server can''t sort by downloads",
+  "@appsSortUnsupported": {
+  "description": "Shown instead of the app list when a popularity sort is picked on a catalog server without the v1 API, such as the official one."
+},
+  "appsSignatureRejected": "Install refused: the catalog server sent a file that is unsigned or whose signature does not match. It may have been tampered with on the way.",
+  "@appsSignatureRejected": {
+  "description": "Shown when a downloaded app, menu style or animation file fails the Ed25519 signature check and nothing was written to the Flipper."
+},
+  "appsFamilyUnsupported": "This catalog server has no animations",
+  "@appsFamilyUnsupported": {
+  "description": "Shown instead of the list when the Animations section is opened on a catalog server without the v1 API, such as the official one."
+},
+  "catalogFamilyAnimations": "Animations",
+  "@catalogFamilyAnimations": {
+  "description": "Catalog section chip: desktop animations for the Flipper's dolphin."
+},
+  "catalogAllAnimations": "All animations",
+  "@catalogAllAnimations": {
+  "description": "Category chip that shows every animation in the Animations section."
+},
+  "catalogFamilyMenuStyles": "Menu styles",
+  "@catalogFamilyMenuStyles": {
+  "description": "Catalog section chip: main menu styles, loader plugins the firmware draws its app menu with."
+},
+  "catalogAllMenuStyles": "All styles",
+  "@catalogAllMenuStyles": {
+  "description": "Category chip that shows every menu style in the Menu styles section."
+},
+  "appsMenuStylesUnsupported": "This catalog server has no menu styles",
+  "@appsMenuStylesUnsupported": {
+  "description": "Shown instead of the list when the Menu styles section is opened on a catalog server without the v1 API, such as the official one."
+},
+  "catalogScopeAll": "All",
+  "@catalogScopeAll": {
+  "description": "Catalog chip next to the sections: apps, animations and menu styles together - the newest ones, or what matches the search."
+},
+  "catalogScopeAuthors": "Authors",
+  "@catalogScopeAuthors": {
+  "description": "Catalog chip next to the sections, and the heading of the authors found: people who published to the catalog."
+},
+  "catalogSearchUnsupported": "This catalog server can''t show all sections together or list authors",
+  "@catalogSearchUnsupported": {
+  "description": "Shown instead of results when All or Authors is chosen on a catalog server without the v1 API, such as the official one."
+},
+  "catalogNoAuthors": "No authors found",
+  "@catalogNoAuthors": {
+  "description": "Shown when the Authors search returned nobody."
+},
+  "catalogShowAll": "Show all",
+  "@catalogShowAll": {
+  "description": "Button next to a group of search results that opens the whole list of that group."
+},
+  "authorPageTitle": "Author",
+  "@authorPageTitle": {
+  "description": "Title bar of an author page; the author's name is shown large under it."
+},
+  "authorWorks": "{count, plural, =1{1 work} other{{count} works}}",
+  "@authorWorks": {
+  "description": "On an author page: how many apps, animations and menu styles this author published, all sections together.",
+  "placeholders": {
+    "count": {
+      "type": "int"
+    }
+  }
+},
+  "authorLoadFailed": "Failed to load author",
+  "@authorLoadFailed": {
+  "description": "Shown when an author page could not be fetched."
+},
+  "sortPopular": "Most downloaded",
+  "@sortPopular": {
+  "description": "Sort order: by download count over all time. Served by the qUnleashed catalog server only."
+},
+  "sortPopularWeek": "Popular this week",
+  "@sortPopularWeek": {
+  "description": "Sort order: by download count over the last week. Served by the qUnleashed catalog server only."
+},
+  "appDownloadFailed": "Could not start the download",
+  "@appDownloadFailed": {
+  "description": "App detail: the browser would not open the download link."
+},
+  "appMetaVariant": "Variant",
+  "@appMetaVariant": {
+  "description": "App detail: label of the picker between the builds an app offers (its external apps and the catalogues that carry it)."
+},
+  "appActionInstalled": "INSTALLED",
+  "@appActionInstalled": {
+  "description": "Disabled button on a menu style that is installed and up to date."
+},
+  "menuStyleInstalledHint": "Menu style installed. Turn it on in the Flipper: Settings → Desktop → Menu Style",
+  "@menuStyleInstalledHint": {
+  "description": "Shown after a menu style was installed. The path names the firmware's own Desktop settings, in English as the Flipper shows it."
+},
+  "catalogBackToTop": "Back to top",
+  "@catalogBackToTop": {
+    "description": "Tooltip for the floating button that returns to the beginning of the catalog."
+  },
+  "catalogFamilyCli": "CLI",
+  "@catalogFamilyCli": {
+    "description": "Catalog section of command-line apps; tab label."
+  },
+  "catalogAllCli": "All CLI apps",
+  "@catalogAllCli": {
+    "description": "Category chip that shows every CLI app."
+  },
+  "appsCliUnsupported": "This catalog server has no CLI apps",
+  "@appsCliUnsupported": {
+    "description": "Shown when the catalog server has no CLI section."
+  },
+  "catalogSortTitle": "Sort by",
+  "@catalogSortTitle": {
+    "description": "Title of the sort picker and tooltip of the sort button."
+  },
+  "catalogSortOldestFirst": "Oldest first",
+  "@catalogSortOldestFirst": {
+    "description": "Switch in the sort picker that reverses a date order."
+  },
+  "catalogSectionsLabel": "Catalog sections",
+  "@catalogSectionsLabel": {
+    "description": "Screen reader label of the catalog section tabs."
+  },
+  "sortFieldUpdated": "Update date",
+  "@sortFieldUpdated": {
+    "description": "Sort picker row: order by the date of the latest update; the direction is chosen separately."
+  },
+  "sortFieldReleased": "Publication date",
+  "@sortFieldReleased": {
+    "description": "Sort picker row: order by the date the item was first published; the direction is chosen separately."
+  },
+  "sortFieldName": "Name",
+  "@sortFieldName": {
+    "description": "Sort picker row: order by name, A to Z."
+  },
+  "sortOrderTitle": "Order",
+  "@sortOrderTitle": {
+    "description": "Sort picker: heading of the direction choice for date orders."
+  },
+  "sortNewestFirst": "Newest first",
+  "@sortNewestFirst": {
+    "description": "Sort picker: direction of a date order, newest first."
+  },
+  "cliInstalledHint": "Command installed. Run reload_ext_cmds in the Flipper terminal to load it.",
+  "@cliInstalledHint": {
+    "description": "Shown after a CLI app was installed. reload_ext_cmds is the firmware terminal command and stays as is."
+  },
+  "appsSignatureUnknownKey": "Installation refused: the catalog signs with a key this build of the app does not trust. Update the app.",
+  "@appsSignatureUnknownKey": {
+    "description": "Install refused because the download is signed with a key this app build does not list as trusted."
   },
 
   "permissionOpenSettings": "Open settings",

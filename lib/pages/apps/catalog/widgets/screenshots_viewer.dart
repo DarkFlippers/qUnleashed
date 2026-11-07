@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../components/remote_image.dart';
+import 'screenshot_frame.dart';
 
 class ScreenshotsViewer extends StatefulWidget {
   const ScreenshotsViewer({
@@ -72,7 +72,12 @@ class _ScreenshotsViewerState extends State<ScreenshotsViewer> {
                   child: Center(
                     child: AspectRatio(
                       aspectRatio: 256 / 128,
-                      child: FlipperRemoteImage(url: widget.screenshots[i]),
+                      child: ScreenshotFrame(
+                        url: widget.screenshots[i],
+                        innerPadding: 0,
+                        borderWidth: 0,
+                        borderRadius: 2,
+                      ),
                     ),
                   ),
                 );
@@ -105,7 +110,12 @@ class _ScreenshotsViewerState extends State<ScreenshotsViewer> {
                     padding: const EdgeInsets.all(2),
                     child: AspectRatio(
                       aspectRatio: 256 / 128,
-                      child: FlipperRemoteImage(url: widget.screenshots[i]),
+                      child: ScreenshotFrame(
+                        url: widget.screenshots[i],
+                        innerPadding: 0,
+                        borderWidth: 0,
+                        borderRadius: 2,
+                      ),
                     ),
                   ),
                 );

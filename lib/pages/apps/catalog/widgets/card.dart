@@ -7,35 +7,153 @@ import '../../data/models/category.dart';
 import '../../../../components/remote_image.dart';
 import 'category_chip.dart';
 import 'screenshot_frame.dart';
+import 'screenshots_viewer.dart';
 
-class AppCardView extends StatefulWidget {
+class AppCardView extends StatelessWidget {
   const AppCardView({
     super.key,
     required this.app,
+    required this.action,
     this.category,
-    this.action,
     this.onTap,
     this.padding = 12,
+    this.showScreenshots = true,
   });
+
+  /// Grid row height of a card without the screenshot strip, at the current
+  /// text scale: header, two lines of description, padding.
+  static double compactHeight(BuildContext context, {double padding = 12}) =>
+      padding * 2 + 48 + 8 + _Description.heightOf(context);
 
   final AppCard app;
   final AppCategory? category;
-  final Widget? action;
+  final Widget action;
   final VoidCallback? onTap;
   final double padding;
 
+  /// Off for families whose screens cannot be compared side by side.
+  final bool showScreenshots;
+
   @override
-  State<AppCardView> createState() => _AppCardViewState();
+  Widget build(BuildContext context) {
+    final shots = showScreenshots ? app.screenshots : const <String>[];
+    return CatalogCardFrame(
+      onTap: onTap,
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CardHeader(app: app, category: category, action: action),
+          const SizedBox(height: 8),
+          _Description(text: app.shortDescription),
+          if (shots.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _ScreenshotsStrip(screenshots: shots, title: app.name),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
-class _AppCardViewState extends State<AppCardView> {
+class ScreenCardView extends StatelessWidget {
+  const ScreenCardView({
+    super.key,
+    required this.app,
+    required this.preview,
+    required this.action,
+    this.category,
+    this.onTap,
+  });
+
+  static const double _padding = 12;
+  static const double _gap = 10;
+  static const double _rowHeight = 32;
+  static const double _categoryHeight = 18;
+  static const double _previewFrame = 12;
+
+  static double heightFor(double width) {
+    final screen = width - _padding * 2;
+    final preview = (screen - _previewFrame) / 2 + _previewFrame;
+    return _padding * 2 + preview + _gap + _rowHeight + _categoryHeight;
+  }
+
+  final AppCard app;
+  final Widget preview;
+  final AppCategory? category;
+  final Widget action;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return CatalogCardFrame(
+      onTap: onTap,
+      padding: _padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          preview,
+          const SizedBox(height: _gap),
+          SizedBox(
+            height: _rowHeight,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    app.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                action,
+              ],
+            ),
+          ),
+          SizedBox(
+            height: _categoryHeight,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _CardMeta(category: category, stats: app.stats),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CatalogCardFrame extends StatefulWidget {
+  const CatalogCardFrame({
+    super.key,
+    required this.child,
+    required this.padding,
+    this.onTap,
+  });
+
+  final Widget child;
+  final double padding;
+  final VoidCallback? onTap;
+
+  @override
+  State<CatalogCardFrame> createState() => _CatalogCardFrameState();
+}
+
+class _CatalogCardFrameState extends State<CatalogCardFrame> {
   bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final shots = widget.app.screenshots;
-
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -68,23 +186,7 @@ class _AppCardViewState extends State<AppCardView> {
             borderRadius: BorderRadius.circular(14),
             child: Padding(
               padding: EdgeInsets.all(widget.padding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _CardHeader(
-                    app: widget.app,
-                    category: widget.category,
-                    action: widget.action,
-                  ),
-                  const SizedBox(height: 8),
-                  _Description(text: widget.app.shortDescription),
-                  if (shots.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    _ScreenshotsStrip(screenshots: shots),
-                  ],
-                ],
-              ),
+              child: widget.child,
             ),
           ),
         ),
@@ -93,8 +195,6 @@ class _AppCardViewState extends State<AppCardView> {
   }
 }
 
-/// Always two lines tall, so the screenshots below it land on the same spot on
-/// every card; anything longer is cut with an ellipsis on the second line.
 class _Description extends StatelessWidget {
   const _Description({required this.text});
 
@@ -104,24 +204,26 @@ class _Description extends StatelessWidget {
   static const double _lineHeight = 1.3;
   static const int _lines = 2;
 
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final style = TextStyle(
-      fontSize: _fontSize,
-      height: _lineHeight,
-      color: colors.textSecondary,
-    );
+  static TextStyle _style(Color color) =>
+      TextStyle(fontSize: _fontSize, height: _lineHeight, color: color);
+
+  static double heightOf(BuildContext context) {
     final probe = TextPainter(
-      text: TextSpan(text: '\n', style: style),
+      text: TextSpan(text: '\n', style: _style(const Color(0xFF000000))),
       maxLines: _lines,
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
     final height = probe.size.height;
     probe.dispose();
+    return height;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _style(context.appColors.textSecondary);
     return SizedBox(
-      height: height,
+      height: heightOf(context),
       child: Text(
         text,
         maxLines: _lines,
@@ -141,7 +243,7 @@ class _CardHeader extends StatelessWidget {
 
   final AppCard app;
   final AppCategory? category;
-  final Widget? action;
+  final Widget action;
 
   @override
   Widget build(BuildContext context) {
@@ -168,16 +270,13 @@ class _CardHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              _CategoryInline(category: category),
+              _CardMeta(category: category, stats: app.stats),
             ],
           ),
         ),
         const SizedBox(width: 8),
         Flexible(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: action ?? const _DefaultInstallButton(),
-          ),
+          child: Align(alignment: Alignment.centerRight, child: action),
         ),
       ],
     );
@@ -221,6 +320,73 @@ class AppIconBadge extends StatelessWidget {
   }
 }
 
+String formatCount(int value) {
+  const units = ['', 'K', 'M', 'B'];
+  if (value < 1000) return '$value';
+  var scaled = value.toDouble();
+  var unit = 0;
+  while (scaled >= 1000 && unit < units.length - 1) {
+    scaled /= 1000;
+    unit++;
+  }
+  var text = scaled.toStringAsFixed(scaled < 10 ? 1 : 0);
+  if (text == '1000' && unit < units.length - 1) {
+    text = '1';
+    unit++;
+  }
+  if (text.endsWith('.0')) text = text.substring(0, text.length - 2);
+  return '$text${units[unit]}';
+}
+
+class DownloadsBadge extends StatelessWidget {
+  const DownloadsBadge({super.key, required this.count, this.fontSize = 11});
+
+  final int count;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = context.appColors.textSecondary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.download_rounded, size: fontSize + 1, color: color),
+        const SizedBox(width: 2),
+        Text(
+          formatCount(count),
+          style: TextStyle(
+            fontSize: fontSize,
+            color: color,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CardMeta extends StatelessWidget {
+  const _CardMeta({required this.category, required this.stats});
+
+  final AppCategory? category;
+  final AppStats? stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final downloads = stats?.downloads ?? 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: _CategoryInline(category: category)),
+        if (downloads > 0) ...[
+          if (category != null) const SizedBox(width: 8),
+          DownloadsBadge(count: downloads),
+        ],
+      ],
+    );
+  }
+}
+
 class _CategoryInline extends StatelessWidget {
   const _CategoryInline({required this.category});
   final AppCategory? category;
@@ -257,8 +423,9 @@ class _CategoryInline extends StatelessWidget {
 }
 
 class _ScreenshotsStrip extends StatelessWidget {
-  const _ScreenshotsStrip({required this.screenshots});
+  const _ScreenshotsStrip({required this.screenshots, required this.title});
   final List<String> screenshots;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -269,33 +436,14 @@ class _ScreenshotsStrip extends StatelessWidget {
         physics: const ClampingScrollPhysics(),
         itemCount: screenshots.length,
         separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (context, i) => ScreenshotFrame(url: screenshots[i]),
-      ),
-    );
-  }
-}
-
-class _DefaultInstallButton extends StatelessWidget {
-  const _DefaultInstallButton();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      height: 32,
-      width: double.infinity,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: colors.accent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        'INSTALL',
-        style: TextStyle(
-          color: colors.onAccent,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
+        itemBuilder: (context, i) => GestureDetector(
+          onTap: () => ScreenshotsViewer.open(
+            context,
+            screenshots: screenshots,
+            initialIndex: i,
+            title: title,
+          ),
+          child: ScreenshotFrame(url: screenshots[i]),
         ),
       ),
     );

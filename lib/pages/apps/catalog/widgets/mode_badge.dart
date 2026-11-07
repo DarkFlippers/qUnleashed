@@ -4,8 +4,9 @@ import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../data/catalog_mode.dart';
 
-/// Shows which mode the catalog runs in right now: plain catalog, source
-/// builds or the nearest catalog API.
+/// Flags a catalog that does not run as usual: source builds, the nearest
+/// catalog API, or no device to check against. A plain icon the size of the
+/// header actions; nothing at all while the catalog runs as usual.
 class CatalogModeBadge extends StatelessWidget {
   const CatalogModeBadge({
     super.key,
@@ -18,16 +19,21 @@ class CatalogModeBadge extends StatelessWidget {
   final String? deviceApi;
   final String? catalogApi;
 
+  bool get _usual =>
+      deviceApi != null &&
+      mode != CatalogMode.sourceBuild &&
+      mode != CatalogMode.nearestApi;
+
   IconData _icon() => switch (mode) {
+    _ when deviceApi == null => Icons.link_off_rounded,
     CatalogMode.sourceBuild => Icons.construction_rounded,
-    CatalogMode.nearestApi => Icons.warning_amber_rounded,
-    _ => Icons.check_circle_rounded,
+    _ => Icons.warning_amber_rounded,
   };
 
   Color _color(QAppColors colors) => switch (mode) {
+    _ when deviceApi == null => colors.textSecondary,
     CatalogMode.sourceBuild => colors.accent,
-    CatalogMode.nearestApi => Colors.amber.shade600,
-    _ => colors.success,
+    _ => Colors.amber.shade600,
   };
 
   String _message() {
@@ -36,28 +42,19 @@ class CatalogModeBadge extends StatelessWidget {
     switch (mode) {
       case CatalogMode.sourceBuild:
         return l10n.catalogBadgeSourceBuild(device);
-      case CatalogMode.nearestApi:
-        return l10n.catalogBadgeNearestApi(device, catalogApi ?? '?');
       default:
-        return l10n.catalogBadgeNormal(device);
+        return l10n.catalogBadgeNearestApi(device, catalogApi ?? '?');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final color = _color(colors);
+    if (_usual) return const SizedBox.shrink();
     return Tooltip(
       message: _message(),
-      child: Container(
-        width: 24,
-        height: 24,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.18),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(_icon(), size: 15, color: color),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Icon(_icon(), size: 20, color: _color(context.appColors)),
       ),
     );
   }

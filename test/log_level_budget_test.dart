@@ -80,9 +80,11 @@ const Map<String, int> kBudget = {
   //
   // The two that would otherwise qualify are the per-node `list` of a
   // whole-SD walk and the per-file `md5 check`; §5 excludes both by name.
-  'services': 9,
+  'services': 8,
   'pages/archive': 2,
-  'pages/apps': 6,
+  // Was 6. Catalog v1 gives menu styles and animations an install of
+  // their own, and each has the same user-asked cancel as an app's install.
+  'pages/apps': 7,
   'pages/tools': 2,
 };
 

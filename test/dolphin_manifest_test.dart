@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/tools/paint/dolphin/manifest.dart';
+import 'package:qunleashed/components/codec/dolphin/manifest.dart';
 
 /// The manifest the Flipper reads to decide which animation to play.
 ///

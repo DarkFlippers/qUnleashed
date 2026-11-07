@@ -34,6 +34,9 @@ class _FakeBuildServer {
   int? artifactCode;
   String? errorDetail;
 
+  /// What the artifact says it was built for; null leaves the header out.
+  String? buildApi = '86.2';
+
   String get url => 'http://127.0.0.1:${server.port}';
 
   static Future<_FakeBuildServer> start() async {
@@ -96,6 +99,9 @@ class _FakeBuildServer {
         _json(request.response, {'detail': errorDetail ?? 'error'});
       } else {
         request.response.headers.contentType = ContentType.binary;
+        if (buildApi case final api?) {
+          request.response.headers.set('X-QU-Build-Api', api);
+        }
         request.response.add(utf8.encode('FAPDATA'));
       }
     } else {
@@ -193,7 +199,7 @@ void main() {
     );
 
     final phases = <RemoteBuildPhase>[];
-    final bytes = await service.build(
+    final built = await service.build(
       bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
       alias: 'test_app',
       target: 'f7',
@@ -206,7 +212,9 @@ void main() {
     );
 
     expect(fake.failures, isEmpty);
-    expect(utf8.decode(bytes), 'FAPDATA');
+    expect(utf8.decode(built.bytes), 'FAPDATA');
+    // The tree's API as the file came with it, not the major asked for.
+    expect(built.buildApi, '86.2');
     expect(phases, [
       RemoteBuildPhase.queued,
       RemoteBuildPhase.building,
@@ -386,6 +394,34 @@ void main() {
     );
   });
 
+  test('an artifact that does not say its API is an error', () async {
+    final fake = await _FakeBuildServer.start();
+    addTearDown(fake.close);
+    fake.buildApi = null;
+
+    final service = RemoteBuildService.test(
+      serverUrl: fake.url,
+      sharedKey: _secret,
+      clientId: _clientId,
+    );
+
+    await expectLater(
+      service.build(
+        bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+        alias: 'test_app',
+        target: 'f7',
+      ),
+      throwsA(
+        isA<RemoteBuildException>().having(
+          (e) => e.message,
+          'message',
+          contains('firmware API'),
+        ),
+      ),
+    );
+    expect(service.busy, isFalse);
+  });
+
   test('a rejected signature is reported as an authorization error', () async {
     final fake = await _FakeBuildServer.start();
     addTearDown(fake.close);
@@ -461,8 +497,9 @@ void main() {
         },
       );
 
-      expect(bytes.length, greaterThan(1024));
-      expect(bytes.sublist(0, 4), [0x7F, 0x45, 0x4C, 0x46]);
+      expect(bytes.bytes.length, greaterThan(1024));
+      expect(bytes.bytes.sublist(0, 4), [0x7F, 0x45, 0x4C, 0x46]);
+      expect(bytes.buildApi, isNotNull);
       expect(phases.last, RemoteBuildPhase.download);
       expect(service.busy, isFalse);
     },

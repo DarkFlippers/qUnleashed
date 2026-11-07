@@ -30,6 +30,7 @@ class AppActionSheet {
     required String subtitle,
     required Widget details,
     required List<AppActionEntry> Function(BuildContext context) actions,
+    String? note,
   }) {
     return showDialog<void>(
       context: context,
@@ -38,6 +39,7 @@ class AppActionSheet {
         icon: icon,
         title: title,
         subtitle: subtitle,
+        note: note,
         details: details,
         actions: actions,
       ),
@@ -52,11 +54,15 @@ class _ActionDialog extends StatelessWidget {
     required this.subtitle,
     required this.details,
     required this.actions,
+    this.note,
   });
 
   final Widget icon;
   final String title;
   final String subtitle;
+
+  /// A line under the subtitle, for what the subtitle cannot say.
+  final String? note;
   final Widget details;
   final List<AppActionEntry> Function(BuildContext context) actions;
 
@@ -118,6 +124,16 @@ class _ActionDialog extends StatelessWidget {
                             fontSize: 11,
                           ),
                         ),
+                        if (note case final note?)
+                          Text(
+                            note,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.textMuted,
+                              fontSize: 11,
+                            ),
+                          ),
                       ],
                     ),
                   ),

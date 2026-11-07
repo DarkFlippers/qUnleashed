@@ -82,12 +82,6 @@ List<_StorageArea> _buildAreas(L10n s) => [
     resolve: irLibRepositoryDirectory,
   ),
   _StorageArea(
-    group: s.storageGroupAppFolders,
-    title: 'All-the-plugins',
-    subtitle: s.storageAllThePluginsSubtitle,
-    resolve: atpRepositoryDirectory,
-  ),
-  _StorageArea(
     group: s.storageGroupInternal,
     title: s.storageAppIconCache,
     subtitle: s.storageAppIconCacheSubtitle,

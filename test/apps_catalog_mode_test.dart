@@ -33,6 +33,24 @@ void main() {
     expect(_modeFor(catalog, '87.6'), CatalogMode.normal);
   });
 
+  test('a newer minor of the same major is still the catalog', () {
+    // Release firmware 88.19 against a catalog that only has dev 88.23: the
+    // loader checks the major only, so this is not compatibility mode.
+    final dev = [_sdk('88.23')];
+    expect(_modeFor(dev, '88.19'), CatalogMode.normal);
+    expect(_modeFor(dev, '88.19', builderAvailable: true), CatalogMode.normal);
+    expect(resolveCatalogApi(dev, '88.19').api, '88.23');
+    // The closest at or below the device still wins when there is one.
+    expect(
+      resolveCatalogApi([_sdk('88.10'), _sdk('88.23')], '88.19').api,
+      '88.10',
+    );
+    // A major apart is compatibility, two are out of reach.
+    expect(_modeFor(dev, '89.0'), CatalogMode.nearestApi);
+    expect(_modeFor(dev, '90.0'), CatalogMode.managerOnly);
+    expect(_modeFor([_sdk('87.5')], '88.0'), CatalogMode.nearestApi);
+  });
+
   test('catalog behind the firmware builds from source when it can', () {
     expect(
       _modeFor(catalog, '88.0', builderAvailable: true),

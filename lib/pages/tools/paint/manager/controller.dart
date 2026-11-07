@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../../../../services/storage/paths.dart';
 import '../dolphin/dolphin_pack.dart';
 import '../dolphin/importer.dart';
-import '../dolphin/manifest.dart';
+import '../../../../components/codec/dolphin/manifest.dart';
 import '../dolphin/sender.dart';
 import '../project.dart';
 import '../virtual_display_session.dart';

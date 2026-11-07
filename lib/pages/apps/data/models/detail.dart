@@ -1,4 +1,5 @@
-﻿import 'card.dart';
+import 'card.dart';
+import 'app_entry.dart';
 
 class AppBuildMetadata {
   final int length;
@@ -52,6 +53,20 @@ class AppDetail {
     this.buildMetadata,
     this.links,
   });
+
+  AppDetail forApp(CatalogApp entry) => AppDetail(
+    card: card.forApp(entry),
+    description: description,
+    changelog: changelog,
+    buildMetadata: entry.buildSize == null
+        ? null
+        : AppBuildMetadata(length: entry.buildSize!),
+    links: AppLinks(
+      bundleUri: entry.bundleUri,
+      manifestUri: links?.manifestUri,
+      sourceCode: links?.sourceCode,
+    ),
+  );
 
   factory AppDetail.fromJson(Map<String, dynamic> json) {
     final card = AppCard.fromJson(json);
