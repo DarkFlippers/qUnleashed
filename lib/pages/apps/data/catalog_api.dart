@@ -306,20 +306,14 @@ abstract class _CatalogProtocol {
 class AppsCatalogApi {
   static const officialServer = CatalogServer.official;
   static const defaultServer = CatalogServer.defaultServer;
-  static const defaultBaseUrl = '$defaultServer/api/v0';
 
   AppsCatalogApi({
     String server = defaultServer,
-    String? baseUrl,
     this._protocol = CatalogProtocol.v1,
     this.userAgent = AppHttp.userAgent,
     this.api,
     this.target,
-  }) : _server = CatalogServer.normalize(
-         baseUrl == null
-             ? server
-             : baseUrl.replaceFirst(RegExp(r'/api/v0/?$'), ''),
-       );
+  }) : _server = CatalogServer.normalize(server);
 
   String _server;
   String get server => _server;
@@ -336,11 +330,10 @@ class AppsCatalogApi {
   /// has v0 only.
   CatalogProtocol get protocol =>
       server == officialServer ? CatalogProtocol.v0 : _protocol;
-  set protocol(CatalogProtocol value) {
-    if (value == _protocol) return;
-    _protocol = value;
-    unfiltered = false;
-  }
+  // What was read from the catalog spoken to before is dropped where the
+  // switch is made (CatalogContext.setProtocol), and only when [endpoint]
+  // changes: to Official it does not, and nothing is resolved again there.
+  set protocol(CatalogProtocol value) => _protocol = value;
 
   /// Where requests go: the server and the protocol spoken to it. A switch
   /// of either is a different catalog, and what was read from the last one
@@ -351,7 +344,6 @@ class AppsCatalogApi {
   String? api;
   String? target;
   bool unfiltered = false;
-  String get baseUrl => '$server/api/v0';
   bool get hasV1 => protocol == CatalogProtocol.v1;
   bool ranksOnServer(AppsSort sort, CatalogFamily family) => hasV1;
 

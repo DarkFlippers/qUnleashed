@@ -44,7 +44,7 @@ void main() {
     final api = _Api();
     final context = CatalogContext(client: FlipperOneClient().get(), api: api);
     await context.setServer('http://localhost:8080/');
-    expect(api.baseUrl, 'http://localhost:8080/api/v0');
+    expect(api.server, 'http://localhost:8080');
     final reloaded = _Api();
     await CatalogContext(
       client: FlipperOneClient().get(),
@@ -52,7 +52,7 @@ void main() {
     ).loadPreference();
     expect(reloaded.server, api.server);
     await context.setServer(CatalogServer.official);
-    expect(api.baseUrl, '${CatalogServer.official}/api/v0');
+    expect(api.server, CatalogServer.official);
   });
 
   test('our server is spoken to as chosen, and the choice persists', () async {
