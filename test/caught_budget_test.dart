@@ -355,8 +355,25 @@ import 'ratchet.dart';
 /// address. None can repeat in a shipped build: `load()` memoises, and the
 /// only thing that clears the memo is the test-only
 /// `KnownDevicesStore.debugReset`. #444
+///
+/// **`services` is 23.** The twenty-third is in the same method and is the
+/// same charter at its largest scale: *a stored list that is not a list*.
+/// Valid JSON that is not an array - a `{"v":2,"devices":[...]}` envelope from
+/// a future build, a restored backup, a hand-edited prefs file - emptied the
+/// whole store without a word in any build, which left the picker blank and
+/// `lastDevice` null, and `lastDevice` is the Bluetooth auto-connect's target.
+/// The first `remember` afterwards wrote the emptiness over the stored array,
+/// so the loss is durable exactly as the three above it are.
+///
+/// The level is the one question this site had to settle, because it loses as
+/// much as the `FormatException` beside it, which is a `warn`. The split is
+/// exception against data: a throw is a fault, where this is a file `_load`
+/// could read and declined to trust - so it is the same judgement, and the
+/// same level, as its three neighbours. What it carries is the decoded
+/// *shape* in words and never the value, one store being a bare JSON string
+/// that can decode to an address. Once per launch, by the same memo. #466
 const Map<String, int> kBudget = {
-  'services': 22,
+  'services': 23,
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,

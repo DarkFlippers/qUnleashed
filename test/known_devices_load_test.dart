@@ -31,6 +31,17 @@ void main() {
 
   setUp(recordKeptLines);
 
+  /// Puts [raw] on disk verbatim and performs the load the case is about.
+  ///
+  /// [loadFrom] cannot reach these: it encodes a `List`, so the one thing it
+  /// can never seed is a store that is not an array - which is the input #466
+  /// was about, and the input a future `{"v":2,...}` schema has.
+  Future<KnownDevicesStore> loadRaw(String raw) async {
+    SharedPreferences.setMockInitialValues({'known_devices_v1': raw});
+    await KnownDevicesStore.instance.load();
+    return KnownDevicesStore.instance;
+  }
+
   /// Puts [entries] on disk as the stored array and performs the load the
   /// case is about.
   ///
@@ -41,14 +52,9 @@ void main() {
   /// loads twice on purpose.
   ///
   /// [Object] rather than a map, because an element that is not a map at all
-  /// is one of the three ways `_load` loses an entry.
-  Future<KnownDevicesStore> loadFrom(List<Object> entries) async {
-    SharedPreferences.setMockInitialValues({
-      'known_devices_v1': jsonEncode(entries),
-    });
-    await KnownDevicesStore.instance.load();
-    return KnownDevicesStore.instance;
-  }
+  /// is one of the four ways `_load` loses an entry.
+  Future<KnownDevicesStore> loadFrom(List<Object> entries) =>
+      loadRaw(jsonEncode(entries));
 
   // Two spellings of one Flipper, which is the shape a round trip leaves: a
   // store this build canonicalised, a rollback to one on universal_ble 2.x
@@ -127,27 +133,35 @@ void main() {
     () async {
       final known = await loadFrom([
         storedEntry(storedById, 'Flipper Zoe', '2026-10-01T10:00:00.000'),
-        // Every way an entry is lost here, which is three: two shapes
-        // `fromJson` answers null for - a field of the wrong type, and a
-        // timestamp that will not parse - and one that never reaches it,
-        // an element that is not a map.
+        // Every way an entry is lost here, which is four: three shapes
+        // `fromJson` answers null for - a field of the wrong type, a
+        // timestamp that will not parse, and a timestamp of the wrong type -
+        // and one that never reaches it, an element that is not a map.
         {
           'id': 12345,
           'name': 'nope',
           'lastConnectedAt': '2026-10-01T10:00:00.000',
         },
         {'id': otherById, 'name': 'no date'},
+        // **The one that used to cost the whole store.** `fromJson` read this
+        // field with `as String? ?? ''`, which throws on a present field of
+        // the wrong type rather than answering null, so the `TypeError` left
+        // the parse loop, left `_load`, and landed in the catch as
+        // `load failed` - no entry kept, no count, and nothing retrying for
+        // the life of the process. One entry of five, now, like its three
+        // neighbours. #466
+        {'id': otherById, 'name': 'numeric date', 'lastConnectedAt': 5},
         'not a map',
       ]);
 
       // The one readable entry survives, canonicalised.
       expect(known.devices.map((d) => d.id), [reportedById]);
 
-      // And the three that did not are named. The count, never the ids - those
+      // And the four that did not are named. The count, never the ids - those
       // are Bluetooth addresses.
       expect(
         keptLines.where(
-          (line) => line.contains('dropped 3 of 4 stored entries'),
+          (line) => line.contains('dropped 4 of 5 stored entries'),
         ),
         isNotEmpty,
       );
@@ -214,6 +228,97 @@ void main() {
       isNotEmpty,
     );
     expect(keptLevels, [KeptLevel.caught]);
+  });
+
+  // What #466 was filed for: a store that is valid JSON and not an array.
+  //
+  // Both halves of the old behaviour are claimed here - the list is emptied,
+  // and until #466 that happened in silence. It is the largest loss on this
+  // path and was the only unreported one: no entry survives, so the picker is
+  // empty and `lastDevice` is null, which is the Bluetooth auto-connect's
+  // target, and the next `remember` writes the emptiness over the stored
+  // array for good.
+  //
+  // The shapes are the inputs that actually produce it: a `v2` envelope a
+  // future build might write, which is the forward-compatible case the cap's
+  // own comment is careful about, and two scalars, which is what a truncated
+  // or hand-edited prefs file looks like.
+  group('a stored list that is not a list', () {
+    for (final (raw, shape) in [
+      ('{"v":2,"devices":[]}', 'an object'),
+      ('"$reportedById"', 'a string'),
+      ('null', 'null'),
+    ]) {
+      test('is emptied and reported, for $shape', () async {
+        final known = await loadRaw(raw);
+
+        expect(known.devices, isEmpty);
+        expect(known.lastDevice, isNull);
+
+        // The shape, because that is what tells a future schema from a
+        // corrupted file, and a count of entries cannot carry it. Named in
+        // words rather than by `runtimeType`, which for an object `jsonDecode`
+        // answers with a private class name - `_Map<String, dynamic>` here,
+        // and that is the shape of the three that matters, a `v2` envelope
+        // being the input a future build would write.
+        expect(
+          keptLines.where(
+            (line) =>
+                line.contains('discarded the whole stored list') &&
+                line.contains('got $shape'),
+          ),
+          isNotEmpty,
+        );
+        // The exact list, which also says nothing else was kept. Not that
+        // the shape was reported once: `LogService._isNewLine` drops a
+        // *consecutive* identical body, so this cannot tell one call from two
+        // with the same text - the trap CLAUDE.md's anti-pattern list names.
+        expect(keptLevels, [KeptLevel.caught]);
+        // Never the value. `"80:e1:27:aa:bb:cc"` is a whole store that decodes
+        // to a Bluetooth address, which is the one input here where the
+        // difference between naming the shape and naming the value is a
+        // difference in what reaches a report.
+        expect(
+          keptLines.where((line) => line.contains(reportedById)),
+          isEmpty,
+          reason: 'an address must not reach a kept line',
+        );
+      });
+    }
+  });
+
+  // The other exit this method has, and the one that keeps nothing: a store
+  // that is not JSON at all. What the case is about is the stack, which is
+  // the only thing naming which of two faults ran - a `FormatException` from
+  // `jsonDecode` or a `PlatformException` out of the platform channel - since
+  // neither names itself and a `PlatformException` arrives with nothing in
+  // its message. `_persist`, lower in the same class, has used `describe` all
+  // along; this line used a bare `$e` until #466.
+  test('a store that is not JSON is reported with its stack', () async {
+    final known = await loadRaw('{"v":2,');
+
+    expect(known.devices, isEmpty);
+
+    final failures = keptLines.where((line) => line.contains('load failed'));
+    expect(failures, isNotEmpty);
+    expect(failures.single, contains('FormatException'));
+    // The stack, and this is the assertion that pins it: the trace is the
+    // only part of the line naming the method that failed, which is the
+    // whole of the change here.
+    //
+    // An `expect(..., contains('\n'))` stood above this and was dead
+    // weight. `describe` does join the error and the trace with a newline,
+    // so it read like the claim - but `FormatException.toString()` is
+    // itself three lines for a truncated source, the message, the source
+    // and a caret, so it holds whether or not a trace was appended.
+    // Measured against the `$e` this replaced: the mutation fails on the
+    // line below, and that one passed. It is the trap CLAUDE.md lists
+    // fourth - a test green on a mechanism other than the one it claims -
+    // and reading it did not catch it.
+    expect(failures.single, contains('known_devices.dart'));
+    // `warn`, not `caught`: an exception is a fault, where a list of the
+    // wrong shape is data this method declined to trust.
+    expect(keptLevels, [KeptLevel.warning]);
   });
 
   // The rewind, and then the empty-disk load that follows it in every file
