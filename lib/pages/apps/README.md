@@ -100,7 +100,7 @@ Version Build API: 87.1         X-QU-Build-Api; built here, the file's .fapmeta;
 UID: <ObjectId of the entry>
 Version UID: <ObjectId of the installed app's version>
 Path: /ext/apps/Sub-GHz/proto_pirate_extra.fap
-DevCatalog: true                only when true, as the official app: `dev_catalog` from our status
+DevCatalog: true                always written, false too (the official app leaves false out): `dev_catalog` from our status, false on Official
 App ID: proto_pirate_extra
 App Version: 3.0.2
 Family: app                     app | cli | stl

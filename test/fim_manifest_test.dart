@@ -59,13 +59,14 @@ Catalog: qunleashed.aperturefox.ru
 ''');
   });
 
-  test('leaves out what it does not know, DevCatalog false included', () {
+  test('leaves out what it does not know, but always says DevCatalog', () {
     const bare = AppManifest(uid: 'u', path: '/ext/apps/Tools/x.fap');
     expect(bare.encode(), '''
 Filetype: Flipper Application Installation Manifest
 Version: 1
 UID: u
 Path: /ext/apps/Tools/x.fap
+DevCatalog: false
 ''');
   });
 
@@ -96,9 +97,9 @@ Version UID: 6993832f3a42809bf4c35bab
 Path: /ext/apps/NFC/nfc_magic.fap
 ''';
     final m = AppManifest.tryParse(official)!;
-    // Written back byte for byte: nothing it lacks is added, not even
-    // DevCatalog: false, which the official app leaves out.
-    expect(m.encode(), official);
+    // Written back as it came but for the one line this app always says and
+    // the official app leaves out when false.
+    expect(m.encode(), '${official}DevCatalog: false\n');
     expect(m.uid, '64d2039e13043e71ea766491');
     expect(m.versionUid, '6993832f3a42809bf4c35bab');
     expect(m.sdkApi, '86.0');

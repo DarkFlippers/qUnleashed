@@ -30,8 +30,10 @@ enum ManifestFamily {
 /// ObjectId fails the whole request (422). An entry's readable name is App ID.
 ///
 /// A key that is absent is null here (ADR 0009), and is left out of the file
-/// rather than written empty. DevCatalog is written only when true, as the
-/// official app writes it: absent reads as false on both sides.
+/// rather than written empty - except DevCatalog, which is always written,
+/// false as well. That is a deliberate departure from the official app, which
+/// leaves it out when false: a value this app sets is always said. Both read
+/// a missing one as false, so the official app sees no difference.
 class AppManifest {
   static const filetype = 'Flipper Application Installation Manifest';
 
@@ -85,7 +87,7 @@ class AppManifest {
       'UID: $uid',
       ?_line('Version UID', versionUid),
       'Path: $path',
-      if (devCatalog) 'DevCatalog: true',
+      'DevCatalog: $devCatalog',
       ?_line('App ID', appId),
       ?_line('App Version', appVersion),
       ?_line('Family', family?.code),
