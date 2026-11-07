@@ -6,7 +6,7 @@ import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/progress_button.dart';
 import '../../actions.dart';
-import '../../data/artifact_signature.dart';
+import 'install_failure.dart';
 import '../../data/catalog_api.dart' show CatalogFamily;
 import '../../data/catalog_state.dart';
 import '../../data/install_engine.dart';
@@ -296,12 +296,11 @@ class AppActionButton extends StatelessWidget {
   }
 
   void _reportFailure(BuildContext context) {
+    // None when the install was cancelled: that is not a failure.
     final failure = engine.takeFailure(app.alias);
-    if (failure is! ArtifactSignatureException) return;
+    if (failure == null) return;
     context.showNotification(
-      failure.unknownKey
-          ? context.l10n.appsSignatureUnknownKey
-          : context.l10n.appsSignatureRejected,
+      installFailureText(context.l10n, failure),
       type: QNotificationType.error,
       duration: const Duration(seconds: 6),
     );

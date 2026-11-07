@@ -3322,6 +3322,36 @@
     "description": "Error shown when an operation needs a connected Flipper."
   },
 
+  "appsErrorVersionGone": "The catalog replaced this version while it was being installed. Try again.",
+  "@appsErrorVersionGone": {
+    "description": "Shown when an install failed because the catalog no longer has the version it was installing, and the one that replaced it was gone as well by the time it was asked for."
+  },
+
+  "appsErrorCatalogHttp": "Install failed: the catalog server answered {status}",
+  "@appsErrorCatalogHttp": {
+    "description": "Shown when an install failed because the catalog server answered a request with an HTTP error. status is the HTTP status code, e.g. 404 or 500.",
+    "placeholders": {
+      "status": {
+        "type": "int"
+      }
+    }
+  },
+
+  "appsErrorCatalogResponse": "Install failed: the catalog server sent an answer this version of the app cannot read",
+  "@appsErrorCatalogResponse": {
+    "description": "Shown when an install failed because a catalog response lacked something the app needs, for example a server older than the app."
+  },
+
+  "appsErrorInstallFailed": "Install failed: {reason}",
+  "@appsErrorInstallFailed": {
+    "description": "Shown when an install failed for a reason that has no message of its own. reason is the technical error text, not translated.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+
   "fliblerConsoleTitle": "Assembler",
   "@fliblerConsoleTitle": {
     "description": "Title of the build console screen."
