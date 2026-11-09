@@ -389,6 +389,24 @@ Future<io.File> irLibSettingsFile() async {
   return io.File(pathJoin([root.path, kIrLibSettingsFileName]));
 }
 
+/// The user's own home folder on a desktop, or null.
+///
+/// On macOS the real one, not the sandbox container's, for the reason
+/// [userDocumentsDirectory] gives. Null on Android and iOS, which have no
+/// home folder a user would recognise.
+String? desktopHomeDirectory() {
+  if (io.Platform.isMacOS) return _macosRealHomeDirectory();
+  final String? home;
+  if (io.Platform.isWindows) {
+    home = io.Platform.environment['USERPROFILE'];
+  } else if (io.Platform.isLinux) {
+    home = io.Platform.environment['HOME'];
+  } else {
+    return null;
+  }
+  return home == null || home.isEmpty ? null : home;
+}
+
 String? _macosRealHomeDirectory() {
   final home = io.Platform.environment['HOME'];
   if (home == null || home.isEmpty) return null;

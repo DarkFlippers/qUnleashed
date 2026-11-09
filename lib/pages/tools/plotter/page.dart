@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 import '../../../components/format.dart';
 import '../../../components/notification.dart';
 import '../../../components/picked_file.dart';
+import '../../../services/storage/picker_memory.dart';
 import 'models.dart';
 import 'parsing.dart';
 import 'plotter_view.dart';
@@ -123,7 +124,9 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     try {
       // `withData: false` (the default); the bytes are read in Dart. See
       // `readPickedFile` for why. Sentry QUNLEASHED-E.
-      final result = await FilePicker.platform.pickFiles();
+      final result = await FilePicker.platform.pickFiles(
+        initialDirectory: await pickerStart(PickerPlace.disk),
+      );
       // `files` can be empty on a non-null result, and `single` throws on it -
       // which the catch below would then report as a read that failed.
       if (result == null || result.files.isEmpty) return;
@@ -144,6 +147,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
         }
         return;
       }
+      await rememberPickedFile(PickerPlace.disk, path);
       final bytes = await readPickedFile(path, limit: _plotterImportLimit);
       // The picker is modal to the OS and not to Flutter, so the page behind
       // it can be left while it is open - and setState after dispose throws.

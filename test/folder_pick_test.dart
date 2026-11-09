@@ -49,6 +49,7 @@
 // guards cannot be entered from a test. `folder_pick.dart` says why the line
 // stays.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -59,6 +60,7 @@ import 'package:qunleashed/components/folder_pick.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
 import 'picker_fakes.dart';
@@ -141,7 +143,7 @@ void main() {
     WidgetTester tester, {
     String what = '[Archive] the folder pick',
     String dialogTitle = 'Choose a folder',
-    String? initialDirectory,
+    PickerPlace place = PickerPlace.disk,
   }) async {
     String? path;
     var done = false;
@@ -153,7 +155,7 @@ void main() {
               context,
               what: what,
               dialogTitle: dialogTitle,
-              initialDirectory: initialDirectory,
+              place: place,
             );
             done = true;
           }),
@@ -243,7 +245,7 @@ void main() {
       testWidgets('the call is the one the plugin makes', (tester) async {
         handleChannel(answer: '/sdcard');
 
-        await pick(tester, dialogTitle: 'Choose', initialDirectory: '/sdcard');
+        await pick(tester, dialogTitle: 'Choose', place: PickerPlace.firmware);
 
         // Pinned because nothing else can be: `dir` and the empty argument
         // map are copied from `FilePickerIO.getDirectoryPath`, and a compile
@@ -319,6 +321,7 @@ void main() {
                   context,
                   what: '[Archive] the folder pick',
                   dialogTitle: 'Choose a folder',
+                  place: PickerPlace.disk,
                 );
                 // The second tap, while the first dialog is still up.
                 answers.add(
@@ -326,6 +329,7 @@ void main() {
                     context,
                     what: '[Archive] the folder pick',
                     dialogTitle: 'Choose a folder',
+                    place: PickerPlace.disk,
                   ),
                 );
                 answers.add(await first);
@@ -368,6 +372,7 @@ void main() {
                   context,
                   what: '[Archive] the folder pick',
                   dialogTitle: 'Choose a folder',
+                  place: PickerPlace.disk,
                 );
                 done = true;
               }),
@@ -443,20 +448,29 @@ void main() {
   }
 
   group('on a desktop platform, where it never hid anything', () {
-    setUp(() => platform = TargetPlatform.windows);
+    setUp(() {
+      platform = TargetPlatform.windows;
+      // The desktops remember the folder a pick ended in, and a store that
+      // is not mocked fails its read and its write - two lines in the log
+      // that every case below would have to step around.
+      SharedPreferences.setMockInitialValues({});
+    });
 
     testWidgets('a desktop pick is the plugin\'s own, title and all', (
       tester,
     ) async {
       handleChannel(answer: '/not-this');
+      // Remembered from an earlier pick, and real: a remembered folder that
+      // is gone from disk is passed over for the place's first folder.
+      final remembered = Directory.systemTemp.createTempSync('pick_from');
+      addTearDown(() => remembered.deleteSync());
+      SharedPreferences.setMockInitialValues({
+        'picker_last_disk': remembered.path,
+      });
       final plugin = StubFilePicker(folder: r'C:\Downloads');
       FilePicker.platform = plugin;
 
-      final result = await pick(
-        tester,
-        dialogTitle: 'Choose a folder',
-        initialDirectory: r'C:\Projects',
-      );
+      final result = await pick(tester, dialogTitle: 'Choose a folder');
 
       expect(result.path, r'C:\Downloads');
       // The channel is the mobile workaround and nothing else. Linux and
@@ -466,8 +480,11 @@ void main() {
       // here would turn every desktop pick into a fall-back.
       expect(channelCalls, isEmpty);
       expect(plugin.title, 'Choose a folder');
-      expect(plugin.initial, r'C:\Projects');
+      expect(plugin.initial, remembered.path);
       expect(keptLines, isEmpty);
+      // And the next pick starts from the folder this one chose.
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('picker_last_disk'), r'C:\Downloads');
     });
 
     testWidgets('a desktop refusal is reported the same way', (tester) async {
@@ -516,6 +533,7 @@ void main() {
                 context,
                 what: '[Archive] the folder pick',
                 dialogTitle: 'Choose a folder',
+                place: PickerPlace.disk,
               );
               done = true;
             }),

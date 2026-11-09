@@ -15,6 +15,7 @@ import '../../../../components/path.dart';
 import '../../../../components/picked_file.dart';
 import '../../../../services/logging.dart';
 import '../../../../services/storage/paths.dart';
+import '../../../../services/storage/picker_memory.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/codec/gif.dart';
@@ -422,6 +423,7 @@ class _PaintPageState extends State<PaintPage> {
       context,
       what: '[Paint] the export folder pick',
       dialogTitle: context.l10n.paintChooseExportLocation,
+      place: PickerPlace.paint,
     );
   }
 
@@ -562,7 +564,10 @@ class _PaintPageState extends State<PaintPage> {
     try {
       // `withData: false` (the default); the bytes are read in Dart. See
       // `readPickedFile` for why. Sentry QUNLEASHED-E.
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        initialDirectory: await pickerStart(PickerPlace.paint),
+      );
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
@@ -577,6 +582,8 @@ class _PaintPageState extends State<PaintPage> {
         );
         return;
       }
+
+      await rememberPickedFile(PickerPlace.paint, path);
 
       if (file.name.toLowerCase() == 'meta.txt') {
         // Only the manifest is measured here. What bounds the import is the

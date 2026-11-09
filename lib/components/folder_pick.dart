@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 
 import '../services/localization/l10n.dart';
 import '../services/logging.dart';
+import '../services/storage/picker_memory.dart';
 import 'notification.dart';
+
+export '../services/storage/picker_memory.dart' show PickerPlace;
 
 /// The channel `file_picker` registers on Android and iOS.
 ///
@@ -145,13 +148,19 @@ bool _picking = false;
 /// makes a report readable. `test/picker_guard_test.dart` holds that the five
 /// tags are distinct.
 ///
-/// [dialogTitle] and [initialDirectory] reach the desktop pickers only. On
-/// Android and iOS the plugin drops both, and so does the channel call here.
+/// [place] is where the picker opens and what it remembers the chosen folder
+/// as - see [PickerPlace]. Required, so a new surface cannot open at the root
+/// by leaving it out.
+///
+/// [dialogTitle] and [place] reach the desktop pickers only. On Android and
+/// iOS the plugin drops a title and a starting folder both, and so does the
+/// channel call here; [pickerStart] answers null there and nothing is
+/// remembered.
 Future<String?> pickFolder(
   BuildContext context, {
   required String what,
   required String dialogTitle,
-  String? initialDirectory,
+  required PickerPlace place,
 }) async {
   if (_picking) return null;
   _picking = true;
@@ -179,10 +188,12 @@ Future<String?> pickFolder(
         );
       }
     }
-    return await FilePicker.platform.getDirectoryPath(
+    final picked = await FilePicker.platform.getDirectoryPath(
       dialogTitle: dialogTitle,
-      initialDirectory: initialDirectory,
+      initialDirectory: await pickerStart(place),
     );
+    await rememberPickerFolder(place, picked);
+    return picked;
   } catch (e, st) {
     LogService.caught('$what failed: ${LogService.describe(e, st)}');
     try {

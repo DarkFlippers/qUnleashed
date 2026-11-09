@@ -8,6 +8,7 @@ import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import '../../../components/progress_button.dart';
+import '../../../services/storage/picker_memory.dart';
 import '../device_scope.dart';
 import '../firmware/directory.dart';
 import '../firmware/installer.dart';
@@ -233,6 +234,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
           dialogTitle: l10n.fwuPickArchiveTitle,
           type: FileType.custom,
           allowedExtensions: const ['tgz', 'gz', 'tar'],
+          initialDirectory: await pickerStart(PickerPlace.firmware),
         );
       } catch (e, st) {
         // A plugin that is missing or refuses on this platform rejects here,
@@ -273,6 +275,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         );
         return;
       }
+      await rememberPickedFile(PickerPlace.firmware, picked);
       // The picker is the one await here that can outlive this widget - the
       // dialog is modal to the OS, not to Flutter, so the page behind it can be
       // navigated away or rebuilt while it is open. Without this the setState

@@ -22,6 +22,7 @@ import '../../browser/share_remote_file.dart';
 import '../../../../components/archive/category.dart';
 import '../../../../components/archive/models/key.dart';
 import '../../../../services/home_widget/service.dart';
+import '../../../../services/storage/picker_memory.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../devices/device_scope.dart';
 import '../failure_toast.dart';
@@ -458,12 +459,16 @@ class KeyActionsSheet {
       return;
     }
 
+    final title = context.l10n.archiveSaveOne(k.fileName);
+    final start = await pickerStart(PickerPlace.disk);
+    if (!context.mounted) return;
     String? savedPath;
     try {
       savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: context.l10n.archiveSaveOne(k.fileName),
+        dialogTitle: title,
         fileName: k.fileName,
         bytes: Uint8List.fromList(bytes),
+        initialDirectory: start,
       );
     } catch (e) {
       if (context.mounted) {
@@ -475,6 +480,7 @@ class KeyActionsSheet {
       return;
     }
     if (savedPath == null) return;
+    await rememberPickedFile(PickerPlace.disk, savedPath);
     final isDesktop =
         io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS;
     if (isDesktop) {

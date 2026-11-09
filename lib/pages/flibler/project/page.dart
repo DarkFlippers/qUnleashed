@@ -48,7 +48,6 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   }
 
   Future<void> _pickFolder() async {
-    final lastFolder = _ctrl.lastFolder;
     // Reached from a button, so a rejection here would have no listener at all
     // and would land in the zone as a fatal uncaught error - the mechanism of
     // QUNLEASHED-K. [pickFolder] never rejects, and reports a refusal that
@@ -57,7 +56,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
       context,
       what: '[Flibler] the folder pick',
       dialogTitle: context.l10n.fliblerPickFolder,
-      initialDirectory: lastFolder.isEmpty ? null : lastFolder,
+      place: PickerPlace.flibler,
     );
     if (path == null) return;
     _repoField.clear();

@@ -372,8 +372,18 @@ import 'ratchet.dart';
 /// same level, as its three neighbours. What it carries is the decoded
 /// *shape* in words and never the value, one store being a bare JSON string
 /// that can decode to an address. Once per launch, by the same memo. #466
+///
+/// **`services` is 26.** The three are `storage/picker_memory.dart`, and each
+/// is a picker that opened in the wrong folder: the place's remembered folder
+/// could not be read from the store, the system would not name Downloads for
+/// the firmware picker, or `user-dirs.dirs` could not be read for Pictures.
+/// None stops the pick - each falls through to the next candidate and the
+/// user sees a dialog either way - and that is why `caught` and not `warn`.
+/// They are what answers "the app forgets my folder" when a report says it,
+/// and nothing else would: the dialog opening in home looks like a fresh
+/// install. Desktop only, and at most once per pick.
 const Map<String, int> kBudget = {
-  'services': 23,
+  'services': 26,
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,
