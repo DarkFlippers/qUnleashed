@@ -41,7 +41,19 @@ class _PickerVisitor extends RecursiveAstVisitor<void> {
     if (isPickerCall(node)) {
       final line = unit.lineInfo.getLocation(node.offset).lineNumber;
       all.add(line);
-      if (namedArgument(node.argumentList, 'initialDirectory') == null) {
+      final where = namedArgument(node.argumentList, 'initialDirectory');
+      // Not just "is the argument there". `initialDirectory: null` passed the
+      // presence check this used to be, and a mutation run proved it: the
+      // literal was dropped into two real pickers and all 2516 tests stayed
+      // green. A null is what the call means without the argument at all, so
+      // it counts as unplaced.
+      //
+      // `argumentExpression` and not the argument itself - [namedArgument]
+      // answers the `NamedArgument`, so an `is NullLiteral` on that is always
+      // false. The first version of this check read that way and the same
+      // mutation walked straight through it. The deprecated spelling is the
+      // one [namedArgument]'s own doc says to use.
+      if (where == null || where.argumentExpression is NullLiteral) {
         unplaced.add(line);
       }
     }
@@ -99,9 +111,93 @@ void main() {
             'and, once the pick succeeds, `rememberPickedFile(place, path)`. '
             'A folder pick is `pickFolder(..., place: ...)`, which does both.',
       );
-      // The vacuity guard: nine `FilePicker.platform` calls when this went
-      // in, and a walk that found none would pass the rule above.
+      // The vacuity guard: six `FilePicker.platform` calls when this went in
+      // - ten picker surfaces, the five folder picks sharing one call through
+      // `pickFolder` - and a walk that found none would pass the rule above.
+      // The floor is exact on purpose: losing a single site to a matcher that
+      // stopped matching fails here rather than passing quietly.
       expect(total, greaterThanOrEqualTo(6));
+    });
+
+    // The rule's red direction, which nothing exercised. `picker_guard_test`
+    // drives its own visitors over synthetic source both ways; this one had
+    // only the aggregate, and a matcher loosened by mistake left this file
+    // green while two unrelated ratchets caught it.
+    test('the rule counts a picker that names no folder, and a null one', () {
+      List<int> unplacedIn(String source) => _visit(parseUnit(source)).unplaced;
+
+      expect(
+        unplacedIn('f() async => FilePicker.platform.pickFiles();'),
+        hasLength(1),
+        reason: 'a call with no initialDirectory at all must count',
+      );
+      expect(
+        unplacedIn(
+          'f() async => FilePicker.platform.pickFiles(initialDirectory: null);',
+        ),
+        hasLength(1),
+        reason: 'initialDirectory: null is the same call, spelled longer',
+      );
+      expect(
+        unplacedIn(
+          "f() async => FilePicker.platform.pickFiles(initialDirectory: 'x');",
+        ),
+        isEmpty,
+        reason: 'a folder that is actually passed must not count',
+      );
+    });
+  });
+
+  group('a folder that cannot be a starting folder', () {
+    test('the root is refused, so no picker can be sent there', () {
+      expect(
+        parseXdgUserDir('XDG_PICTURES_DIR="/"', 'PICTURES', '/home/u'),
+        isNull,
+        reason: 'the one folder this whole module exists to avoid',
+      );
+      expect(
+        parseXdgUserDir('XDG_PICTURES_DIR="//"', 'PICTURES', '/home/u'),
+        isNull,
+        reason: 'and it survives the trailing-slash strip',
+      );
+    });
+
+    test('a path the platform refuses is not a folder, and does not throw', () {
+      // `Directory.existsSync` does not merely answer false for anything odd:
+      // it throws for a path the platform calls malformed. Measured on
+      // Windows 10 with the pinned SDK: `Z:\gone` and an embedded NUL both
+      // answer false, while `C:\bad<name>` and `C:\foo:bar\baz` throw
+      // `FileSystemException` (`ERROR_INVALID_NAME`). On POSIX the same shape
+      // arrives as `EACCES` when a parent directory cannot be searched.
+      //
+      // Either reaches `_isFolder` from a folder the user picked once, and
+      // before it caught, the throw escaped `pickerStart` - whose contract
+      // says it never does - and the user got no picker at all.
+      //
+      // Only the Windows spelling is assertable: a reserved character is not
+      // malformed on Linux, and provoking `EACCES` needs a chmod that does
+      // nothing when the suite runs as root in a container. So CI, which is
+      // Linux, checks the portable half and this machine checks the throw.
+      // That is the same split `folder_pick_test.dart` documents for its own
+      // platform-only survivors.
+      expect(
+        isFolderForTest('${io.Directory.current.path}/no/such/folder/here'),
+        isFalse,
+        reason: 'the ordinary missing-folder answer, on every platform',
+      );
+
+      if (!io.Platform.isWindows) return;
+      const refused = r'C:ad<name>';
+      expect(
+        () => io.Directory(refused).existsSync(),
+        throwsA(isA<io.FileSystemException>()),
+        reason: 'if this stops throwing, the catch under test is dead code',
+      );
+      expect(
+        isFolderForTest(refused),
+        isFalse,
+        reason: 'and `_isFolder` turns that throw into an answer',
+      );
     });
   });
 

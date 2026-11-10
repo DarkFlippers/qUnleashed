@@ -93,16 +93,22 @@ Future<String?> pickerStart(PickerPlace place) async {
   final last = await _lastFolder(place);
   if (last != null && _isFolder(last)) return last;
   final home = desktopHomeDirectory();
+  // One switch rather than a test per argument, so a fourth `_FirstFolder`
+  // is a compile error here instead of silently getting neither input.
+  final (downloads, xdgPictures) = switch (place._first) {
+    _FirstFolder.home => (null, null),
+    _FirstFolder.downloads => (await _knownDownloads(place), null),
+    _FirstFolder.pictures => (
+      null,
+      io.Platform.isLinux ? _xdgUserDir('PICTURES', home) : null,
+    ),
+  };
   final candidates = firstFoldersFor(
     place,
     windows: io.Platform.isWindows,
     home: home,
-    downloads: place._first == _FirstFolder.downloads
-        ? await _knownDownloads(place)
-        : null,
-    xdgPictures: place._first == _FirstFolder.pictures && io.Platform.isLinux
-        ? _xdgUserDir('PICTURES', home)
-        : null,
+    downloads: downloads,
+    xdgPictures: xdgPictures,
   );
   for (final candidate in candidates) {
     if (_isFolder(candidate)) return candidate;
@@ -183,7 +189,13 @@ List<String> firstFoldersFor(
 /// "$HOME/Изображения"`. The spec allows a path that is absolute or starts
 /// with `$HOME`, and a folder equal to the home folder means the entry is
 /// switched off, so both of those answer null rather than the home folder
-/// standing in for Pictures.
+/// standing in for Pictures. The root answers null too: this module exists so
+/// that no picker opens there, and a hand-edited `/` would walk straight past
+/// every other candidate.
+///
+/// The first assignment wins, where sourcing the file in a shell would take
+/// the last. A generated file has one of each, and preferring the first is
+/// the stricter direction for a hand-edited one.
 @visibleForTesting
 String? parseXdgUserDir(String contents, String name, String home) {
   final prefix = 'XDG_${name}_DIR=';
@@ -198,16 +210,35 @@ String? parseXdgUserDir(String contents, String name, String home) {
     while (value.length > 1 && value.endsWith('/')) {
       value = value.substring(0, value.length - 1);
     }
-    if (!value.startsWith('/') || value == home) return null;
+    if (!value.startsWith('/') || value == home || value == '/') return null;
     return value;
   }
   return null;
 }
 
-/// `existsSync` answers false for a path the OS will not stat - a drive
-/// letter that is gone, a name it refuses - rather than throwing, and a
-/// folder the picker cannot open is exactly what false means here.
-bool _isFolder(String path) => io.Directory(path).existsSync();
+/// Whether [path] is a folder that exists. Never throws.
+///
+/// `existsSync` answers false for a drive letter that is gone, but it
+/// *throws* for a path the OS calls malformed - `ERROR_INVALID_NAME` on
+/// Windows for a name with a reserved character, `EACCES` on Linux when a
+/// parent directory cannot be searched. Both arrive here from a folder a
+/// user picked once and a `caught` would fire on every launch after, so the
+/// catch is silent: a folder the picker cannot open is exactly what false
+/// means, and the next candidate is tried either way.
+///
+/// This catch is what makes [pickerStart]'s never-throws contract true. Its
+/// absence used to be the one unguarded platform call in this file.
+bool _isFolder(String path) {
+  try {
+    return io.Directory(path).existsSync();
+  } catch (_) {
+    return false;
+  }
+}
+
+/// [_isFolder], for the test that holds it against a path the OS refuses.
+@visibleForTesting
+bool isFolderForTest(String path) => _isFolder(path);
 
 Future<String?> _lastFolder(PickerPlace place) async {
   try {

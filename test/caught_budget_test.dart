@@ -379,9 +379,11 @@ import 'ratchet.dart';
 /// the firmware picker, or `user-dirs.dirs` could not be read for Pictures.
 /// None stops the pick - each falls through to the next candidate and the
 /// user sees a dialog either way - and that is why `caught` and not `warn`.
-/// They are what answers "the app forgets my folder" when a report says it,
-/// and nothing else would: the dialog opening in home looks like a fresh
-/// install. Desktop only, and at most once per pick.
+/// They are what answers "the app forgets my folder" when a report says it
+/// for a folder that could not be *read*: the dialog opening in home looks
+/// like a fresh install. A folder that did not *stick* is the other half, and
+/// `persistSetting` already answers that one with a `warn`. Desktop only, and
+/// at most once per pick.
 const Map<String, int> kBudget = {
   'services': 26,
   'pages/archive': 23,

@@ -785,8 +785,9 @@ class _FileManagerPageState extends State<FileManagerPage>
       for (final f in result.files)
         if (f.path != null) f.path!,
     ];
-    if (paths.isNotEmpty)
+    if (paths.isNotEmpty) {
       await rememberPickedFile(PickerPlace.disk, paths.first);
+    }
     await _upload(paths, skipped: result.files.length - paths.length);
   }
 
