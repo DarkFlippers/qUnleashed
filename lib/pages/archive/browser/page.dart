@@ -18,6 +18,7 @@ import '../../../theme/theme.dart';
 import 'package:flipperlib/flipperlib.dart';
 
 import '../../../services/storage/fap_icons.dart' as icon_repo;
+import '../../../services/storage/picker_memory.dart';
 import '../../../components/folder_pick.dart';
 import '../../../components/notification.dart';
 import '../../../components/selection.dart';
@@ -359,6 +360,7 @@ class _FileManagerPageState extends State<FileManagerPage>
       context,
       what: '[FileManager] the download folder pick',
       dialogTitle: context.l10n.fmChooseDownloadLocation,
+      place: PickerPlace.disk,
     );
     if (!mounted || destDir == null || !_mayDownload(entries)) return;
 
@@ -743,6 +745,7 @@ class _FileManagerPageState extends State<FileManagerPage>
         allowMultiple: true,
         withData: false,
         withReadStream: false,
+        initialDirectory: await pickerStart(PickerPlace.disk),
       );
     } catch (e, st) {
       // The pick rejects rather than answering, and this is reached from a
@@ -778,10 +781,14 @@ class _FileManagerPageState extends State<FileManagerPage>
       _pickFailed('the file pick returned none of the chosen files');
       return;
     }
-    await _upload([
+    final paths = [
       for (final f in result.files)
         if (f.path != null) f.path!,
-    ], skipped: result.files.where((f) => f.path == null).length);
+    ];
+    if (paths.isNotEmpty) {
+      await rememberPickedFile(PickerPlace.disk, paths.first);
+    }
+    await _upload(paths, skipped: result.files.length - paths.length);
   }
 
   /// Records [line] and tells the user the pick failed.
@@ -805,6 +812,7 @@ class _FileManagerPageState extends State<FileManagerPage>
       context,
       what: '[FileManager] the upload folder pick',
       dialogTitle: context.l10n.fmChooseFolderToUpload,
+      place: PickerPlace.disk,
     );
     if (!mounted || dir == null) return;
     await _upload([dir]);

@@ -441,6 +441,7 @@ class _CategoryPageState extends State<CategoryPage>
       context,
       what: '[Archive] the folder pick',
       dialogTitle: title,
+      place: PickerPlace.disk,
     );
     if (dir == null) return;
 

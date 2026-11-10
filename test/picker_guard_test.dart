@@ -74,33 +74,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'ratchet.dart';
 
-/// Whether [node] is a call on `FilePicker.platform`, however it was imported.
-///
-/// The prefixed form is why this is a predicate rather than a name check: one
-/// `import 'package:file_picker/file_picker.dart' as fp;` would take a whole
-/// file out of the count, and nobody adding that import would connect it to a
-/// ratchet.
-///
-/// Deliberately not shared with `picker_bytes_guard_test.dart`, which matches
-/// `pickFiles` by name with no target check and has unit tests pinning that.
-/// This is the stricter of the two and belongs beside `isLogServiceCall` in
-/// `ratchet.dart` the moment a second ratchet asks for it - which is that
-/// file's own rule: extracted when the second and third arrive, not before.
-bool isPickerCall(MethodInvocation node) {
-  final target = node.target;
-  if (target is PrefixedIdentifier) {
-    return target.identifier.name == 'platform' &&
-        target.prefix.name == 'FilePicker';
-  }
-  if (target is PropertyAccess) {
-    final inner = target.target;
-    return target.propertyName.name == 'platform' &&
-        inner is PrefixedIdentifier &&
-        inner.identifier.name == 'FilePicker';
-  }
-  return false;
-}
-
 /// Whether [node] is the expression of an `await`.
 ///
 /// Condition (1). Without it the `try` around the call is off the stack by the

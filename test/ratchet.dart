@@ -248,6 +248,33 @@ bool isCallOnClass(MethodInvocation node, String className) {
 bool isLogServiceCall(MethodInvocation node) =>
     isCallOnClass(node, 'LogService');
 
+/// Whether [node] is a call on `FilePicker.platform`, however it was imported.
+///
+/// The prefixed form is why this is a predicate rather than a name check: one
+/// `import 'package:file_picker/file_picker.dart' as fp;` would take a whole
+/// file out of the count, and nobody adding that import would connect it to a
+/// ratchet.
+///
+/// Moved here from `picker_guard_test.dart` when `picker_memory_test.dart`
+/// became the second ratchet to ask it. Still not shared with
+/// `picker_bytes_guard_test.dart`, which matches `pickFiles` by name with no
+/// target check and has unit tests pinning that; this is the stricter of the
+/// two.
+bool isPickerCall(MethodInvocation node) {
+  final target = node.target;
+  if (target is PrefixedIdentifier) {
+    return target.identifier.name == 'platform' &&
+        target.prefix.name == 'FilePicker';
+  }
+  if (target is PropertyAccess) {
+    final inner = target.target;
+    return target.propertyName.name == 'platform' &&
+        inner is PrefixedIdentifier &&
+        inner.identifier.name == 'FilePicker';
+  }
+  return false;
+}
+
 /// The argument called [name] in [arguments], or null if it is not passed.
 ///
 /// Shared on the same grounds as [isLogServiceCall], and by then four ratchets
