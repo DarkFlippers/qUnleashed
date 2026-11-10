@@ -157,13 +157,24 @@ Future<void> shareLocalFile(
   final box = context.findRenderObject() as RenderBox?;
   final origin = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
 
+  // `fileNameOverrides` rather than `XFile(name:)`, which share_plus 10 took
+  // and `cross_file` throws away: its io constructor stores no name at all and
+  // `XFile.name` always returns the path's last segment - the parameter "exists
+  // only to match the web version of the constructor", in its own words. That
+  // was latent rather than broken here, because `_downloadToCache` writes the
+  // temp file under `basename(remotePath)`, so the name it discarded equalled
+  // the one it computed. This says what was meant, and holds for a caller whose
+  // local path and display name do not agree.
   try {
-    await Share.shareXFiles([
-      XFile(
-        localPath,
-        name: displayName ?? basename(localPath.replaceAll('\\', '/')),
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(localPath)],
+        fileNameOverrides: [
+          displayName ?? basename(localPath.replaceAll('\\', '/')),
+        ],
+        sharePositionOrigin: origin,
       ),
-    ], sharePositionOrigin: origin);
+    );
   } catch (e) {
     if (context.mounted) {
       context.showNotification(
