@@ -117,7 +117,11 @@ android {
     }
 
     // One invocation, four APKs, one R8 run - which is the point, rather than
-    // the minute it saves. `build/android.sh` used to build the whole release
+    // the minute it saves. One invocation per artifact KIND, since the App
+    // Bundle cannot join this one: AGP refuses a bundle while ABI splits are
+    // enabled, so it is a second `flutter build` with a second R8 run and its
+    // own mapping. `.github/scripts/build/android.sh` records that, and
+    // `upload_r8_mapping.sh` sends both mappings. `build/android.sh` used to build the whole release
     // twice, once for the universal APK and once with `--split-per-abi`, and R8
     // wrote over `mapping.txt` on the second pass. So the mapping that got
     // uploaded came from one build and the UUID it was filed under came from
@@ -344,11 +348,15 @@ dependencies {
 //
 // The UUID is `nameUUIDFromBytes` over R8's own `pg_map_hash` line from the
 // mapping, or over an MD5 of the file if R8 wrote none - a function of the
-// mapping's content either way. Every APK in a release now carries the same
-// one because `.github/scripts/build/android.sh` runs R8 once, which the
-// `splits` block above is what allows; it used to build twice and lean on R8
-// being deterministic across the two. `verify_apks.sh` still checks they
-// agree, which is now what would catch a regression back to two runs.
+// mapping's content either way, which is what lets a mapping and a UUID be
+// paired without anything recording which build made them.
+//
+// Every APK in a release carries the same one because the four come from one
+// invocation and one R8 run, which the `splits` block above is what allows.
+// The App Bundle is a second invocation with a second run, so it may carry a
+// different one, and both mappings are uploaded - each under the UUID of the
+// artifact it describes. `verify_apks.sh` checks that the APKs agree with each
+// other and deliberately exempts the bundle; it says why where it does it.
 //
 // This file does not send anything, and no release name appears below. The
 // send is `upload-debug-symbols`, after the APKs exist, with the UUID read

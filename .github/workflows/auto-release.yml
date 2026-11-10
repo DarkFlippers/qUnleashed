@@ -252,6 +252,11 @@ jobs:
           path: dist/qunleashed_*_android.aab
           if-no-files-found: error
           retention-days: ${{ env.ASSET_RETENTION }}
+          # An `.aab` is already a deflated zip, so the action's default
+          # level 6 spends CPU on 93 MB to achieve about nothing. Stated only
+          # on this step: the APK upload above has the same property, but
+          # changing it is churn on a step this branch is not about.
+          compression-level: 0
 
   # Pinned, and the pin is the fix for #280. A Flutter Linux app links against
   # the host's GTK and GLib and ships neither, so the oldest system the binary

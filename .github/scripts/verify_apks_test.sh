@@ -417,6 +417,50 @@ d="$TMP/bundle-blank-uuid"; good_set "$d"
 )
 refuses "a bundle with no usable mapping UUID is refused" "$d" "with no io.sentry.ProguardUuids in it"
 
+# The missing-asset shape for a bundle, which the "no separate UUID assertion"
+# reasoning in `verify_apks.sh` depends on: without this case a mutation that
+# removed the per-artifact fault would survive, and the argument would rest on
+# a gap in this suite rather than on the code.
+d="$TMP/bundle-no-sentry"; good_set "$d"
+aab_omitting "$d/qunleashed_0.13.0_android.aab" "base/assets/sentry-debug-meta.properties" armeabi-v7a arm64-v8a x86_64
+refuses "a bundle with no Sentry UUID asset is refused" "$d" "nothing ties it to an R8 mapping"
+
+# A bundle whose entry data is corrupt but listable. Both pre-existing
+# integrity cases use an APK, so the bundle branch of that check was uncovered.
+d="$TMP/bundle-corrupt"; good_set "$d"
+python3 - "$d/qunleashed_0.13.0_android.aab" <<'PY2'
+import sys
+path = sys.argv[1]
+raw = bytearray(open(path, "rb").read())
+end = raw.rfind(b"PK")
+raw[:end] = b" " * end
+open(path, "wb").write(bytes(raw))
+PY2
+refuses "a bundle whose data is corrupt but listable is refused" "$d" "failed its integrity check"
+
+# A 32-bit library inside the bundle has to be inspected, not skipped. Nothing
+# pinned that: restricting the parser's bundle shape to 64-bit ABIs survived
+# the whole suite, because the "nothing inspected" guard only covers 64-bit
+# ABIs - so a stub where a 32-bit library should be went unreported.
+d="$TMP/bundle-32bit-stub"; good_set "$d"
+python3 - "$d/qunleashed_0.13.0_android.aab" <<'PY2'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "a") as z:
+    z.writestr("base/lib/armeabi-v7a/libstub.so", "a stub where a library should be")
+PY2
+refuses "a stub .so under the bundle's 32-bit ABI is refused" "$d" "not an ELF file"
+
+# Nothing clears `dist/`, so a leftover from another version survives a local
+# re-run - and `upload_r8_mapping.sh` would read its UUID off whichever sorted
+# first, which for a version number is the older one.
+d="$TMP/two-bundles"; good_set "$d"
+cp "$d/qunleashed_0.13.0_android.aab" "$d/qunleashed_0.12.0_android.aab"
+refuses "two App Bundles in one directory are refused" "$d" "a release produces exactly one"
+
+d="$TMP/two-universal"; good_set "$d"
+cp "$d/qunleashed_0.13.0_android_universal.apk" "$d/qunleashed_0.12.0_android_universal.apk"
+refuses "two universal APKs in one directory are refused" "$d" "a release produces exactly one"
+
 d="$TMP/stray"; good_set "$d"
 apk "$d/qunleashed_0.13.0_android_riscv64.apk" riscv64
 refuses "an artifact with an unrecognised name is refused" "$d" "does not match any known"

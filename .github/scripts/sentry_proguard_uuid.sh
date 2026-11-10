@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Where an APK carries the identifier that ties it to an R8 mapping, and how to
-# read it out.
+# Where an Android artifact carries the identifier that ties it to an R8
+# mapping, and how to read it out.
 #
-# Sourced, not run. Two scripts need the same three facts and must not drift
-# apart: `verify_apks.sh` refuses a build whose APKs do not carry a usable one,
-# and `upload_r8_mapping.sh` files the mapping under the one the shipped APK
-# has. If those two ever disagree about the asset path, the key name or what
-# counts as usable, the gate passes a build the uploader cannot address - and
-# the only symptom is a Java frame that stops deobfuscating, months later.
+# Sourced, not run. Two scripts need the same facts and must not drift apart:
+# `verify_apks.sh` refuses a build whose artifacts do not carry a usable one,
+# and `upload_r8_mapping.sh` files each mapping under the one its artifact has.
+# If those two ever disagree about the asset path, the key name or what counts
+# as usable, the gate passes a build the uploader cannot address - and the only
+# symptom is a Java frame that stops deobfuscating, months later.
+#
+# Two paths, because a release ships two artifact kinds (ADR 0017). Only the
+# UUID lives here; what the artifacts are called and where their other
+# contents sit is `android_artifacts.sh`.
 #
 # Same argument as `android_abis.sh`, which exists so that the ABI names
 # `android.sh` writes and the ones `verify_apks.sh` checks cannot drift.
@@ -33,37 +37,13 @@ SENTRY_UUID_RE='[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
 # exists: the gate and the uploader must not disagree about where it lives.
 SENTRY_UUID_ASSET_BUNDLE="base/$SENTRY_UUID_ASSET"
 
-# A release runs R8 twice, because AGP refuses to build an App Bundle while
-# ABI splits are enabled ("Please disable building multiple APKs when building
-# an Android app bundle", issuetracker 402800800). Each run writes its mapping
-# to the same `mapping.txt`, so `android.sh` moves the first aside and both
-# files have to be named somewhere both it and `upload_r8_mapping.sh` can see
-# - two R8 runs mean two UUIDs, and a mapping filed under the wrong one is
-# worse than none, because a wrong name is believed.
+# sentry_proguard_uuid <archive> <entry> -> the UUID, or nothing
 #
-# Basenames, not paths: the directory carries the variant (`.../release/...`)
-# and each caller already knows it.
-#
-# `mapping.txt` is the bundle's deliberately. It is R8's own output name, so
-# whichever run goes last owns it, and the bundle is last - which means a
-# reader who finds only `mapping.txt` in a half-finished build directory has
-# the bundle's, the artifact Play installs.
-#
-# The two files are often identical, and nothing here leans on that. Measured
-# on a full local release: R8 is deterministic over the same inputs, so both
-# runs wrote the same 22 MB mapping with the same `pg_map_hash`, and both
-# artifacts therefore carried the same UUID - so the two uploads sent one
-# mapping twice, harmlessly. That is a property of this build, not a
-# guarantee: anything that differs between the two invocations can move either
-# hash, and then each artifact needs its own mapping. The point of naming both
-# files is that the correct behaviour does not change when they diverge.
-R8_MAPPING_APK="mapping-apk.txt"
-R8_MAPPING_BUNDLE="mapping.txt"
-
-# sentry_proguard_uuid <archive> [entry] -> the UUID, or nothing
-#
-# `entry` defaults to the APK path, so the uploader - which only ever reads an
-# APK - needs no second argument and cannot pass the wrong one.
+# `entry` is required. It used to default to the APK path, which was safe
+# while an APK was the only thing anybody read; now that a bundle holds the
+# same asset one level in, a caller that forgot the argument would read an
+# APK's path out of a bundle, find nothing, and be told the artifact carries
+# no UUID - blaming the artifact for a caller's bug. Both callers pass it.
 #
 # Prints nothing rather than failing, for either shape of absence - no asset,
 # or an asset with no usable value - because both are one problem with one fix
@@ -75,7 +55,15 @@ R8_MAPPING_BUNDLE="mapping.txt"
 # hundred bytes and cannot reach that; a gate and an uploader are the last two
 # places to leave it standing.
 sentry_proguard_uuid() {
-  unzip -p "$1" "${2:-$SENTRY_UUID_ASSET}" 2>/dev/null \
+  # Its own statement, before the pipeline, because the `|| true` below would
+  # otherwise swallow it: under `set -u` an unbound `$2` inside the pipeline
+  # fails that command, `|| true` makes the pipeline succeed, and the caller
+  # gets an empty string - which it reports as "the artifact carries no usable
+  # UUID". That is the misleading message removing the default was meant to
+  # prevent, so the arity is checked where nothing can catch it.
+  local archive="${1?sentry_proguard_uuid needs an archive}"
+  local entry="${2?sentry_proguard_uuid needs the entry to read, and it differs between an APK and a bundle}"
+  unzip -p "$archive" "$entry" 2>/dev/null \
     | sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" \
     | head -n 1 || true
 }

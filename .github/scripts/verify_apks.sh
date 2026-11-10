@@ -37,12 +37,14 @@
 # what a sideload installs, and the App Bundle, which is what Play installs
 # and therefore what every store user gets. A bundle holds the same things one
 # level in, under its base module, so the entry paths are per kind rather than
-# shared - and only the base module, because a dynamic feature is not
-# installed with it.
+# shared - and only the base module, because this app has no feature modules.
+# `elf_page_align.py` holds what to decide on the day it gains one.
 #
-# One script and not two, because of the UUID check at the bottom: the whole
-# guarantee is that every artifact of a release carries the SAME R8 mapping
-# UUID, and nothing split across two scripts can assert that.
+# One script and not two, because the UUID check at the bottom has to see
+# every artifact at once: the four APKs must agree with each other, and the
+# bundle must be *excluded* from that comparison rather than merely absent
+# from it. Neither half of that can be asserted from a script that sees only
+# one kind. The bottom of this file has the reasoning.
 set -Eeuo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +52,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=android_abis.sh
 . "$HERE/android_abis.sh"
+# The artifact names and the per-kind entry paths, shared with the build and
+# the uploader so a glob cannot drift in one of the three. ADR 0017.
+# shellcheck source=android_artifacts.sh
+. "$HERE/android_artifacts.sh"
 
 # A real snapshot is multiple megabytes. This only has to be large enough to
 # reject an empty or stub file and small enough never to reject a real one.
@@ -96,15 +102,12 @@ shopt -s nullglob
 # `_android.aab` has no second underscore, which is what keeps the bundle out
 # of every `*_android_*` glob in this repository - including the one beside it
 # here, the release-asset upload and `action-gh-release`'s file list.
-artifacts=("$dir"/*_android_*.apk "$dir"/*_android.aab)
+artifacts=("$dir"/$ANDROID_APK_GLOB "$dir"/$ANDROID_BUNDLE_GLOB)
 if (( ${#artifacts[@]} == 0 )); then
   echo "::error::No Android artifacts found in $dir." >&2
   exit 1
 fi
 
-seen_universal=0
-seen_bundle=0
-bundle_uuid=""
 declare -A seen_abi=()
 declare -A seen_uuid=()
 
@@ -114,13 +117,10 @@ for file in "${artifacts[@]}"; do
 
   # Both the expected ABIs and the artifact's identity come from the name.
   case "$name" in
-    *_android.aab)
+    *_android.aab | *_android_universal.apk)
+      # Everything, in one artifact. The loop at the bottom is what counts
+      # them; this only has to say which ABIs to expect inside.
       want=("${ANDROID_ABIS[@]}")
-      seen_bundle=1
-      ;;
-    *_android_universal.apk)
-      want=("${ANDROID_ABIS[@]}")
-      seen_universal=1
       ;;
     *)
       abi="${name##*_android_}"
@@ -140,14 +140,14 @@ for file in "${artifacts[@]}"; do
   # `base/manifest/AndroidManifest.xml` and `base/dex/classes.dex`.
   case "$name" in
     *.aab)
-      manifest="base/manifest/AndroidManifest.xml"
-      dex="base/dex/classes.dex"
+      manifest="$BUNDLE_MANIFEST_ENTRY"
+      dex="$BUNDLE_DEX_ENTRY"
       sentry_asset="$SENTRY_UUID_ASSET_BUNDLE"
-      lib_root="base/lib"
+      lib_root="$ANDROID_BUNDLE_MODULE/lib"
       ;;
     *)
-      manifest="AndroidManifest.xml"
-      dex="classes.dex"
+      manifest="$APK_MANIFEST_ENTRY"
+      dex="$APK_DEX_ENTRY"
       sentry_asset="$SENTRY_UUID_ASSET"
       lib_root="lib"
       ;;
@@ -178,9 +178,9 @@ for file in "${artifacts[@]}"; do
     uuid="$(sentry_proguard_uuid "$file" "$sentry_asset")"
     if [[ -z "$uuid" ]]; then
       fault "$name carries $sentry_asset with no io.sentry.ProguardUuids in it."
-    elif [[ "$name" == *.aab ]]; then
-      bundle_uuid="$uuid"
-    else
+    elif [[ "$name" != *.aab ]]; then
+      # The bundle's own UUID is deliberately not collected: the comparison
+      # below is the APKs' alone, for the reason stated where it happens.
       seen_uuid["$uuid"]=1
     fi
   fi
@@ -235,7 +235,7 @@ for file in "${artifacts[@]}"; do
   # `|| true` because no lib/ entries at all is a fault reported above, not a
   # reason to abandon the remaining artifacts.
   found="$(grep -oE "^$lib_root/[^/]+/" <<<"$listing" \
-    | sed -E "s#^$lib_root/##; s#/\$##" | sort -u || true)"
+    | awk -F/ '{print $(NF-1)}' | sort -u || true)"
   for abi in $found; do
     printf '%s\n' "${want[@]}" | grep -qxF -- "$abi" \
       || fault "$name carries an unexpected ABI: $abi."
@@ -248,12 +248,26 @@ done
 
 # The build hard-fails on a missing artifact, but this is the gate that is meant
 # not to trust the build.
-(( seen_universal )) || fault "No universal APK in $dir."
-# Play does not accept an APK for a new application, so a release with no
-# bundle cannot be submitted at all. It comes from a `finalizedBy` in
-# `android/app/build.gradle.kts`, which is exactly the kind of wiring that can
-# stop taking effect without anything else failing.
-(( seen_bundle )) || fault "No App Bundle in $dir."
+# EXACTLY one universal APK and exactly one bundle - both halves of that, in
+# one loop, because a boolean can only say "at least one".
+#
+# Play does not accept an APK for a new application, so a release missing the
+# bundle cannot be submitted at all; and more than one of either is a leftover,
+# because nothing clears `dist/` between local runs. `upload_r8_mapping.sh`
+# would then read a UUID off whichever sorted first - for a version number the
+# OLDER one, systematically - and file a fresh mapping under it while
+# reporting success. The APK half of that is caught by the UUID comparison
+# below as well; the bundle is exempt from it by design, so for the bundle
+# this is the only thing in front of it.
+for kind in "universal APK|$ANDROID_UNIVERSAL_GLOB" "App Bundle|$ANDROID_BUNDLE_GLOB"; do
+  label="${kind%%|*}"
+  matched=("$dir"/${kind#*|})
+  if (( ${#matched[@]} == 0 )); then
+    fault "No $label in $dir."
+  elif (( ${#matched[@]} > 1 )); then
+    fault "$dir holds ${#matched[@]} ${label}s (${matched[*]##*/}); a release produces exactly one, so the rest are leftovers from another build."
+  fi
+done
 for abi in "${ANDROID_ABIS[@]}"; do
   [[ -n "${seen_abi[$abi]:-}" ]] || fault "No $abi APK in $dir."
 done
@@ -290,12 +304,14 @@ fi
 # anything that differs between the invocations can change that, and the
 # correct behaviour is the same either way.
 #
-# There is deliberately no separate "the bundle has a UUID" assertion here.
-# The per-artifact block above already faults for a missing asset and for an
-# asset with no usable value, for every artifact including the bundle, so a
-# check down here could not fire: a mutation that removed one proved it, by
-# surviving the whole suite. `$bundle_uuid` is kept because it is what tells
-# the loop above which UUIDs belong in the APK comparison.
+# There is deliberately no separate "the bundle has a UUID" assertion here,
+# and the reason is structural rather than measured: the per-artifact block
+# above faults both for a missing asset and for an asset with no usable value,
+# for every artifact including the bundle, and every other route to that point
+# (a failed integrity check, a failed listing) faults and `continue`s first.
+# So a check here could not fire. Both of those bundle shapes have their own
+# case in the suite, which is what makes that argument checkable rather than
+# merely plausible.
 
 if (( failures )); then
   echo "::error::$failures problem(s) found; refusing to publish." >&2

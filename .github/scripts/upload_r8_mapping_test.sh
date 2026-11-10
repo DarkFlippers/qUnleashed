@@ -69,7 +69,7 @@ workspace() {
   local aab_line="${3-io.sentry.ProguardUuids=$AAB_UUID}"
   local d="$TMP/$name"
   rm -rf "$d"; mkdir -p "$d/dist" "$d/mapdir" "$d/tmp"
-  printf '# compiler: R8\n# pg_map_hash: SHA-256 aab\na.b.C -> x.y:\n' > "$d/mapdir/mapping.txt"
+  printf '# compiler: R8\n# pg_map_hash: SHA-256 aab\na.b.C -> x.y:\n' > "$d/mapdir/mapping-aab.txt"
   printf '# compiler: R8\n# pg_map_hash: SHA-256 apk\na.b.C -> x.y:\n' > "$d/mapdir/mapping-apk.txt"
   printf 'name: qunleashed\n\nsentry:\n  upload_debug_symbols: true\n  org: dark-flippers\n  project: qunleashed\n\nflutter:\n  generate: true\n' > "$d/pubspec.yaml"
   python3 - "$d/dist" "$apk_line" "$aab_line" <<'PY'
@@ -122,12 +122,34 @@ says() {
 
 echo "upload_r8_mapping.sh"
 
+# --- the shared reader's arity ----------------------------------------------
+#
+# `sentry_proguard_uuid.sh` has no suite of its own; its facts are exercised
+# through the two scripts that source it. This one cannot be: the entry
+# argument became required precisely so that a caller which forgets it fails
+# instead of reading an APK's path out of a bundle, and both callers pass it,
+# so nothing else can observe the difference. Without this case, restoring the
+# old default survives the whole suite - measured.
+out="$( bash -c '
+  set -Eeuo pipefail
+  . "'"$HERE"'/sentry_proguard_uuid.sh"
+  sentry_proguard_uuid /nonexistent.apk
+' 2>&1 )" && rc=0 || rc=$?
+if (( rc == 0 )); then
+  fail "calling the UUID reader without an entry is an error" \
+    "it returned 0 and printed: ${out:-<nothing>}"
+elif [[ "$out" != *"needs the entry to read"* ]]; then
+  fail "calling the UUID reader without an entry fails for the right reason" "$out"
+else
+  pass "calling the UUID reader without an entry is an error, not a wrong read"
+fi
+
 # --- the happy path, which pins both parsers at once ------------------------
 
 d="$(workspace happy)"
 out="$(run "$d" SENTRY_AUTH_TOKEN=sntrys_stub)" || fail "a good upload succeeds" "$out"
 want_apk="proguard upload --require-one --uuid $UUID --org dark-flippers --project qunleashed $d/mapdir/mapping-apk.txt"
-want_aab="proguard upload --require-one --uuid $AAB_UUID --org dark-flippers --project qunleashed $d/mapdir/mapping.txt"
+want_aab="proguard upload --require-one --uuid $AAB_UUID --org dark-flippers --project qunleashed $d/mapdir/mapping-aab.txt"
 got="$(cat "$d/argv")"
 if [[ "$got" == *"$want_apk"* ]]; then
   pass "the APKs' mapping is sent under the APK's own UUID"
@@ -149,7 +171,7 @@ if (( $(grep -c . <<<"$got") == 2 )); then
 else
   fail "exactly two mappings are uploaded" "$got"
 fi
-if grep -q "R8 mappings uploaded" "$d/summary.md"; then
+if grep -q "R8 mappings, 2 to send" "$d/summary.md"; then
   pass "...and the job summary says so"
 else
   fail "...and the job summary says so" "$(cat "$d/summary.md")"
@@ -177,6 +199,21 @@ else
   fail "a job that built nothing leaves quietly" "$out"$'\n'"$(cat "$d/summary.md")"
 fi
 
+# A missing mapping is reported even with no token, because reading what is on
+# disk needs no credentials. An earlier draft had the presence checks below the
+# token gate, so a job without the secret said nothing about a half that had
+# no mapping at all - while the duplicate-artifact check two lines up still
+# spoke. A gate's loudness should not depend on a secret.
+d="$(workspace no-token-no-mapping)"; rm -f "$d/mapdir/mapping-aab.txt"
+out="$(run "$d" SENTRY_AUTH_TOKEN=)" || fail "the presence pass does not fail the step" "$out"
+if [[ "$out" != *"No R8 mapping for the App Bundle"* ]]; then
+  fail "a missing mapping is reported even without a token" "${out:-<nothing>}"
+elif ! grep -qF -- "the App Bundle: **NOT uploaded**" "$d/summary.md"; then
+  fail "and the inventory says so" "$(cat "$d/summary.md")"
+else
+  pass "a missing mapping is reported even without a token"
+fi
+
 # No token is not an error, and is not reported twice: the debug-files step in
 # the same action has already said it.
 d="$(workspace no-token)"
@@ -196,35 +233,53 @@ says "Android APKs with no mapping are reported" "$d" \
   "No R8 mapping for the APKs" "no mapping at"
 
 # The same fault on the other half, which is the one that reaches store users.
-d="$(workspace bundle-no-mapping)"; rm -f "$d/mapdir/mapping.txt"
+d="$(workspace bundle-no-mapping)"; rm -f "$d/mapdir/mapping-aab.txt"
 says "an App Bundle with no mapping is reported" "$d" \
   "No R8 mapping for the App Bundle" "no mapping at"
 
 d="$(workspace no-apk)"; rm -f "$d"/dist/*.apk
 says "a mapping with no universal APK is reported" "$d" \
-  "no such artifact is in" "no artifact to read its UUID from"
+  "no such artifact is in" "to read a UUID from"
 
 d="$(workspace no-bundle)"; rm -f "$d"/dist/*.aab
 says "a mapping with no App Bundle is reported" "$d" \
-  "no such artifact is in" "no artifact to read its UUID from"
+  "no such artifact is in" "to read a UUID from"
+
+# Nothing clears `dist/`, so a leftover from another version survives a local
+# re-run - and `[0]` on the glob would pick by collation order, which for a
+# version number means the OLDER artifact wins systematically. The mapping
+# would then be filed under a stale UUID and reported as uploaded.
+#
+# `verify_apks.sh` refuses this too and has its own cases for it, but the two
+# guards are independent on purpose: this script is also run by hand to
+# re-upload a mapping, where no gate has run first.
+d="$(workspace two-bundles)"
+cp "$d/dist/qunleashed_0.17.0_android.aab" "$d/dist/qunleashed_0.16.0_android.aab"
+says "two App Bundles in dist are refused rather than guessed between" "$d" \
+  "holds 2 artifacts matching" "A release produces exactly one"
+
+d="$(workspace two-universal)"
+cp "$d/dist/qunleashed_0.17.0_android_universal.apk" "$d/dist/qunleashed_0.16.0_android_universal.apk"
+says "two universal APKs in dist are refused rather than guessed between" "$d" \
+  "holds 2 artifacts matching" "A release produces exactly one"
 
 d="$(workspace no-uuid "")"
 says "an APK with no UUID is reported" "$d" \
-  "no usable io.sentry.ProguardUuids" "could not be addressed"
+  "no usable io.sentry.ProguardUuids" "carries no usable UUID"
 
 d="$(workspace bundle-no-uuid "io.sentry.ProguardUuids=$UUID" "")"
 says "a bundle with no UUID is reported" "$d" \
-  "no usable io.sentry.ProguardUuids" "could not be addressed"
+  "no usable io.sentry.ProguardUuids" "carries no usable UUID"
 
 # The key is plural and the SDK reads it as a list; both readers assume one.
 # A pair has to be refused here rather than truncated to the first.
 d="$(workspace two-uuids "io.sentry.ProguardUuids=$UUID,2d0c7dd0-d7e4-3ad8-9c9f-9c6f0c75a5b2")"
 says "an APK carrying two UUIDs is reported" "$d" \
-  "no usable io.sentry.ProguardUuids" "could not be addressed"
+  "no usable io.sentry.ProguardUuids" "carries no usable UUID"
 
 d="$(workspace malformed-uuid "io.sentry.ProguardUuids=not-a-uuid")"
 says "an APK carrying a malformed UUID is reported" "$d" \
-  "no usable io.sentry.ProguardUuids" "could not be addressed"
+  "no usable io.sentry.ProguardUuids" "carries no usable UUID"
 
 # sentry-cli failing must cost a warning, not the release.
 d="$(workspace upload-fails)"
@@ -259,8 +314,10 @@ if [[ "$rc" -ne 0 ]]; then
   fail "one half failing does not fail the step" "exit $rc"
 elif [[ "$out" != *"for the APKs failed"* || "$out" == *"for the App Bundle failed"* ]]; then
   fail "only the half that failed is reported as failed" "$out"
-elif ! grep -qF -- "\`$AAB_UUID\` for the App Bundle" "$d/summary.md"; then
+elif ! grep -qF -- "the App Bundle: uploaded under \`$AAB_UUID\`" "$d/summary.md"; then
   fail "the half that succeeded is still reported as uploaded" "$(cat "$d/summary.md")"
+elif ! grep -qF -- "the APKs: **NOT uploaded**" "$d/summary.md"; then
+  fail "the half that failed is named in the inventory too" "$(cat "$d/summary.md")"
 else
   pass "one half failing leaves the other uploaded, and the summary names both"
 fi
