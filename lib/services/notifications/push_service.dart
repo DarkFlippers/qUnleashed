@@ -114,11 +114,34 @@ class PushService {
   /// `provisional` is iOS delivering quietly without having asked, which
   /// is not a refusal and not something to offer a settings link for.
   /// `notDetermined` has not been answered at all.
-  static PermissionOutcome _outcomeOf(AuthorizationStatus status) {
+  ///
+  /// `deniedPermanently` is Android 13+ refusing to prompt again, and it folds
+  /// into `denied` for the reason `probes.dart` gives for folding
+  /// `permission_handler`'s own `permanently_denied`: `PermissionOutcome` has
+  /// no `permanentlyDenied`, because the route out of each is the same
+  /// settings page. Settings → Push offers that route under the label
+  /// `Turn on` (`pages/option/pages/push.dart`), which opens app settings
+  /// rather than re-asking.
+  ///
+  /// The fold also happens to preserve behaviour exactly, which is worth
+  /// recording because it is not obvious: the Android plugin answers 3 for
+  /// this status where 16.4.1 answered 0, and 0 was already `denied`.
+  ///
+  /// What the distinction *could* buy is the other half: plain `denied` on
+  /// Android now means the OS may still prompt, so that branch could re-ask
+  /// instead of sending the user to settings. That is a behaviour change with
+  /// its own tests, not part of a lockfile bump.
+  ///
+  /// There is deliberately no `default`: the next status the plugin adds
+  /// should break the build, the way this one did, rather than fold into
+  /// something plausible on its own.
+  @visibleForTesting
+  static PermissionOutcome outcomeOf(AuthorizationStatus status) {
     return switch (status) {
       AuthorizationStatus.authorized => PermissionOutcome.granted,
       AuthorizationStatus.provisional => PermissionOutcome.granted,
       AuthorizationStatus.denied => PermissionOutcome.denied,
+      AuthorizationStatus.deniedPermanently => PermissionOutcome.denied,
       AuthorizationStatus.notDetermined => PermissionOutcome.unknown,
     };
   }
@@ -160,7 +183,7 @@ class PushService {
       );
       permissions.record(
         AppPermission.pushNotifications,
-        _outcomeOf(settings.authorizationStatus),
+        outcomeOf(settings.authorizationStatus),
       );
 
       await messaging.setForegroundNotificationPresentationOptions(

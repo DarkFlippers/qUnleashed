@@ -46,10 +46,53 @@ dependencies:
   fixnum: ^1.1.1
   crypto: ^3.0.7
   pasteboard: ^0.5.0
-  archive: ^4.0.0
+  # The ceiling buys one thing, and it is not the obvious one. 4.6.0 carries
+  # eight *BREAKING CHANGE* lines inside a minor, whose common subject is that
+  # `throwOnError` now gates every damage report and defaults to `verify`,
+  # which defaults to false. Measured on the firmware installer's own call -
+  # `GZipDecoder().decodeBytes` then `TarDecoder().decodeBytes` - at the
+  # version main ships, the one taken here, and the one held off:
+  #
+  #                            4.0.9        4.5.2        4.6.0
+  #   truncated, no flags      silent       silent       silent
+  #   truncated, verify        silent       silent       THROWS
+  #   truncated, decodeStream  true (!)     false        false
+  #   bad gzip CRC, no flags   THROWS       THROWS       silent, full length
+  #   bad gzip CRC, verify     THROWS       THROWS       THROWS
+  #
+  # So the loss at 4.6.0 is row four: a bit-rotted download that throws today
+  # with no flags decodes clean there. That is the whole of the hold. A
+  # truncated archive has been silently partial at every version, including
+  # the one in production - that is a pre-existing hole, not a 4.6.0
+  # regression, and `archive-4.5.2/lib/src/codecs/gzip_decoder.dart` says so
+  # in the doc comment on the method the installer calls.
+  #
+  # Row three is why this bump is worth taking rather than reverting: at 4.0.9
+  # `decodeStream` returns true for a truncated gzip, and from 4.5.2 it
+  # returns false. The gate for a half-downloaded firmware update becomes
+  # buildable here and was not before.
+  #
+  # 4.6.0 is then the version to migrate *to*, not away from, once all seven
+  # decode sites pass flags - two of them live in the `dartufbt` submodule, so
+  # it is a PR in another repository plus a bump here. It also changes what
+  # `ZipDecoder` hands back for an unreadable local header
+  # (named-with-no-content, where 4.0.x gave a nameless entry), which
+  # `atp_unpack_test.dart` asserts on and a comment in `atp_source.dart`
+  # describes. A migration with its own tests, not a lockfile move.
+  archive: '>=4.0.0 <4.6.0'
   markdown: ^7.3.0
   flutter_html: ^3.0.0-beta.2
   flutter_html_table: ^3.0.0-beta.2
+  # Not used directly: this is a ceiling on flutter_html's behalf, and the
+  # only way pub lets one be written is a dependency. flutter_html 3.0.0 -
+  # the newest release as of November 2026 - reaches into
+  # `package:html/src/query_selector.dart`
+  # behind an `// ignore: implementation_imports` for a top-level
+  # `matches(Element, String)`. html 0.15.7 deleted it, keeping only a method
+  # over a parsed `SelectorGroup`, so the patch bump fails *compilation* of
+  # every test that loads a widget tree: "Method not found: 'matches'".
+  # Lift this when flutter_html publishes a fix, or when flutter_html goes.
+  html: '>=0.15.6 <0.15.7'
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0
   re_editor: ^0.10.0
