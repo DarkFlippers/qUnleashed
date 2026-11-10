@@ -43,6 +43,14 @@ jobs:
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
 
+      # The parser behind the 16 KB page-size gate, driven directly. Its
+      # shapes - a 32-bit object, a big-endian one, segments that disagree -
+      # each cost a whole four-artifact `dist/` through the suite above, which
+      # is why they were not covered there and why a release-blocking bug sat
+      # behind a green case named for the thing it did not test.
+      - name: Test the 16 KB page alignment check
+        run: .github/scripts/elf_page_align_test.sh
+
       # Its subject runs only on a tag push and is written never to fail - a
       # release must not be discarded over Sentry - so this suite is the only
       # thing that can turn a regression in it red.

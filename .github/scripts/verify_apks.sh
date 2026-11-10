@@ -18,6 +18,18 @@
 # central directory: an APK whose entry data is truncated or zeroed still lists
 # every expected name. `unzip -t` is what actually reads the bytes.
 #
+# The third thing a green build does not tell you is that the native libraries
+# can be loaded at all on a current device. Play requires an app targeting
+# Android 15 or later to support 16 KB memory pages, and `targetSdk` comes
+# from the pinned Flutter (`flutter.targetSdkVersion`, 36 today), so the
+# requirement applies. A `.so` linked with a 4 KB max-page-size dies at
+# `dlopen` on a device running 16 KB pages, and for `libapp.so` that is
+# launch. `android/build.gradle.kts` pins the NDK for everything built from
+# source here, so what this is really for is the prebuilt libraries a
+# dependency ships, which no build setting can realign; `elf_page_align.py`
+# holds that reasoning. `elf_page_align_test.sh` covers the parser directly,
+# and what is covered here is the wiring.
+#
 # The expected ABIs come from android_abis.sh, shared with android.sh so the
 # names it writes and the names checked here cannot drift apart.
 #
@@ -26,9 +38,11 @@
 # moves to bundles (Play requires them), this needs revisiting.
 set -Eeuo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=android_abis.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/android_abis.sh"
+. "$HERE/android_abis.sh"
 
 # A real snapshot is multiple megabytes. This only has to be large enough to
 # reject an empty or stub file and small enough never to reject a real one.
@@ -55,10 +69,16 @@ MIN_SNAPSHOT_BYTES=1048576
 # `dist`-only script a second input for one hypothetical.
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=sentry_proguard_uuid.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sentry_proguard_uuid.sh"
+. "$HERE/sentry_proguard_uuid.sh"
 
 dir="${1:-dist}"
 failures=0
+
+# The alignment check's stderr, kept out of its stdout; the block below says
+# why. One file for the whole run, truncated per artifact, so a `dist/` of
+# four does not leave four behind.
+stderr_file="$(mktemp)"
+trap 'rm -f "$stderr_file"' EXIT
 
 fault() {
   echo "::error::$1" >&2
@@ -141,6 +161,39 @@ for apk in "${apks[@]}"; do
       fault "$name has a $bytes-byte lib/$abi/libapp.so; expected at least $MIN_SNAPSHOT_BYTES."
     fi
   done
+
+  # 16 KB pages, per artifact rather than once: the universal APK and the
+  # per-ABI splits are packed separately, and a split is what a device
+  # installs. `want` and not `found` on purpose - an ABI the APK should not
+  # carry is the fault reported below, and reporting its alignment too would
+  # bury that under a second message about a library that has no business
+  # being there.
+  #
+  # Three outcomes: could not run, ran and wrote to stderr, ran and found
+  # something. Each has its own fault string and its own case in the suite.
+  #
+  # Stderr goes to its own file rather than into the capture, because folded
+  # in with `2>&1` it was the bug it looks like a shortcut for: the helper
+  # writes nothing there on success today, but one `DeprecationWarning` from a
+  # newer runner image - or a `PYTHONWARNINGS` in the environment - turned a
+  # clean APK into a confident wrong diagnosis about a library that will not
+  # load. Measured with `PYTHONVERBOSE=1`, which reported CPython's own import
+  # trace as offending libraries.
+  : > "$stderr_file"
+  status=0
+  aligned="$(python3 "$HERE/elf_page_align.py" "$apk" "${want[@]}" 2>"$stderr_file")" || status=$?
+  noise="$(tr '\n' ' ' < "$stderr_file")"
+  if (( status != 0 )); then
+    partial=""
+    [[ -n "$aligned" ]] && partial=" (it had already reported: $(tr '\n' ' ' <<<"$aligned"))"
+    fault "$name could not be checked for 16 KB page alignment: ${noise:-no detail}$partial"
+  elif [[ -n "$noise" ]]; then
+    fault "$name's 16 KB page check exited 0 but wrote to stderr, so its silence is not a pass: $noise"
+  elif [[ -n "$aligned" ]]; then
+    while IFS= read -r line; do
+      fault "$name has a library that will not load on a 16 KB page device - $line"
+    done <<<"$aligned"
+  fi
 
   # A split carrying an ABI it should not have means the split did not happen.
   # `|| true` because no lib/ entries at all is a fault reported above, not a
