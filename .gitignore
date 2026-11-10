@@ -22,6 +22,13 @@ lib/modules/flipengine
 .build/
 .buildlog/
 
+# Signing material outside `android/`, which has its own rules for
+# `key.properties`, `**/*.keystore` and `**/*.jks` - and is where CI writes
+# both, so the release path was never exposed. These catch the keystore a
+# maintainer makes by hand wherever they ran `keytool`.
+*.jks
+*.keystore
+
 # MacOS
 .DS_Store
 

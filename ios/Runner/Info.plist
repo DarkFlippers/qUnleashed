@@ -3,13 +3,16 @@
 <plist version="1.0">
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>FlipperMap uses your location to show distance to saved Flipper files.</string>
+	<string>qUnleashed shows your position on the map of your saved Flipper Zero files, so you can see which of them were recorded nearby.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>qUnleashed keeps sending your location to Flipper apps that request GPS while the app is in the background.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app uses Bluetooth to connect to your Flipper Zero device.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>This app uses Bluetooth to connect to your Flipper Zero device.</string>
+	<string>qUnleashed uses Bluetooth to connect to your Flipper Zero, read and transfer its files, install firmware and apps, and control it remotely.</string>
+	<!-- A declaration to Apple, not a build setting. docs/releasing.md,
+	     "The export-compliance declaration", holds what it rests on and
+	     what would force it to change. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

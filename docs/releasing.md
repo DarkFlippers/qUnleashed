@@ -507,6 +507,34 @@ support in April 2027. Three ways out, in the order they cost:
 3. **Raise the numbers** in `check_linux_abi.sh`, update the README table, and
    say in the release notes which systems stopped being supported.
 
+## The export-compliance declaration
+
+`ios/Runner/Info.plist` sets `ITSAppUsesNonExemptEncryption` to `false`, which
+is why App Store Connect stops asking about export compliance on every upload.
+It is a statement to Apple, not a build setting, and whoever signs the
+submission owns it — so the premises are here rather than in the commit that
+added the key.
+
+What it rests on, as of 0.17.3:
+
+| | |
+|---|---|
+| TLS and the hashes | HTTPS through `package:http`, and `crypto`'s SHA-256/MD5 for firmware and update manifests. Standard, and exempt. |
+| Crypto-1 | `lib/modules/cpp/hardnested` implements MIFARE Classic's cipher to attack it. A 48-bit symmetric key, under the 56-bit threshold that brings a symmetric algorithm into scope. |
+| faaccrack | `lib/modules/cpp/faaccrack` recovers a rolling-code seed. A search over a keystream, not an implementation of a cipher that protects anything here. |
+
+**Adding or vendoring a cipher above 56 bits means this key and the App Store
+Connect answer both have to change**, and that is the sentence worth
+remembering: in this repository, cryptographic code is a scheduled activity
+rather than a one-off, so the premise sits in the part of the tree most likely
+to move. The failure mode is not a red build — it is a false statement on a
+submission, found by Apple or not at all.
+
+`android/app/src/main/AndroidManifest.xml` has the other half of the
+store-facing paperwork and it is not resolved: `MANAGE_EXTERNAL_STORAGE`
+requires a Play declaration form, an approved use case and a demo video, and
+nothing here defends it yet.
+
 ## What is not automated yet
 
 Honest list, so nobody waits for something that is not coming.

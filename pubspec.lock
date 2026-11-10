@@ -1017,14 +1017,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.6.0"
-  saver_gallery:
-    dependency: "direct main"
-    description:
-      name: saver_gallery
-      sha256: c24cfec2d94a0db9a2ae02d6a21847ba49a369c9b6c3a83f3da17d14720c0888
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.1.2"
   screen_retriever:
     dependency: transitive
     description:
