@@ -155,22 +155,39 @@ def min_load_align(blob: bytes) -> int:
 
 
 def library_entries(names, abis: set) -> list:
-    """The `lib/<abi>/<name>.so` entries of `abis`, in a stable order.
+    """The native libraries of `abis`, as `(entry, abi)` sorted by entry.
 
-    Depth 2 exactly, which is the set bionic can load: Android extracts and
-    `dlopen`s only `lib/<abi>/<name>.so`, so a `.so` nested deeper cannot fail
-    at runtime and is not this script's business.
+    Two shapes, because this is pointed at both artifacts a release builds. An
+    APK carries `lib/<abi>/<name>.so`; an App Bundle puts the same tree inside
+    its base module, `base/lib/<abi>/<name>.so`.
+
+    Exactly those depths, which is the set bionic can load: Android extracts
+    and `dlopen`s only the per-ABI directory itself, so a `.so` nested deeper
+    cannot fail at runtime and is not this script's business. `base` and not
+    any module name, because a bundle's other modules are not installed with
+    the base - this app has none, and if it ever does, the day it gains one is
+    the day to decide what a dynamic feature's libraries mean here rather than
+    to have guessed now.
     """
-    return sorted(
-        n for n in names
-        if n.endswith(".so") and n.startswith("lib/") and n.count("/") == 2
-        and n.split("/")[1] in abis
-    )
+    out = []
+    for n in names:
+        if not n.endswith(".so"):
+            continue
+        parts = n.split("/")
+        if len(parts) == 3 and parts[0] == "lib":
+            abi = parts[1]
+        elif len(parts) == 4 and parts[0] == "base" and parts[1] == "lib":
+            abi = parts[2]
+        else:
+            continue
+        if abi in abis:
+            out.append((n, abi))
+    return sorted(out)
 
 
 def main(argv: list) -> int:
     if len(argv) < 3:
-        print("usage: elf_page_align.py <apk> <abi> [<abi>...]", file=sys.stderr)
+        print("usage: elf_page_align.py <apk|aab> <abi> [<abi>...]", file=sys.stderr)
         return 2
 
     apk, abis = argv[1], argv[2:]
@@ -188,8 +205,7 @@ def main(argv: list) -> int:
     try:
         with zipfile.ZipFile(apk) as z:
             seen = set()
-            for name in library_entries(z.namelist(), wanted):
-                abi = name.split("/")[1]
+            for name, abi in library_entries(z.namelist(), wanted):
                 seen.add(abi)
                 is_64 = ABI_BITS[abi] == 64
                 with z.open(name) as f:
@@ -215,7 +231,7 @@ def main(argv: list) -> int:
             empty = sorted({a for a in wanted if ABI_BITS[a] == 64} - seen)
             if empty:
                 print(
-                    f"could not check {apk}: no lib/<abi>/*.so entries for "
+                    f"could not check {apk}: no native libraries for "
                     f"{', '.join(empty)}, so nothing was inspected for it",
                     file=sys.stderr,
                 )

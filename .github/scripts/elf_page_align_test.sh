@@ -178,11 +178,11 @@ finds "p_align 0 is judged as unaligned, not as a missing segment" \
 
 a="$(zip_of nolibs "AndroidManifest.xml=b'manifest'")"
 cannot_run "an APK with no libraries at all cannot be checked" \
-  "no lib/<abi>/*.so entries" "$a" arm64-v8a
+  "no native libraries for" "$a" arm64-v8a
 
 a="$(zip_of deep "lib/arm64-v8a/sub/libdeep.so=elfmk.so(aligns=(4096,))")"
 cannot_run "a .so nested deeper than lib/<abi>/ leaves nothing to inspect" \
-  "no lib/<abi>/*.so entries" "$a" arm64-v8a
+  "no native libraries for" "$a" arm64-v8a
 
 # A 32-bit-only artifact legitimately carries no 64-bit library, so this is
 # the one "nothing inspected" that is not an error.
@@ -196,6 +196,33 @@ accepts "a 32-bit-only artifact is not faulted for carrying no 64-bit library" "
 a="$(zip_of newabi "lib/loongarch64/libapp.so=elfmk.so(aligns=(4096,))")"
 cannot_run "an ABI in neither list is refused rather than left unjudged" \
   "unknown ABI loongarch64" "$a" loongarch64
+
+# --- the App Bundle's shape --------------------------------------------------
+#
+# Play takes an `.aab`, which is the artifact store users install, so the gate
+# has to read it as well as the APKs. A bundle puts the same tree inside its
+# base module, one level deeper.
+
+a="$(zip_of aabok "base/lib/arm64-v8a/libapp.so=elfmk.so(size=4096)")"
+accepts "a 16 KB-aligned library in a bundle's base module passes" "$a" arm64-v8a
+
+a="$(zip_of aablow "base/lib/arm64-v8a/libapp.so=elfmk.so(aligns=(4096,))")"
+finds "a 4 KB-aligned library in a bundle is a finding" \
+  "segments ask for 4096-byte alignment" "$a" arm64-v8a
+
+a="$(zip_of aab32 "base/lib/armeabi-v7a/libapp.so=elfmk.for_abi('armeabi-v7a',size=4096,aligns=(4096,))")"
+accepts "a bundle's 32-bit library passes, as in an APK" "$a" armeabi-v7a
+
+# Only `base`. A dynamic feature module is not installed with the base, so its
+# libraries are a different question - and this app has none, so the answer is
+# "nothing was inspected" rather than a guess.
+a="$(zip_of aabfeature "extra/lib/arm64-v8a/libapp.so=elfmk.so(aligns=(4096,))")"
+cannot_run "libraries outside the base module leave nothing to inspect" \
+  "no native libraries for" "$a" arm64-v8a
+
+a="$(zip_of aabdeep "base/lib/arm64-v8a/sub/libdeep.so=elfmk.so(aligns=(4096,))")"
+cannot_run "a .so nested deeper inside a bundle leaves nothing to inspect" \
+  "no native libraries for" "$a" arm64-v8a
 
 # --- it cannot read the archive ---------------------------------------------
 

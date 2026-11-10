@@ -27,7 +27,43 @@ SENTRY_UUID_ASSET='assets/sentry-debug-meta.properties'
 # truncated to the first.
 SENTRY_UUID_RE='[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
 
-# sentry_proguard_uuid <apk> -> the UUID, or nothing
+# An App Bundle holds the same asset inside its base module, so the entry it
+# is read from is not the same string in both artifacts. Named here beside the
+# APK path rather than built by its callers, for the reason the whole file
+# exists: the gate and the uploader must not disagree about where it lives.
+SENTRY_UUID_ASSET_BUNDLE="base/$SENTRY_UUID_ASSET"
+
+# A release runs R8 twice, because AGP refuses to build an App Bundle while
+# ABI splits are enabled ("Please disable building multiple APKs when building
+# an Android app bundle", issuetracker 402800800). Each run writes its mapping
+# to the same `mapping.txt`, so `android.sh` moves the first aside and both
+# files have to be named somewhere both it and `upload_r8_mapping.sh` can see
+# - two R8 runs mean two UUIDs, and a mapping filed under the wrong one is
+# worse than none, because a wrong name is believed.
+#
+# Basenames, not paths: the directory carries the variant (`.../release/...`)
+# and each caller already knows it.
+#
+# `mapping.txt` is the bundle's deliberately. It is R8's own output name, so
+# whichever run goes last owns it, and the bundle is last - which means a
+# reader who finds only `mapping.txt` in a half-finished build directory has
+# the bundle's, the artifact Play installs.
+#
+# The two files are often identical, and nothing here leans on that. Measured
+# on a full local release: R8 is deterministic over the same inputs, so both
+# runs wrote the same 22 MB mapping with the same `pg_map_hash`, and both
+# artifacts therefore carried the same UUID - so the two uploads sent one
+# mapping twice, harmlessly. That is a property of this build, not a
+# guarantee: anything that differs between the two invocations can move either
+# hash, and then each artifact needs its own mapping. The point of naming both
+# files is that the correct behaviour does not change when they diverge.
+R8_MAPPING_APK="mapping-apk.txt"
+R8_MAPPING_BUNDLE="mapping.txt"
+
+# sentry_proguard_uuid <archive> [entry] -> the UUID, or nothing
+#
+# `entry` defaults to the APK path, so the uploader - which only ever reads an
+# APK - needs no second argument and cannot pass the wrong one.
 #
 # Prints nothing rather than failing, for either shape of absence - no asset,
 # or an asset with no usable value - because both are one problem with one fix
@@ -39,7 +75,7 @@ SENTRY_UUID_RE='[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'
 # hundred bytes and cannot reach that; a gate and an uploader are the last two
 # places to leave it standing.
 sentry_proguard_uuid() {
-  unzip -p "$1" "$SENTRY_UUID_ASSET" 2>/dev/null \
+  unzip -p "$1" "${2:-$SENTRY_UUID_ASSET}" 2>/dev/null \
     | sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" \
     | head -n 1 || true
 }
