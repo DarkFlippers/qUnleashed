@@ -235,6 +235,29 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ env.ASSET_RETENTION }}
 
+      # The App Bundle, under a name `publish`'s `release-assets-*` pattern
+      # deliberately does not match. Two reasons, and the second is the one
+      # that would have bitten: an `.aab` cannot be sideloaded, so it has no
+      # business among the release assets - and `checksums.sh` hashes whatever
+      # is in `dist/`, so a bundle reaching that job would appear in
+      # `SHA256SUMS` as a digest for a file the release does not carry.
+      #
+      # It is uploaded rather than left in the job because the Play upload is
+      # a job that does not exist yet; when it does, this is where it takes
+      # the bundle from.
+      - name: Upload the Play App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-bundle-android
+          path: dist/qunleashed_*_android.aab
+          if-no-files-found: error
+          retention-days: ${{ env.ASSET_RETENTION }}
+          # An `.aab` is already a deflated zip, so the action's default
+          # level 6 spends CPU on 93 MB to achieve about nothing. Stated only
+          # on this step: the APK upload above has the same property, but
+          # changing it is churn on a step this branch is not about.
+          compression-level: 0
+
   # Pinned, and the pin is the fix for #280. A Flutter Linux app links against
   # the host's GTK and GLib and ships neither, so the oldest system the binary
   # can start on is decided by the image it was compiled on - and `ubuntu-latest`

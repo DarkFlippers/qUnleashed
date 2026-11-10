@@ -2,7 +2,7 @@
 # Sends R8's mapping to Sentry, so an Android Java or Kotlin frame reads as a
 # class and a method instead of `w2.r.k`.
 #
-#   upload_r8_mapping.sh [dist-dir] [mapping-path] [pubspec-path]
+#   upload_r8_mapping.sh [dist-dir] [mapping-dir] [pubspec-path]
 #
 # All three default to the repository's own, so CI calls it with no arguments
 # and the test calls it with fixtures - the same arrangement check_changelog.sh
@@ -35,7 +35,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 
 dist="${1:-$ROOT/dist}"
-mapping="${2:-$ROOT/build/app/outputs/mapping/release/mapping.txt}"
+mapping_dir="${2:-$ROOT/build/app/outputs/mapping/release}"
 pubspec="${3:-$ROOT/pubspec.yaml}"
 
 # Pinned and verified for the reason lint_workflows.sh gives about actionlint:
@@ -71,6 +71,10 @@ SENTRY_CLI_URL="${SENTRY_CLI_URL:-https://github.com/getsentry/sentry-cli/releas
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=sentry_proguard_uuid.sh
 . "$HERE/sentry_proguard_uuid.sh"
+# The artifact names and the mapping filenames, shared with the build and the
+# gate so the three cannot disagree about what a release produced. ADR 0017.
+# shellcheck source=android_artifacts.sh
+. "$HERE/android_artifacts.sh"
 
 summary() { cat >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"; }
 
@@ -95,10 +99,15 @@ not_uploaded() { # not_uploaded <warning|error> <annotation> <summary-line>
 # red marker inside a collapsed log - while the step beside this one has
 # already written "Debug symbols uploaded". Absence of a second heading is not
 # a signal anybody reads.
+# It cannot say nothing was sent, because by the time this can fire one half
+# may already have gone: a release uploads two mappings and the inventory
+# below is written per half as each finishes. Saying "before the mapping was
+# sent" was true while there was one upload and would now discard the record
+# of which UUID had already been filed.
 unplanned_failure() {
   not_uploaded warning \
-    "The R8 mapping step failed (exit $1) before the upload. Android Java and Kotlin frames from this build will NOT deobfuscate." \
-    "The step failed with exit \`$1\` on the Android build of \`${SENTRY_RELEASE:-unknown}\`, before the mapping was sent. The job log has the failing command."
+    "The R8 mapping step failed (exit $1) partway through. Any half not listed as uploaded above will NOT deobfuscate." \
+    "The step failed with exit \`$1\` on the Android build of \`${SENTRY_RELEASE:-unknown}\`, partway through. The lines above say which halves were sent before it stopped; the job log has the failing command."
 }
 trap 'unplanned_failure "$?"; exit 0' ERR
 
@@ -106,22 +115,110 @@ trap 'unplanned_failure "$?"; exit 0' ERR
 # rather than to itself, and this script does nothing after them.
 shopt -s nullglob
 
-# Whether R8 ran, not which platform this is - so a job that never minified
-# leaves without fetching anything. But "no mapping" means two different things
-# and only one of them is fine: a job that built no APK never ran R8, while an
-# Android job with no mapping is #343 again, and a quiet exit there leaves a
-# summary identical to a correct macOS run's.
+# Two halves, because a release runs R8 twice and each run's UUID is embedded
+# in what it built: each mapping has to be filed under the UUID of the
+# artifact it describes. ADR 0017 §2 is the decision and the measurement.
+apk_mapping="$mapping_dir/$R8_MAPPING_APK"
+bundle_mapping="$mapping_dir/$R8_MAPPING_BUNDLE"
+
+# Whether this is an Android job at all, and the only wholly quiet exit in the
+# file. Every other platform's job reaches here with nothing Android in
+# `dist/` and leaves without fetching anything.
 #
-# The variant name is in that path, so a flavour added later moves it and this
-# is what notices. `android/app/build.gradle.kts` derives the same fact rather
-# than naming `release`; this cannot, so it checks.
-if [[ ! -f "$mapping" ]]; then
-  android_apks=("$dist"/*_android_*.apk)
-  if (( ${#android_apks[@]} > 0 )); then
-    not_uploaded warning \
-      "This job built Android APKs but no R8 mapping was found at ${mapping}. Their Java and Kotlin frames will NOT deobfuscate." \
-      "Android APKs were built for \`${SENTRY_RELEASE:-unknown}\`, but there is no mapping at \`${mapping}\`. Either R8 did not run, or its output moved - the variant name is in that path."
+# Keyed on ANY Android artifact rather than on the two the halves name,
+# because keying it on those lost the #343 shape: a job holding the three
+# per-ABI APKs but no universal one and no mapping matched nothing and exited
+# 0 in silence, where the code this replaced had warned.
+android_artifacts=("$dist"/$ANDROID_APK_GLOB "$dist"/$ANDROID_BUNDLE_GLOB)
+if (( ${#android_artifacts[@]} == 0 )); then
+  exit 0
+fi
+
+# The inventory. A reader has to be told how many halves to expect, or a half
+# that is never mentioned reads exactly like a half that went fine - so the
+# heading says two and every half gets a line.
+#
+# Emitted with the first line rather than up front, because a job with no
+# token records nothing: a lone heading promising two outcomes and delivering
+# none is worse than the silence the missing-token path exists to keep.
+heading_written=0
+record() { # record <label> <outcome>  -> one inventory line
+  if (( ! heading_written )); then
+    heading_written=1
+    {
+      echo "### R8 mappings, 2 to send"
+      echo "For the Android build of \`${SENTRY_RELEASE:-unknown}\`:"
+    } | summary
   fi
+  printf -- '- %s: %s\n' "$1" "$2" | summary
+}
+
+# half_failed <label> <annotation> <inventory-detail>
+#
+# What a half's failure uses instead of `not_uploaded`, which emits its own
+# `### The R8 mapping was not uploaded` heading - fine when there was one
+# upload and one outcome, but inside the inventory it lands between the
+# heading and the lines it belongs to. The annotation still fires, because
+# that is the half of `not_uploaded` worth keeping here.
+half_failed() {
+  echo "::warning::$2"
+  record "$1" "**NOT uploaded** - $3"
+}
+
+# PASS ONE: what each half has, before anything that needs a secret.
+#
+# Deliberately above the token gate. These checks need no credentials, and an
+# earlier draft had them below it - so a job with no token said nothing about
+# a missing mapping, while `too_many` two lines up still spoke. A gate's
+# loudness should not depend on a secret any more than on another gate having
+# run.
+#
+# Sets `half_artifact` rather than printing it, because `half_failed` writes
+# to stdout and a command substitution would swallow the warning with it.
+half_artifact=""
+check_half() { # check_half <label> <mapping> <glob>
+  local label="$1" mapping="$2" glob="$3"
+  half_artifact=""
+
+  # The variant name is in that path, so a flavour added later moves it and
+  # this is what notices. Both mappings exist by construction after a
+  # successful `android.sh`, which checks for them itself.
+  if [[ ! -f "$mapping" ]]; then
+    half_failed "$label" \
+      "No R8 mapping for $label at ${mapping}. Their Java and Kotlin frames will NOT deobfuscate. Either R8 did not run for it, or its output moved - the variant name is in that path." \
+      "no mapping at \`${mapping}\`"
+    return 0
+  fi
+
+  # Exactly one, because `[0]` on a glob that matched several picks by
+  # collation order - so a leftover from an earlier version wins
+  # systematically, not randomly, and its UUID would be what a fresh mapping
+  # got filed under. `verify_apks.sh` refuses that too; this is independent
+  # because the uploader is also run by hand, where no gate went first.
+  local matched=("$dist"/$glob)
+  if (( ${#matched[@]} == 0 )); then
+    half_failed "$label" \
+      "R8 wrote a mapping for $label but no such artifact is in ${dist}, so its UUID could not be read. Those Java frames will NOT deobfuscate." \
+      "no artifact in \`${dist}\` to read a UUID from"
+    return 0
+  fi
+  if (( ${#matched[@]} > 1 )); then
+    half_failed "$label" \
+      "$dist holds ${#matched[@]} artifacts matching $glob, so there is no one artifact to read a UUID from. That mapping will NOT be uploaded." \
+      "\`${dist}\` holds ${#matched[@]} artifacts matching \`$glob\` (${matched[*]##*/}). A release produces exactly one, so the rest are leftovers from another build"
+    return 0
+  fi
+
+  half_artifact="${matched[0]}"
+}
+
+check_half "the APKs" "$apk_mapping" "$ANDROID_UNIVERSAL_GLOB"
+apk_artifact="$half_artifact"
+check_half "the App Bundle" "$bundle_mapping" "$ANDROID_BUNDLE_GLOB"
+bundle_artifact="$half_artifact"
+
+# Nothing left to send, and pass one has already said why for each half.
+if [[ -z "$apk_artifact" && -z "$bundle_artifact" ]]; then
   exit 0
 fi
 
@@ -129,33 +226,6 @@ if [[ -z "${SENTRY_AUTH_TOKEN:-}" ]]; then
   # The debug-files step in the same action already said this, for the same
   # missing secret. It always runs and always reports, so this stays quiet
   # rather than saying it twice.
-  exit 0
-fi
-
-# Read from a built APK, which is the only copy that matters: an event carries
-# the UUID its APK shipped with, so a mapping filed under any other is a
-# mapping nothing points at. `verify_apks.sh` has already refused the build if
-# this is absent or inconsistent, so a miss here is a miss in whatever changed
-# between the two.
-universal_apks=("$dist"/*_android_universal.apk)
-apk="${universal_apks[0]:-}"
-if [[ -z "$apk" ]]; then
-  not_uploaded warning \
-    "No universal APK in ${dist}, so the R8 mapping's UUID could not be read. Android Java frames from this build will NOT deobfuscate." \
-    "R8 wrote a mapping for \`${SENTRY_RELEASE:-unknown}\` but no universal APK was found to read its UUID from, so the mapping was not sent."
-  exit 0
-fi
-
-# Absent and present-but-unusable are one problem with one fix, so the shared
-# reader prints nothing for either and this is the single message for both. A
-# malformed value - or the comma-separated pair the key's plural name allows -
-# is therefore named here rather than inside sentry-cli.
-apk_name="${apk##*/}"
-uuid="$(sentry_proguard_uuid "$apk")"
-if [[ -z "$uuid" ]]; then
-  not_uploaded warning \
-    "$apk_name carries no usable io.sentry.ProguardUuids, so the R8 mapping has nothing to be filed under. Android Java frames from this build will NOT deobfuscate." \
-    "\`$apk_name\` carries no usable \`io.sentry.ProguardUuids\`, so the mapping could not be addressed. \`verify_apks.sh\` refuses that, so reaching this means the two disagree."
   exit 0
 fi
 
@@ -184,7 +254,7 @@ if [[ -z "$org" || -z "$project" ]]; then
 fi
 
 # SENTRY_CLI lets the test substitute a stub and keeps the suite offline. CI
-# sets nothing and gets the pinned download.
+# sets nothing and gets the pinned download. Fetched once for both uploads.
 cli="${SENTRY_CLI:-}"
 if [[ -z "$cli" ]]; then
   cli="${RUNNER_TEMP:-/tmp}/sentry-cli"
@@ -193,33 +263,56 @@ if [[ -z "$cli" ]]; then
   # is not a flaky download and should not read like one.
   if ! echo "${SENTRY_CLI_SHA256}  ${cli}" | sha256sum --check --quiet; then
     not_uploaded error \
-      "sentry-cli ${SENTRY_CLI_VERSION} did not match its pinned SHA256. Nothing was run and the R8 mapping was not uploaded." \
+      "sentry-cli ${SENTRY_CLI_VERSION} did not match its pinned SHA256. Nothing was run and no R8 mapping was uploaded." \
       "The pinned \`sentry-cli ${SENTRY_CLI_VERSION}\` download did not match \`${SENTRY_CLI_SHA256}\`. It was not executed. Check the release asset before changing the pin."
     exit 0
   fi
   chmod +x "$cli"
 fi
 
-# `exit 0` on failure, and loudly, for the reason the whole file gives: the
-# release is built and must not be thrown away over Sentry. Unlike the Dart
-# plugin, sentry-cli's own exit code is the whole signal - the swallowing #310
-# turned on was the plugin's, one layer up from here.
-if ! "$cli" proguard upload --require-one \
-  --uuid "$uuid" --org "$org" --project "$project" "$mapping"; then
-  not_uploaded warning \
-    "Uploading the R8 mapping failed. Android Java and Kotlin frames from this build will NOT deobfuscate until it is re-uploaded." \
-    "The Android build of \`${SENTRY_RELEASE:-unknown}\` published **without** it, so its Java and Kotlin frames will not deobfuscate. Dart and native frames are unaffected."
-  {
-    echo ""
-    echo "Re-upload the mapping this build produced, from a machine that still has it:"
-    echo '```'
-    echo "sentry-cli proguard upload --uuid $uuid --org $org --project $project $mapping"
-    echo '```'
-  } | summary
-  exit 0
-fi
+# PASS TWO: the uploads. Each half is reported on its own, because they fail
+# independently - the APKs' mapping can go while the bundle's does not, and a
+# summary saying only "uploaded" would hide which half of the release is
+# unreadable. The bundle is the half that matters more, since it is what Play
+# installs.
+#
+# `exit 0` on any failure, and loudly, for the reason the whole file gives:
+# the release is built and must not be thrown away over Sentry. Unlike the
+# Dart plugin, sentry-cli's own exit code is the whole signal - the swallowing
+# #310 turned on was the plugin's, one layer up from here.
+upload_half() { # upload_half <label> <mapping> <artifact> <uuid-entry>
+  local label="$1" mapping="$2" artifact="$3" asset="$4"
+  # Pass one already said why, in the inventory and in an annotation.
+  [[ -n "$artifact" ]] || return 0
 
-{
-  echo "### R8 mapping uploaded"
-  echo "\`$uuid\`, for the Android build of \`${SENTRY_RELEASE:-unknown}\`."
-} | summary
+  # Read from the built artifact, which is the only copy that matters: an
+  # event carries the UUID its own artifact shipped with, so a mapping filed
+  # under any other is a mapping nothing points at.
+  #
+  # Absent and present-but-unusable are one problem with one fix, so the
+  # shared reader prints nothing for either and this is the single message for
+  # both. A malformed value - or the comma-separated pair the key's plural
+  # name allows - is therefore named here rather than inside sentry-cli.
+  local artifact_name="${artifact##*/}"
+  local uuid
+  uuid="$(sentry_proguard_uuid "$artifact" "$asset")"
+  if [[ -z "$uuid" ]]; then
+    half_failed "$label" \
+      "$artifact_name carries no usable io.sentry.ProguardUuids, so the R8 mapping for $label has nothing to be filed under. Those Java frames will NOT deobfuscate. \`verify_apks.sh\` refuses that, so reaching this means the two disagree." \
+      "\`$artifact_name\` carries no usable UUID"
+    return 0
+  fi
+
+  if ! "$cli" proguard upload --require-one \
+    --uuid "$uuid" --org "$org" --project "$project" "$mapping"; then
+    half_failed "$label" \
+      "Uploading the R8 mapping for $label failed. Their Java and Kotlin frames will NOT deobfuscate until it is re-uploaded." \
+      "\`$uuid\`, the upload itself failed - re-upload with \`sentry-cli proguard upload --uuid $uuid --org $org --project $project $mapping\`"
+    return 0
+  fi
+
+  record "$label" "uploaded under \`$uuid\`"
+}
+
+upload_half "the APKs" "$apk_mapping" "$apk_artifact" "$SENTRY_UUID_ASSET"
+upload_half "the App Bundle" "$bundle_mapping" "$bundle_artifact" "$SENTRY_UUID_ASSET_BUNDLE"

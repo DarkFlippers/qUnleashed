@@ -84,6 +84,53 @@ with zipfile.ZipFile(path, "w") as z:
 PY
 }
 
+# aab <path> <abi>...   (QU_SO_ALIGN applies here too)
+#
+# The same contents one level in, under the base module, which is where a real
+# App Bundle puts them. `BundleConfig.pb` and `base/resources.pb` are not
+# checked by anything; they are here so the fixture is the shape a reader
+# recognises rather than the subset the gate happens to look at.
+aab() {
+  python3 - "$SNAPSHOT_BYTES" "$SENTRY_PROPS" "$@" <<'PY'
+import os, sys, zipfile, elfmk
+size, props, path, abis = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4:]
+align = int(os.environ.get("QU_SO_ALIGN", "16384"))
+uuid_props = os.environ.get("QU_AAB_SENTRY_PROPS", props)
+with zipfile.ZipFile(path, "w") as z:
+    z.writestr("BundleConfig.pb", "config")
+    z.writestr("base/manifest/AndroidManifest.xml", "manifest")
+    z.writestr("base/dex/classes.dex", "dex")
+    z.writestr("base/resources.pb", "res")
+    z.writestr("base/assets/sentry-debug-meta.properties", uuid_props)
+    for abi in abis:
+        z.writestr(f"base/lib/{abi}/libapp.so", elfmk.for_abi(abi, size=size, aligns=(align,)))
+        z.writestr(f"base/lib/{abi}/libflutter.so", elfmk.for_abi(abi, size=4096, aligns=(align,)))
+PY
+}
+
+# aab_omitting <path> <entry-to-omit> <abi>...
+aab_omitting() {
+  python3 - "$SNAPSHOT_BYTES" "$SENTRY_PROPS" "$@" <<'PY'
+import os, sys, zipfile, elfmk
+size, props, path, omit, abis = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5:]
+align = int(os.environ.get("QU_SO_ALIGN", "16384"))
+with zipfile.ZipFile(path, "w") as z:
+    for entry, body in (
+        ("BundleConfig.pb", "config"),
+        ("base/manifest/AndroidManifest.xml", "manifest"),
+        ("base/dex/classes.dex", "dex"),
+        ("base/assets/sentry-debug-meta.properties", props),
+    ):
+        if not entry.startswith(omit):
+            z.writestr(entry, body)
+    for abi in abis:
+        if not f"base/lib/{abi}/libapp.so".startswith(omit):
+            z.writestr(f"base/lib/{abi}/libapp.so", elfmk.for_abi(abi, size=size, aligns=(align,)))
+        if not f"base/lib/{abi}/libflutter.so".startswith(omit):
+            z.writestr(f"base/lib/{abi}/libflutter.so", elfmk.for_abi(abi, size=4096, aligns=(align,)))
+PY
+}
+
 # apk_omitting <path> <prefix-to-omit> <abi>...  (prefix drops a file or a whole tree)
 apk_omitting() {
   python3 - "$SNAPSHOT_BYTES" "$SENTRY_PROPS" "$@" <<'PY'
@@ -116,6 +163,7 @@ good_set() {
   apk "$d/qunleashed_0.13.0_android_armeabi-v7a.apk" armeabi-v7a
   apk "$d/qunleashed_0.13.0_android_arm64-v8a.apk"   arm64-v8a
   apk "$d/qunleashed_0.13.0_android_x86_64.apk"      x86_64
+  aab "$d/qunleashed_0.13.0_android.aab"             armeabi-v7a arm64-v8a x86_64
 }
 
 echo "verify_apks.sh"
@@ -309,6 +357,110 @@ else
   fail "a check that writes to stderr is not read as a pass" "$out"
 fi
 
+# --- the App Bundle ---------------------------------------------------------
+#
+# Play does not accept an APK for a new application, so the bundle is the
+# artifact a submission uploads and the one every store user installs. The
+# parser's shapes are `elf_page_align_test.sh`; what these cover is that this
+# script looks in the right places inside a bundle, and that the bundle is
+# held to the same guarantees as the APKs.
+
+d="$TMP/no-bundle"; good_set "$d"
+rm -f "$d/qunleashed_0.13.0_android.aab"
+refuses "an artifact set with no App Bundle is refused" "$d" "No App Bundle"
+
+d="$TMP/bundle-no-dex"; good_set "$d"
+aab_omitting "$d/qunleashed_0.13.0_android.aab" "base/dex/classes.dex" armeabi-v7a arm64-v8a x86_64
+refuses "a bundle with no base/dex/classes.dex is refused" "$d" "has no base/dex/classes.dex"
+
+d="$TMP/bundle-no-manifest"; good_set "$d"
+aab_omitting "$d/qunleashed_0.13.0_android.aab" "base/manifest/AndroidManifest.xml" armeabi-v7a arm64-v8a x86_64
+refuses "a bundle with no base manifest is refused" "$d" "has no base/manifest/AndroidManifest.xml"
+
+d="$TMP/bundle-no-snapshot"; good_set "$d"
+aab_omitting "$d/qunleashed_0.13.0_android.aab" "base/lib/arm64-v8a/libapp.so" armeabi-v7a arm64-v8a x86_64
+refuses "a bundle missing a Dart snapshot is refused" "$d" "has no base/lib/arm64-v8a/libapp.so"
+
+# The alignment check has to reach `base/lib/`, one level deeper than an APK's.
+d="$TMP/bundle-align"; good_set "$d"
+(
+  export QU_SO_ALIGN=4096
+  aab "$d/qunleashed_0.13.0_android.aab" armeabi-v7a arm64-v8a x86_64
+)
+refuses "a 4 KB-aligned library inside the bundle is refused" "$d" "will not load on a 16 KB page device"
+
+# A bundle's UUID may differ from the APKs', and that is the design rather
+# than a defect: AGP refuses a bundle while ABI splits are on, so the bundle
+# comes from its own Gradle invocation, its own R8 run and therefore its own
+# mapping. `upload_r8_mapping.sh` sends both, each under the UUID of the
+# artifact it describes. Asserted as an `accepts`, because the obvious reading
+# of #361 is that two UUIDs are always a bug, and this is the one place that
+# says where the line is.
+d="$TMP/bundle-own-uuid"; good_set "$d"
+(
+  export QU_AAB_SENTRY_PROPS='# Generated by sentry-android-gradle-plugin
+io.sentry.ProguardUuids=99999999-9999-3999-9999-999999999999
+io.sentry.build-tool=gradle
+'
+  aab "$d/qunleashed_0.13.0_android.aab" armeabi-v7a arm64-v8a x86_64
+)
+accepts "a bundle carrying its own mapping UUID is accepted" "$d"
+
+# What is not allowed is a bundle with no UUID to file a mapping under. It is
+# the worst shape available here, because the bundle is what Play installs, so
+# the half that would not deobfuscate is every store user's.
+d="$TMP/bundle-blank-uuid"; good_set "$d"
+(
+  export QU_AAB_SENTRY_PROPS='io.sentry.build-tool=gradle
+'
+  aab "$d/qunleashed_0.13.0_android.aab" armeabi-v7a arm64-v8a x86_64
+)
+refuses "a bundle with no usable mapping UUID is refused" "$d" "with no io.sentry.ProguardUuids in it"
+
+# The missing-asset shape for a bundle, which the "no separate UUID assertion"
+# reasoning in `verify_apks.sh` depends on: without this case a mutation that
+# removed the per-artifact fault would survive, and the argument would rest on
+# a gap in this suite rather than on the code.
+d="$TMP/bundle-no-sentry"; good_set "$d"
+aab_omitting "$d/qunleashed_0.13.0_android.aab" "base/assets/sentry-debug-meta.properties" armeabi-v7a arm64-v8a x86_64
+refuses "a bundle with no Sentry UUID asset is refused" "$d" "nothing ties it to an R8 mapping"
+
+# A bundle whose entry data is corrupt but listable. Both pre-existing
+# integrity cases use an APK, so the bundle branch of that check was uncovered.
+d="$TMP/bundle-corrupt"; good_set "$d"
+python3 - "$d/qunleashed_0.13.0_android.aab" <<'PY2'
+import sys
+path = sys.argv[1]
+raw = bytearray(open(path, "rb").read())
+end = raw.rfind(b"PK")
+raw[:end] = b" " * end
+open(path, "wb").write(bytes(raw))
+PY2
+refuses "a bundle whose data is corrupt but listable is refused" "$d" "failed its integrity check"
+
+# A 32-bit library inside the bundle has to be inspected, not skipped. Nothing
+# pinned that: restricting the parser's bundle shape to 64-bit ABIs survived
+# the whole suite, because the "nothing inspected" guard only covers 64-bit
+# ABIs - so a stub where a 32-bit library should be went unreported.
+d="$TMP/bundle-32bit-stub"; good_set "$d"
+python3 - "$d/qunleashed_0.13.0_android.aab" <<'PY2'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "a") as z:
+    z.writestr("base/lib/armeabi-v7a/libstub.so", "a stub where a library should be")
+PY2
+refuses "a stub .so under the bundle's 32-bit ABI is refused" "$d" "not an ELF file"
+
+# Nothing clears `dist/`, so a leftover from another version survives a local
+# re-run - and `upload_r8_mapping.sh` would read its UUID off whichever sorted
+# first, which for a version number is the older one.
+d="$TMP/two-bundles"; good_set "$d"
+cp "$d/qunleashed_0.13.0_android.aab" "$d/qunleashed_0.12.0_android.aab"
+refuses "two App Bundles in one directory are refused" "$d" "a release produces exactly one"
+
+d="$TMP/two-universal"; good_set "$d"
+cp "$d/qunleashed_0.13.0_android_universal.apk" "$d/qunleashed_0.12.0_android_universal.apk"
+refuses "two universal APKs in one directory are refused" "$d" "a release produces exactly one"
+
 d="$TMP/stray"; good_set "$d"
 apk "$d/qunleashed_0.13.0_android_riscv64.apk" riscv64
 refuses "an artifact with an unrecognised name is refused" "$d" "does not match any known"
@@ -325,8 +477,8 @@ apk "$d/qunleashed_0.13.0_android_x86_64.apk"      x86_64
 refuses "a set with no universal APK is refused" "$d" "No universal APK"
 
 d="$TMP/empty"; mkdir -p "$d"
-refuses "a directory with no APKs is refused" "$d" "No Android APKs found"
-refuses "a missing directory is refused" "$TMP/does-not-exist" "No Android APKs found"
+refuses "a directory with no artifacts is refused" "$d" "No Android artifacts found"
+refuses "a missing directory is refused" "$TMP/does-not-exist" "No Android artifacts found"
 
 # One run must report every problem, not stop at the first.
 d="$TMP/many"; good_set "$d"
