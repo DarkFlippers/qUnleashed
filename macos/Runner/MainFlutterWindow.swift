@@ -17,16 +17,21 @@ class MainFlutterWindow: NSWindow {
 
 /// Which renderer this Mac gets.
 ///
-/// Flutter 3.47 made Impeller the macOS default, with SDF text always on. On
+/// Flutter 3.47 made Impeller the macOS default. On
 /// Intel Macs it tears transitions and draws stray atlas glyphs in place of
 /// letters (seen on Ventura 13.7.8; upstream: flutter/flutter#191538, fixed on
 /// main after 3.47). Intel Macs render with Skia, as every Mac did before 3.47;
 /// Apple silicon keeps Impeller. Revisit on the next Flutter upgrade.
+///
+/// Only the renderer changes. `enableSDFs` is unconditional in the engine, so
+/// `--impeller-use-sdfs=true` is still passed and is simply unused once Skia
+/// is drawing; wide colour was already off on Intel, because the engine gates
+/// it on `MTLGPUFamilyApple3` as well as on Impeller.
 enum RendererPolicy {
 
   /// Flutter's own switch. When the Info.plist sets it, it decides on every
   /// Mac, so a build can still force either renderer.
-  static let infoPlistKey = "FLTEnableImpeller"
+  private static let infoPlistKey = "FLTEnableImpeller"
 
   static func impellerEnabled(infoPlistValue: Bool?, isAppleSilicon: Bool) -> Bool {
     infoPlistValue ?? isAppleSilicon
@@ -63,9 +68,15 @@ enum RendererPolicy {
 /// universal build has one Info.plist for both architectures, so the key
 /// cannot choose per Mac. Swift cannot see the declaration, hence no
 /// `override`, but the engine reads it through Objective-C dispatch and gets
-/// this one - and so does its wide-gamut choice, which follows Impeller.
-/// RunnerTests pins the selector, so an engine that renames it fails a test
-/// instead of quietly putting Intel Macs back on Impeller.
+/// this one.
+///
+/// Nothing runs RunnerTests: no job in `.github/workflows` invokes
+/// `xcodebuild test`, and `flutter build macos` builds this target and not
+/// that one. So the guard that actually fires on a Flutter upgrade is
+/// `test/macos_renderer_guard_test.dart`, which pins the SDK version and the
+/// one construction site below; RunnerTests is a check for whoever next opens
+/// Xcode. An engine that stops reading this selector is caught by neither -
+/// only by the upgrade that guard forces someone to look at.
 final class RendererDartProject: FlutterDartProject {
 
   private let impellerEnabled: Bool
@@ -75,5 +86,7 @@ final class RendererDartProject: FlutterDartProject {
     super.init(precompiledDartBundle: nil)
   }
 
-  @objc var enableImpeller: Bool { impellerEnabled }
+  // The selector is spelled out so renaming the Swift property for style
+  // cannot silently stop overriding the engine's.
+  @objc(enableImpeller) var enableImpeller: Bool { impellerEnabled }
 }

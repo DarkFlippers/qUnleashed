@@ -32,6 +32,20 @@ class RunnerTests: XCTestCase {
     XCTAssertTrue(FlutterDartProject.instancesRespond(to: NSSelectorFromString("enableImpeller")))
   }
 
+  /// One-directional on purpose. An arm64 slice can only be executing on
+  /// Apple silicon, so the probe must agree with it. An x86_64 slice says
+  /// nothing - under Rosetta it is still Apple silicon, which is the whole
+  /// reason the probe asks the hardware instead of the slice.
+  func testTheProbeAgreesWithTheSliceItRunsIn() {
+    #if arch(arm64)
+      XCTAssertTrue(RendererPolicy.isAppleSiliconHardware())
+    #endif
+  }
+
+  /// Both values, because one would not be enough: if the Swift property ever
+  /// stopped carrying the `enableImpeller` selector, KVC would fall through to
+  /// the engine's own getter, which returns true when the Info.plist key is
+  /// absent - so only the `false` pass catches that.
   func testProjectHandsTheEngineItsChoice() {
     for choice in [true, false] {
       let project = RendererDartProject(impellerEnabled: choice)
