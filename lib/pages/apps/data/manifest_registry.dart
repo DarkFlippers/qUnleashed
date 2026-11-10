@@ -11,9 +11,15 @@ import 'models/manifest.dart';
 import '../../../services/logging.dart';
 
 class ManifestRegistry extends ChangeNotifier {
-  ManifestRegistry({required this.client});
+  ManifestRegistry({
+    required this.client,
+    this.root = kManifestsRoot,
+    this.cached = true,
+  });
 
   final FlipperClient client;
+  final String root;
+  final bool cached;
 
   final Map<String, AppManifest> _byUid = {};
   final Map<String, AppManifest> _byAlias = {};
@@ -58,27 +64,38 @@ class ManifestRegistry extends ChangeNotifier {
   Future<void> _refresh({required bool force}) async {
     final token = client.deviceToken;
     _loading = true;
+    _changed.clear();
     notifyListeners();
     try {
       if (_byAlias.isEmpty) await _loadCache();
       if (token.isStale) return;
 
-      final list = await client.storageList(
-        ListRequest(path: kManifestsRoot, includeMd5: true),
-        timeout: const Duration(seconds: 20),
-        priority: FlipperRequestPriority.background,
-      );
+      FlipperRpcBatch<ListResponse>? list;
+      try {
+        list = await client.storageList(
+          ListRequest(path: root, includeMd5: true),
+          timeout: const Duration(seconds: 20),
+          priority: FlipperRequestPriority.background,
+        );
+      } on FlipperRpcStorageNotExistException {
+        list = null;
+      }
       if (token.isStale) return;
 
-      final prevManifests = Map<String, AppManifest>.from(_byAlias);
-      final prevMd5 = Map<String, String>.from(_md5);
-      _byUid.clear();
-      _byAlias.clear();
-      _md5.clear();
+      // The new list is built beside the one shown, which stays whole until
+      // this one is. Cleared first, it left every app not yet read again
+      // looking not installed for as long as the reads over BLE took, and
+      // the catalog offered to install apps that were on the Flipper. What
+      // is read is still shown as it comes, so a first read fills the
+      // screen as before; only an app gone from the Flipper waits for the
+      // end to go.
+      final byAlias = <String, AppManifest>{};
+      final byUid = <String, AppManifest>{};
+      final md5s = <String, String>{};
 
       var reused = 0;
       var read = 0;
-      for (final item in list.items) {
+      for (final item in list?.items ?? const <ListResponse>[]) {
         for (final f in item.file) {
           if (f.type != File_FileType.FILE) continue;
           if (!f.name.endsWith('.fim')) continue;
@@ -86,25 +103,44 @@ class ManifestRegistry extends ChangeNotifier {
           if (alias.isEmpty) continue;
 
           final md5 = f.md5sum;
+          final known = _byAlias[alias];
           AppManifest? manifest;
-          if (!force &&
-              md5.isNotEmpty &&
-              prevMd5[alias] == md5 &&
-              prevManifests[alias] != null) {
-            manifest = prevManifests[alias];
+          if (!force && md5.isNotEmpty && _md5[alias] == md5 && known != null) {
+            manifest = known;
             reused++;
           } else {
-            manifest = await _readManifest('$kManifestsRoot/${f.name}');
+            manifest = await _readManifest('$root/${f.name}');
             if (token.isStale) return;
             read++;
           }
           if (manifest != null) {
+            _indexInto(byAlias, byUid, alias, manifest);
+            if (md5.isNotEmpty) md5s[alias] = md5;
             _index(alias, manifest);
-            if (md5.isNotEmpty) _md5[alias] = md5;
           }
           notifyListeners();
         }
       }
+      // An install or a delete that ended while the list was read is newer
+      // than the list. Its file is read again on the next refresh.
+      for (final MapEntry(key: alias, value: manifest) in _changed.entries) {
+        md5s.remove(alias);
+        if (manifest != null) {
+          _indexInto(byAlias, byUid, alias, manifest);
+        } else {
+          final gone = byAlias.remove(alias);
+          if (gone != null && byUid[gone.uid] == gone) byUid.remove(gone.uid);
+        }
+      }
+      _byAlias
+        ..clear()
+        ..addAll(byAlias);
+      _byUid
+        ..clear()
+        ..addAll(byUid);
+      _md5
+        ..clear()
+        ..addAll(md5s);
       _loaded = true;
       _failed = false;
       LogService.info(
@@ -113,25 +149,40 @@ class ManifestRegistry extends ChangeNotifier {
       await _saveCache();
     } catch (e) {
       // _loaded is not cleared here, so after one good refresh a later
-      // failure leaves it true. The maps are cleared inside the try, so what
-      // survives is the previous list if storageList threw and a partial one
-      // if anything below it did. On a cold start with no cache it read as
-      // an ordinary empty catalogue - which is what [failed] is for.
+      // failure leaves it true. Nothing shown is taken away before the new
+      // list is whole, so what survives is the previous list, with what was
+      // read before the failure added to it. On a cold start with no cache it
+      // read as an ordinary empty catalogue - which is what [failed] is for.
       _failed = true;
       LogService.warn('[Manifests] refresh failed: $e');
     } finally {
       _loading = false;
+      _changed.clear();
       notifyListeners();
     }
   }
 
-  void _index(String alias, AppManifest manifest) {
-    _byAlias[alias] = manifest;
-    if (manifest.uid.isNotEmpty) _byUid[manifest.uid] = manifest;
+  void _index(String alias, AppManifest manifest) =>
+      _indexInto(_byAlias, _byUid, alias, manifest);
+
+  static void _indexInto(
+    Map<String, AppManifest> byAlias,
+    Map<String, AppManifest> byUid,
+    String alias,
+    AppManifest manifest,
+  ) {
+    byAlias[alias] = manifest;
+    if (manifest.uid.isNotEmpty) byUid[manifest.uid] = manifest;
   }
+
+  /// What [put] and [removeAlias] did while a refresh was reading the list,
+  /// alias -> the manifest put, or null for one removed: applied to the new
+  /// list before it takes the place of the one shown.
+  final Map<String, AppManifest?> _changed = {};
 
   void put(String alias, AppManifest manifest) {
     _index(alias, manifest);
+    if (_loading) _changed[alias] = manifest;
     unawaited(guarded('[Manifests] save cache', _saveCache));
     notifyListeners();
   }
@@ -140,6 +191,7 @@ class ManifestRegistry extends ChangeNotifier {
     final m = _byAlias.remove(alias);
     if (m != null && m.uid.isNotEmpty) _byUid.remove(m.uid);
     _md5.remove(alias);
+    if (_loading) _changed[alias] = null;
     unawaited(guarded('[Manifests] save cache', _saveCache));
     notifyListeners();
   }
@@ -187,6 +239,7 @@ class ManifestRegistry extends ChangeNotifier {
   /// loop, which meant a throw on the fifth of fifty left four apps indexed,
   /// the rest missing, and nothing said anywhere - #138.
   Future<void> _loadCache() async {
+    if (!cached) return;
     final String body;
     try {
       final name = await client.awaitName().timeout(const Duration(seconds: 5));
@@ -240,12 +293,16 @@ class ManifestRegistry extends ChangeNotifier {
       alias,
       AppManifest(
         uid: _text(raw['uid']) ?? '',
-        versionUid: _text(raw['version_uid']) ?? '',
-        fullName: _text(raw['full_name']) ?? '',
+        versionUid: _text(raw['version_uid']),
+        fullName: _text(raw['full_name']),
         path: path,
-        iconBase64: _text(raw['icon_base64']) ?? '',
-        sdkApi: _text(raw['sdk_api']) ?? '',
+        iconBase64: _text(raw['icon_base64']),
+        sdkApi: _text(raw['sdk_api']),
         devCatalog: raw['dev_catalog'] == true,
+        appId: _text(raw['app_id']),
+        appVersion: _text(raw['app_version']),
+        family: ManifestFamily.byCode(_text(raw['family'])),
+        catalog: _text(raw['catalog']),
       ),
     );
     final md5 = _text(raw['md5']);
@@ -261,6 +318,7 @@ class ManifestRegistry extends ChangeNotifier {
   }
 
   Future<void> _saveCache() async {
+    if (!cached) return;
     final token = client.deviceToken;
     try {
       final name = await client.awaitName().timeout(const Duration(seconds: 5));
@@ -273,13 +331,17 @@ class ManifestRegistry extends ChangeNotifier {
         return {
           'alias': e.key,
           'uid': m.uid,
-          'version_uid': m.versionUid,
-          'full_name': m.fullName,
+          'version_uid': ?m.versionUid,
+          'full_name': ?m.fullName,
           'path': m.path,
-          'sdk_api': m.sdkApi,
-          'icon_base64': m.iconBase64,
+          'sdk_api': ?m.sdkApi,
+          'icon_base64': ?m.iconBase64,
           'dev_catalog': m.devCatalog,
-          if (_md5[e.key] != null) 'md5': _md5[e.key],
+          'app_id': ?m.appId,
+          'app_version': ?m.appVersion,
+          'family': ?m.family?.code,
+          'catalog': ?m.catalog,
+          'md5': ?_md5[e.key],
         };
       }).toList();
       final file = await installedCatalogFile(name);

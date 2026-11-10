@@ -6,7 +6,7 @@ import '../../../services/logging.dart';
 import 'catalog_api.dart';
 import 'models/category.dart';
 
-const String kCategoriesAsset = 'assets/atp/categories.json';
+const String kCategoriesAsset = 'assets/catalog/categories.json';
 const String kCategoryIconFolder = 'assets/ic/appcat';
 
 class CategoryRegistry {
@@ -16,7 +16,34 @@ class CategoryRegistry {
 
   List<AppCategory> _bundled = const [];
   List<AppCategory> _all = const [];
+  String? _endpoint;
+
+  /// The catalog the list is for (AppsCatalogApi.endpoint): another one
+  /// starts again from the bundled list.
+  void useEndpoint(String endpoint) {
+    if (_endpoint == endpoint) return;
+    _endpoint = endpoint;
+    _all = _bundled;
+  }
+
   final Map<String, String> _assetsById = {};
+
+  /// Other families name the same categories with their own ids - CLI sends
+  /// `games` where apps send the ObjectId - so the name finds the icon too.
+  final Map<String, String> _assetsByName = {};
+
+  String? _assetFor(AppCategory category) =>
+      _assetsById[category.id] ??
+      _assetsByName[category.name.trim().toLowerCase()];
+
+  /// [categories] with the bundled icons wherever one matches, for the
+  /// families that do not go through [refreshFromCatalog].
+  Future<List<AppCategory>> withBundledIcons(
+    List<AppCategory> categories,
+  ) async {
+    await ensureBundled();
+    return [for (final c in categories) c.withIconAsset(_assetFor(c))];
+  }
 
   Future<List<AppCategory>> ensureBundled() async {
     if (_bundled.isNotEmpty) return _all;
@@ -27,11 +54,16 @@ class CategoryRegistry {
         final entry = item as Map<String, dynamic>;
         final id = (entry['id'] ?? '') as String;
         final icon = (entry['icon'] ?? '') as String;
-        if (icon.isNotEmpty) _assetsById[id] = '$kCategoryIconFolder/$icon.svg';
+        final name = (entry['name'] ?? '') as String;
+        if (icon.isNotEmpty) {
+          final asset = '$kCategoryIconFolder/$icon.svg';
+          _assetsById[id] = asset;
+          _assetsByName[name.trim().toLowerCase()] = asset;
+        }
         out.add(
           AppCategory(
             id: id,
-            name: (entry['name'] ?? '') as String,
+            name: name,
             color: (entry['color'] ?? '') as String,
             iconAsset: _assetsById[id],
             priority: (entry['priority'] as num?)?.toInt(),
@@ -57,6 +89,7 @@ class CategoryRegistry {
   /// Resolves a category name by id, going to the catalog only when the id is
   /// not in the list already loaded.
   Future<String?> nameFor(AppsCatalogApi api, String id) async {
+    useEndpoint(api.endpoint);
     if (id.isEmpty) return null;
     String? pick(List<AppCategory> list) {
       for (final category in list) {
@@ -69,21 +102,23 @@ class CategoryRegistry {
   }
 
   Future<List<AppCategory>> refreshFromCatalog(AppsCatalogApi api) async {
+    final endpoint = api.endpoint;
+    useEndpoint(endpoint);
     await ensureBundled();
     final fetched = await api.fetchCategories();
+    if (endpoint != api.endpoint) return _all;
     if (fetched.isEmpty) return _all;
     final byId = {for (final c in _bundled) c.id: c};
     final out = <AppCategory>[];
     for (final category in fetched) {
       final bundled = byId.remove(category.id);
-      out.add(category.withIconAsset(_assetsById[category.id]));
+      out.add(category.withIconAsset(_assetFor(category)));
       if (bundled == null) {
         LogService.info('[Categories] new category "${category.name}"');
       }
     }
     out.addAll(byId.values);
-    out.sort((a, b) => (a.priority ?? 0).compareTo(b.priority ?? 0));
-    _all = out;
+    _all = nestCategories(out);
     return _all;
   }
 }

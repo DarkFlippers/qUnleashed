@@ -11,6 +11,7 @@ import '../http/app_http.dart';
 import '../logging.dart';
 import '../settings/persist.dart';
 import '../localization/l10n.dart';
+import 'built_file.dart';
 
 /// The builder address is public; only the signing key is a secret, so the
 /// server-build UI is always available and a build without a key fails loudly
@@ -139,7 +140,7 @@ class RemoteBuildService {
     );
   }
 
-  Future<List<int>> build({
+  Future<BuiltFile> build({
     required String bundleUrl,
     required String alias,
     required String target,
@@ -211,16 +212,18 @@ class RemoteBuildService {
     }
   }
 
-  Future<List<int>> _downloadArtifact(
+  /// The file, and the API of the tree it was built in, which the server
+  /// sends with it as with every built file it hands out.
+  Future<BuiltFile> _downloadArtifact(
     String id,
     String clientId,
     void Function(RemoteBuildPhase phase, double progress)? onPhase,
   ) async {
     final path = '/api/v1/builds/$id/artifact';
     onPhase?.call(RemoteBuildPhase.download, 0);
-    final List<int> bytes;
+    final HttpBytes response;
     try {
-      bytes = await AppHttp.getBytes(
+      response = await AppHttp.getBytesWithHeaders(
         _endpoint(path),
         headers: _signedHeaders('GET', path, const [], clientId),
         onProgress: (received, total) {
@@ -233,10 +236,14 @@ class RemoteBuildService {
         _serverError(e.statusCode, e.body ?? '', _RemoteCall.artifact),
       );
     }
-    if (bytes.isEmpty) {
+    if (response.bytes.isEmpty) {
       throw RemoteBuildException(l10n.remoteEmptyArtifact);
     }
-    return bytes;
+    final built = BuiltFile.apiIn(response.headers);
+    if (built == null) {
+      throw RemoteBuildException(l10n.remoteNoBuildApi);
+    }
+    return BuiltFile(response.bytes, buildApi: built);
   }
 
   /// Best effort: the server drops the job only while it is still queued, a

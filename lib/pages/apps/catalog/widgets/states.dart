@@ -4,9 +4,10 @@ import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 
 class CatalogEmptyView extends StatelessWidget {
-  const CatalogEmptyView({super.key, required this.failed});
+  const CatalogEmptyView({super.key, required this.failed, this.message});
 
   final bool failed;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +19,10 @@ class CatalogEmptyView extends StatelessWidget {
           Icon(Icons.apps, size: 48, color: colors.textMuted),
           const SizedBox(height: 8),
           Text(
-            failed ? context.l10n.appsLoadFailed : context.l10n.appsNoneFound,
+            message ??
+                (failed
+                    ? context.l10n.appsLoadFailed
+                    : context.l10n.appsNoneFound),
             style: TextStyle(color: colors.textMuted, fontSize: 14),
           ),
         ],
@@ -28,9 +32,10 @@ class CatalogEmptyView extends StatelessWidget {
 }
 
 class AppDetailErrorView extends StatelessWidget {
-  const AppDetailErrorView({super.key, required this.onRetry});
+  const AppDetailErrorView({super.key, required this.onRetry, this.message});
 
   final VoidCallback onRetry;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +47,7 @@ class AppDetailErrorView extends StatelessWidget {
           Icon(Icons.error_outline, color: colors.danger, size: 48),
           const SizedBox(height: 8),
           Text(
-            context.l10n.appLoadFailed,
+            message ?? context.l10n.appLoadFailed,
             style: TextStyle(color: colors.textPrimary),
           ),
           const SizedBox(height: 12),

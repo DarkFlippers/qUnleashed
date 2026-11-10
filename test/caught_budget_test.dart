@@ -116,6 +116,10 @@ import 'ratchet.dart';
 /// button asks. Its six other `pages/apps` sites are one-per-app loops or a
 /// cancel the user asked for, and none of them moved.
 ///
+/// `pages/apps` rose to 2 for the app page's author cards - a fetch the page
+/// makes for the user and then shows without, recorded once per page rather
+/// than per author.
+///
 /// `pages/archive` also counts every `list`, `write`, `delete`, `mkdir`,
 /// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
 /// `syncCategory`. The per-file `read` inside a sync is **no longer one of
@@ -377,7 +381,7 @@ const Map<String, int> kBudget = {
   'pages/archive': 23,
   'pages/tools': 11,
   'pages/flibler': 0,
-  'pages/apps': 1,
+  'pages/apps': 2,
   'components': 4,
 };
 

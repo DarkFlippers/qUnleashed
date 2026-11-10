@@ -109,10 +109,12 @@ ApiResolution resolveCatalogApi(List<AppSdk> sdks, String? deviceApi) {
   if (device == null) {
     return ApiResolution(ApiVerdict.mismatch, latestSdk(sdks)?.api);
   }
+  // The firmware loader checks the major only, so any SDK of the device's
+  // major serves it as is - the closest at or below the device first, else
+  // the closest above. A release 88.19 against a catalog built on dev 88.23
+  // is the catalog, not compatibility mode.
   if (sameBelow != null) return ApiResolution(ApiVerdict.normal, sameBelow.$2);
-  if (sameAbove != null) {
-    return ApiResolution(ApiVerdict.mismatch, sameAbove.$2);
-  }
+  if (sameAbove != null) return ApiResolution(ApiVerdict.normal, sameAbove.$2);
   if (adjacentBelow != null) {
     return ApiResolution(ApiVerdict.mismatch, adjacentBelow.$2);
   }

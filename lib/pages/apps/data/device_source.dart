@@ -92,8 +92,10 @@ class DeviceSource extends ChangeNotifier {
 
   List<InstalledApp> get apps {
     final ids = <String>{
+      // Only what lives under the apps root: a CLI plugin has a manifest too,
+      // but the walk never looks where it is and would call it missing.
       for (final m in manifests.all)
-        if (m.path.isNotEmpty) aliasFromFapPath(m.path),
+        if (m.path.startsWith('$kAppsRoot/')) aliasFromFapPath(m.path),
       ..._local.keys,
     };
     final out = <InstalledApp>[];
@@ -580,7 +582,7 @@ class DeviceSource extends ChangeNotifier {
   void _warmManifestIcons() {
     for (final app in apps) {
       final m = app.manifest;
-      if (m != null && m.iconBase64.isNotEmpty) {
+      if (m != null && (m.iconBase64?.isNotEmpty ?? false)) {
         unawaited(
           guarded(
             '[AppsDevice] cache icon from manifest',

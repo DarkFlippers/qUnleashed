@@ -14,20 +14,33 @@ import '../../../components/path.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../services/logging.dart';
 import 'catalog_api.dart';
+import 'catalog_server.dart';
+import '../../../services/prefs_reader.dart';
 import 'catalog_mode.dart';
 import 'models/card.dart';
 
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
+const String kMenuStylesRoot = '/ext/apps_data/loader/plugins';
+const String kMenuStyleManifestsRoot = '/ext/apps_data/loader/manifests';
+const String kMenuStylePrefix = 'menu_style_';
+
+/// Where the firmware's terminal loads external commands from: a CLI app is
+/// a `.fal` here, picked up by `reload_ext_cmds`, never a `.fap` in apps.
+const String kCliPluginsRoot = '/ext/apps_data/cli/plugins';
+const int kMenuStyleNameLimit = 32;
 const Duration kTaskCooldown = Duration(seconds: 1);
 
 /// How long the catalog has to answer before the apps manager takes over.
 const Duration kCatalogTimeout = Duration(seconds: 15);
 
-/// `/ext/apps/Tools/foo.fap` -> `foo`.
+/// `/ext/apps/Tools/foo.fap` -> `foo`; a plugin's `.fal` (a CLI command, a
+/// menu style) the same way.
 String aliasFromFapPath(String path) {
   final base = basename(path);
-  return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
+  return base.endsWith('.fap') || base.endsWith('.fal')
+      ? base.substring(0, base.length - 4)
+      : base;
 }
 
 /// Which catalog the device may talk to: the firmware API/target read from the
@@ -83,9 +96,60 @@ class CatalogContext {
 
   Future<void> loadPreference() async {
     if (_preferenceLoaded) return;
+    final prefs = PrefsReader(await SharedPreferences.getInstance());
+    _preference = CatalogModePreference.parse(prefs.orNull<String>(_prefMode));
+    final stored = prefs.orNull<String>(CatalogServer.preferenceKey);
+    if (stored != null) {
+      try {
+        api.server = CatalogServer.normalize(stored);
+      } on FormatException catch (e) {
+        LogService.warn('[Catalog] ignored stored domain: $e');
+      }
+    }
+    api.protocol = CatalogProtocol.parse(
+      prefs.orNull<String>(CatalogProtocol.preferenceKey),
+    );
+    prefs.report('[Catalog]');
     _preferenceLoaded = true;
-    final prefs = await SharedPreferences.getInstance();
-    _preference = CatalogModePreference.parse(prefs.getString(_prefMode));
+  }
+
+  Future<void> setServer(String server) async {
+    await loadPreference();
+    final normalized = CatalogServer.normalize(server);
+    if (api.server == normalized) return;
+    final before = api.endpoint;
+    api.server = normalized;
+    await persistSetting(
+      CatalogServer.preferenceKey,
+      (prefs) => prefs.setString(CatalogServer.preferenceKey, normalized),
+    );
+    await _switched(before);
+  }
+
+  /// The protocol spoken to a server of ours; Official speaks v0 whatever
+  /// is chosen (AppsCatalogApi.protocol).
+  Future<void> setProtocol(CatalogProtocol protocol) async {
+    await loadPreference();
+    final before = api.endpoint;
+    api.protocol = protocol;
+    await persistSetting(
+      CatalogProtocol.preferenceKey,
+      (prefs) => prefs.setString(CatalogProtocol.preferenceKey, protocol.name),
+    );
+    await _switched(before);
+  }
+
+  /// What was read from the catalog at [before] is dropped and the mode
+  /// resolved again, when requests now go elsewhere.
+  Future<void> _switched(String before) async {
+    if (api.endpoint == before) return;
+    api.unfiltered = false;
+    serverSdks = const [];
+    serverLatestSdk = null;
+    _compatApi = null;
+    resolvedForDeviceId = null;
+    mode.value = CatalogMode.resolving;
+    await resolveMode(force: true);
   }
 
   Future<void> setPreference(CatalogModePreference value) async {
@@ -111,14 +175,18 @@ class CatalogContext {
     _modeResolving = true;
     if (force) mode.value = CatalogMode.resolving;
     final token = client.deviceToken;
+    String? endpoint;
     try {
       await loadPreference();
+      endpoint = api.endpoint;
       await ensureDeviceFilters();
-      if (token.isStale) return;
+      if (token.isStale || endpoint != api.endpoint) return;
 
       var offline = false;
       try {
-        serverSdks = await api.fetchSdks().timeout(kCatalogTimeout);
+        final sdks = await api.fetchSdks().timeout(kCatalogTimeout);
+        if (endpoint != api.endpoint) return;
+        serverSdks = sdks;
       } catch (e) {
         // catalogOffline is read only by Settings -> Apps. On the apps
         // screen the failure turns into manager-only mode, which looks exactly
@@ -127,7 +195,7 @@ class CatalogContext {
         LogService.warn('[AppsBackend] fetchSdks failed: $e');
         offline = true;
       }
-      if (token.isStale) return;
+      if (token.isStale || endpoint != api.endpoint) return;
       _catalogOffline = offline;
 
       final target = _deviceTarget;
@@ -155,7 +223,7 @@ class CatalogContext {
       final builderAvailable = needsBuilder
           ? await AssemblerController.instance.builderAvailable()
           : false;
-      if (token.isStale) return;
+      if (token.isStale || endpoint != api.endpoint) return;
       _builderAvailable = builderAvailable;
       final next = resolveCatalogMode(
         verdict: res.verdict,
@@ -181,6 +249,7 @@ class CatalogContext {
         'builder=$_builderAvailable pref=${_preference.name}',
       );
     } catch (e) {
+      if (endpoint != null && endpoint != api.endpoint) return;
       // Without this the mode stayed at `resolving`, which it was set to above
       // when forced - so Settings -> Apps rendered its Recheck button as
       // `resolving ? null : ...` and it was dead for as long as the page was
@@ -200,7 +269,7 @@ class CatalogContext {
       _useManagerOnly();
     } finally {
       _modeResolving = false;
-      if (token.isStale) {
+      if (token.isStale || (endpoint != null && endpoint != api.endpoint)) {
         // The device changed under this resolution, so what it worked out
         // describes the Flipper that was attached when it started and the one
         // attached now has nothing resolved for it. Nobody else will start

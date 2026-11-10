@@ -24,10 +24,9 @@ import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
 
 class AppsManagerPage extends StatefulWidget {
-  const AppsManagerPage({super.key, this.onOpenCatalog, this.onOpenPlugins});
+  const AppsManagerPage({super.key, this.onOpenCatalog});
 
   final VoidCallback? onOpenCatalog;
-  final VoidCallback? onOpenPlugins;
 
   @override
   State<AppsManagerPage> createState() => _AppsManagerPageState();
@@ -61,13 +60,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   Future<void> _primeAll() async {
-    unawaited(guarded('[AppsManager] ensure index', _backend.ensureIndex));
     await _device.prime();
     await _updates.ensureFresh();
   }
 
   Future<void> _update(InstalledApp app) async {
-    final card = _updates.cardForUid(app.uid);
+    final card = _updates.cardFor(app.manifest);
     if (card == null) return;
     await _engine.installOrUpdate(card);
   }
@@ -151,7 +149,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
 
   void _showActions(InstalledApp app) {
     final colors = context.appColors;
-    final card = _updates.cardForUid(app.uid);
+    final card = _updates.cardFor(app.manifest);
     final updatable = _updates.updatableAliases.contains(app.alias);
     final busy = _engine.actions.containsKey(app.alias);
     AppActionSheet.show(
@@ -164,6 +162,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       ),
       title: app.name,
       subtitle: app.path.isNotEmpty ? app.path : '/ext/apps/${app.folder}',
+      // Not asked about here, so neither current nor out of date.
+      note: switch (_updates.otherCatalogs[app.alias]) {
+        final catalog? => context.l10n.appFromOtherCatalog(catalog),
+        null => null,
+      },
       details: FapFactsPanel(
         info: app.fap,
         checked: app.fapChecked,
@@ -349,11 +352,6 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                         )
                       : _updateAll,
                 ),
-              IconButton(
-                icon: const Icon(Icons.extension, color: Colors.white),
-                tooltip: context.l10n.managerPluginsTooltip,
-                onPressed: widget.onOpenPlugins,
-              ),
               IconButton(
                 icon: const Icon(
                   Icons.storefront_outlined,

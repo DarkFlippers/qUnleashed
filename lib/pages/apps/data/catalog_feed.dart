@@ -12,16 +12,13 @@ class CatalogFeed {
 
   bool get hasMore => _hasMore;
 
-  void reset() {
-    _offset = 0;
-    _hasMore = true;
-  }
-
   Future<List<AppCard>> next({
     required int limit,
     required AppsSort sort,
     AppCategory? category,
     String query = '',
+    CatalogFamily family = CatalogFamily.apps,
+    String? authorId,
   }) async {
     if (!_hasMore) return const [];
     final page = await api.fetchApps(
@@ -30,6 +27,8 @@ class CatalogFeed {
       sortBy: sort,
       categoryId: category?.id,
       query: query.isEmpty ? null : query,
+      family: family,
+      authorId: authorId,
     );
     _offset = page.nextOffset;
     _hasMore = page.hasMore;
