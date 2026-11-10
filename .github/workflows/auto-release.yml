@@ -451,6 +451,78 @@ jobs:
           # The script refuses to guess rather than produce one.
           fetch-depth: 0
 
+      # App Store Connect has required the iOS 26 SDK or newer since April
+      # 2026, so which Xcode this runner selects decides whether the IPA is
+      # uploadable - and the macOS DMG is built from the same selection, so
+      # this is not an iOS-only step despite its name. `macos-latest` is a
+      # label GitHub repoints and its default Xcode moves with the image, the
+      # way it moved the Linux build's GTK/GLib floor in #280.
+      #
+      # Three things make it an assertion rather than a hope.
+      #
+      # The names are matched against exact shapes, because a bare
+      # `Xcode_26*` also admits `Xcode_26.1_beta.app` - and a beta sorts
+      # *before* the release (`.1` against `.a`), so the bare glob would have
+      # preferred it. App Store Connect refuses a beta-built IPA, which is
+      # this step's whole subject.
+      #
+      # The result is read back from `xcodebuild` rather than trusted from the
+      # directory name, which proves nothing about what is inside it, and
+      # `DEVELOPER_DIR` is overwritten because an inherited one would override
+      # `xcode-select` for every later tool and leave this a silent no-op.
+      #
+      # `shell: bash` is stated, as `:1014` in this file says it should be:
+      # without it the step runs without `pipefail` and `-u`.
+      #
+      # A floor, not an equality - Apple wants that SDK or newer - but a
+      # bounded one: `2[6-9]` appears in the `case` list, the version check
+      # and the SDK pattern, and all three stop at 29 on purpose. Xcode 30
+      # fails here loudly with the version it found, which is a day's edit,
+      # rather than passing a check whose three halves disagree about the
+      # ceiling. Grep `2[6-9]` to move it.
+      #
+      # Not closed, and worth an issue: `check_linux_abi.sh --check-runner`
+      # re-checks that pin on every pull request because `ci.yml` never builds
+      # Linux; `ci.yml` never builds iOS or macOS either, so nothing notices
+      # this step rotting until a release run.
+      - name: Select Xcode 26 or newer
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          all=(/Applications/Xcode*.app)
+          found=()
+          for app in "${all[@]}"; do
+            case "${app##*/}" in
+              Xcode_2[6-9].app \
+              | Xcode_2[6-9].[0-9].app \
+              | Xcode_2[6-9].[0-9].[0-9].app \
+              | Xcode_2[6-9].[0-9][0-9].app \
+              | Xcode_2[6-9].[0-9][0-9].[0-9].app) found+=("$app") ;;
+            esac
+          done
+          if (( ${#found[@]} == 0 )); then
+            echo "::error::No Xcode 26 to 29 on this runner, so App Store Connect would refuse this build. Installed: ${all[*]:-none}"
+            exit 1
+          fi
+          pick="${found[${#found[@]}-1]}"
+          sudo xcode-select -s "$pick"
+          echo "DEVELOPER_DIR=$pick" >> "$GITHUB_ENV"
+          have="$(xcodebuild -version | head -n 1)"
+          case "$have" in
+            "Xcode 2"[6-9]|"Xcode 2"[6-9].*) ;;
+            *)
+              echo "::error::Selected $pick but xcodebuild reports '$have', which is not Xcode 26 to 29."
+              exit 1
+              ;;
+          esac
+          sdks="$(xcodebuild -showsdks)"
+          if ! grep -q 'iphoneos2[6-9]' <<<"$sdks"; then
+            echo "::error::$pick carries no iOS 26 to 29 SDK: $(tr '\n' ' ' <<<"$sdks")"
+            exit 1
+          fi
+          echo "$have from $pick, of ${#found[@]} candidate(s)."
+
       - name: Set up Flutter
         uses: ./.github/actions/setup-flutter
         with:

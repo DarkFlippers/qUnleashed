@@ -339,7 +339,7 @@ bump. A third submodule, `lib/modules/cpp/nfc-tools`, belongs to someone else
 | `flutter_map`, `geolocator` | the map |
 | `xterm` | terminal |
 | `window_manager` | desktop window |
-| `file_picker`, `path_provider`, `share_plus`, `saver_gallery`, `pasteboard` | files and sharing |
+| `file_picker`, `path_provider`, `share_plus`, `pasteboard` | files and sharing |
 | `flutter_svg`, `diffutil_dart`, `permission_handler`, `url_launcher`, `device_info_plus`, `package_info_plus` | the rest |
 | `logger`, `logging` | both are imported by exactly one file, `lib/services/logging.dart`; the project's own `LogService` is built on top of them |
 | `sentry_flutter` | pinned to 9.30.1, imported only under `lib/services/telemetry/`, and that is enforced by a ratchet; ADR 0013 §7 has the pin's argument |
