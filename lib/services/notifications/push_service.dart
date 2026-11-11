@@ -116,16 +116,22 @@ class PushService {
   /// `notDetermined` has not been answered at all.
   ///
   /// `deniedPermanently` is Android 13+ refusing to prompt again, and it folds
-  /// into `denied` for the reason `probes.dart` gives for folding
-  /// `permission_handler`'s own `permanently_denied`: `PermissionOutcome` has
-  /// no `permanentlyDenied`, because the route out of each is the same
-  /// settings page. Settings → Push offers that route under the label
-  /// `Turn on` (`pages/option/pages/push.dart`), which opens app settings
-  /// rather than re-asking.
+  /// into `denied` for the reason the enum itself gives: `PermissionOutcome`
+  /// has no `permanentlyDenied`, because the route out of each is the same
+  /// settings page (see the doc on `PermissionOutcome`). Settings → Push
+  /// offers that route under the label `Turn on`
+  /// (`pages/option/pages/push.dart`), which opens app settings rather than
+  /// re-asking. `probes.dart` folds the foreground-service plugin's own
+  /// `NotificationPermission.permanently_denied` the same way and says so in
+  /// the same words; `permission_handler`'s `permanentlyDenied` is folded a
+  /// few lines below that, but for a different reason - there it is the only
+  /// refusal that plugin reports unambiguously.
   ///
-  /// The fold also happens to preserve behaviour exactly, which is worth
-  /// recording because it is not obvious: the Android plugin answers 3 for
-  /// this status where 16.4.1 answered 0, and 0 was already `denied`.
+  /// The fold preserves the value this returns, not what the app knows: the
+  /// Android plugin answers 3 for this status where 16.4.1 answered 0, and 0
+  /// was already `denied`, so no surface changes. What is thrown away is the
+  /// difference between a refusal the OS will re-ask about and one it will
+  /// not.
   ///
   /// What the distinction *could* buy is the other half: plain `denied` on
   /// Android now means the OS may still prompt, so that branch could re-ask
@@ -480,8 +486,12 @@ class PushService {
     try {
       final status =
           (await messaging.getNotificationSettings()).authorizationStatus;
-      if (status != AuthorizationStatus.authorized &&
-          status != AuthorizationStatus.provisional) {
+      // Through `outcomeOf` rather than a pair of `!=`, so that this reader
+      // keeps the promise the comment on that method makes: a status the
+      // plugin adds later breaks the build here too, instead of folding
+      // silently into "not authorised". It asks the same question - only
+      // `authorized` and `provisional` map to `granted`.
+      if (outcomeOf(status) != PermissionOutcome.granted) {
         LogService.info(
           '[Push] notifications not authorised; topics unchanged',
         );

@@ -156,6 +156,12 @@ void main() {
       // Fails when `firebase_messaging` adds a status, which is the event
       // this file wants to hear about: the plugin added `deniedPermanently`
       // in 16.7.1 and the only thing that noticed was the analyzer.
+      //
+      // `toSet()` on both sides is load-bearing, not habit: the table's
+      // order and the enum's declaration order differ, and `matcher`
+      // compares a `Set` expectation unordered where an `Iterable` one is
+      // pairwise. `expected.keys.toList()` would fail today, for a reason
+      // that has nothing to do with coverage.
       expect(
         expected.keys.toSet(),
         AuthorizationStatus.values.toSet(),
@@ -168,6 +174,26 @@ void main() {
         expect(PushService.outcomeOf(entry.key), entry.value);
       });
     }
+
+    test('the mapping again, written out rather than read off the table', () {
+      // The per-entry tests above take both their name and their
+      // expectation from `expected`, so moving a row relabels them and
+      // stays green. This one is written over `AuthorizationStatus.values`
+      // instead, which is the only thing that states the granted/unknown
+      // half twice: the `warrantsNotice` test below cannot tell those two
+      // apart, because neither draws a notice.
+      final outcomes = {
+        for (final s in AuthorizationStatus.values)
+          s.name: PushService.outcomeOf(s).name,
+      };
+      expect(outcomes, {
+        'authorized': 'granted',
+        'provisional': 'granted',
+        'denied': 'denied',
+        'notDetermined': 'unknown',
+        'deniedPermanently': 'denied',
+      });
+    });
 
     test('only a denial is put in front of the user', () {
       // `warrantsNotice` is the single predicate every surface asks, so the

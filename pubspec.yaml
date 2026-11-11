@@ -47,11 +47,18 @@ dependencies:
   crypto: ^3.0.7
   pasteboard: ^0.6.0
   # The ceiling buys one thing, and it is not the obvious one. 4.6.0 carries
-  # eight *BREAKING CHANGE* lines inside a minor, whose common subject is that
-  # `throwOnError` now gates every damage report and defaults to `verify`,
-  # which defaults to false. Measured on the firmware installer's own call -
-  # `GZipDecoder().decodeBytes` then `TarDecoder().decodeBytes` - at the
-  # version main ships, the one taken here, and the one held off:
+  # eight *BREAKING CHANGE* lines inside a minor. Three of them are one
+  # change: `throwOnError` now gates every damage report and defaults to
+  # `verify`, which defaults to false. The other five are unrelated and the
+  # migration has to budget for them too - `CompressionType` gains `lzma` and
+  # `xz`, zip `lastModTime` moves to seconds since epoch, `lastModDateTime`
+  # becomes local, `OutputStream` grows `writeRange`/`reserve`/`readInto`, and
+  # `extractFileToDisk` calls its callback after the entry is written.
+  #
+  # Measured on the firmware installer's own call - `GZipDecoder().decodeBytes`
+  # then `TarDecoder().decodeBytes` - on dart:io under the pinned Dart 3.13.1,
+  # at the version main ships, the one taken here, and the one held off. The
+  # web decoders report damage these miss, so the table is dart:io's:
   #
   #                            4.0.9        4.5.2        4.6.0
   #   truncated, no flags      silent       silent       silent
@@ -70,21 +77,28 @@ dependencies:
   # Row three is why this bump is worth taking rather than reverting: at 4.0.9
   # `decodeStream` returns true for a truncated gzip, and from 4.5.2 it
   # returns false. The gate for a half-downloaded firmware update becomes
-  # buildable here and was not before.
+  # buildable here and was not before - reading the bool is not enough on its
+  # own, though, because a *corrupted* stream still comes out of `decodeStream`
+  # as a throw rather than a false. The gate has to take both answers.
   #
   # 4.6.0 is then the version to migrate *to*, not away from, once all seven
   # decode sites pass flags - two of them live in the `dartufbt` submodule, so
   # it is a PR in another repository plus a bump here. It also changes what
   # `ZipDecoder` hands back for an unreadable local header
-  # (named-with-no-content, where 4.0.x gave a nameless entry), which
+  # (named-with-no-content, where 4.0.x and 4.5.x give a nameless entry),
+  # which
   # `atp_unpack_test.dart` asserts on and a comment in `atp_source.dart`
   # describes. A migration with its own tests, not a lockfile move.
   archive: '>=4.0.0 <4.6.0'
   markdown: ^7.3.0
   flutter_html: ^3.0.0-beta.2
   flutter_html_table: ^3.0.0-beta.2
-  # Not used directly: this is a ceiling on flutter_html's behalf, and the
-  # only way pub lets one be written is a dependency. flutter_html 3.0.0 -
+  # Not used directly: this is a ceiling on flutter_html's behalf, written as a
+  # dependency because that is the form that keeps the conflict visible. A
+  # `dependency_overrides` entry would pin it just as well, but an override
+  # opts the package out of version solving entirely, so a later flutter_html
+  # that required 0.15.7+ would be handed 0.15.6 in silence instead of failing
+  # to resolve. flutter_html 3.0.0 -
   # the newest release as of November 2026 - reaches into
   # `package:html/src/query_selector.dart`
   # behind an `// ignore: implementation_imports` for a top-level
@@ -144,7 +158,12 @@ dependencies:
   xterm: ^4.0.0
   share_plus: ^12.0.2
   firebase_core: ^4.11.0
-  firebase_messaging: ^16.4.1
+  # 16.7.1 rather than 16.4.1 because `push_service.dart` switches on
+  # `AuthorizationStatus.deniedPermanently`, which arrives with
+  # `firebase_messaging_platform_interface` 4.10.0. 16.4.1 *allows* that
+  # interface - its constraint is `^4.9.0` - but does not require it, so the
+  # old floor named a version this code does not compile against.
+  firebase_messaging: ^16.7.1
   shared_preferences: ^2.5.5
   flutter_foreground_task: ^9.2.2
   # Pinned exactly, and 9.30.0 is the floor: it fixed a native worker leaked

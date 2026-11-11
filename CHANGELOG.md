@@ -4,7 +4,9 @@
 ## Other changes
 - Fixed: on an Intel Mac animations tore into diagonal triangles and random letters in text were replaced by stray symbols, because Flutter 3.47 made Impeller the default macOS renderer and it draws incorrectly on Intel graphics; those Macs render with Skia again, as every Mac did before 3.47, while Apple silicon keeps Impeller and is unaffected (by @apfxtech | PR #487)
 - Fixed: on iOS 27 the app froze while reading whether notifications are allowed, which it does at launch and again on every resume, because the permission plugin waited for that answer with a semaphore on the main thread; the setting is now read asynchronously (by @mishamyte | PR #492)
+- Fixed: on iOS and macOS the app could also freeze for seconds while reading whether location is allowed - read at launch and on every resume, next to the notification check - because that answer was waited for on the main thread while the system location service took its time (by @mishamyte | PR #492)
 - Fixed: a location the Flipper asked the phone for could wait forever instead of failing, because Core Location keeps retrying when it cannot place you - a Mac with Wi-Fi switched off, for instance - and because a second request replaced the first one's handlers and left it waiting; a single request now fails once Core Location has had six minutes, and requests made while another is pending share its updates and all finish together (by @mishamyte | PR #492)
 - Fixed: on iOS the prompt asking to use your location named a different application (by @mishamyte | PR #490)
 - Archive: the map now continues past the left and right edges of the world instead of ending in blank space (by @mishamyte | PR #492)
+- Archive: the map pans with the arrow keys wherever there is a keyboard (by @mishamyte | PR #492)
 - Android: the release also builds the App Bundle Google Play requires, alongside the per-ABI and universal APKs, which stay the download to sideload (by @mishamyte | PR #491)
