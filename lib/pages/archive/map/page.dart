@@ -18,6 +18,7 @@ import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import 'controller.dart';
 import 'data/settings.dart';
+import 'tile_http_client.dart';
 import '../../../components/navigation.dart';
 import '../../../components/archive/models/pin.dart';
 import '../../../components/filelist/empty_view.dart';
@@ -723,13 +724,18 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       // fires a hundred simultaneous TLS handshakes and the tile CDN drops the
       // overflow mid-handshake. Measured against this network: ~33 parallel
       // connections get through, the rest time out. Six per host, reused.
+      // `TileHttpClient` outermost: it renames the one failure flutter_map 8
+      // mistakes for its own cancellation, and that rename has to survive
+      // whatever `RetryClient` does below it. That file says why.
       _tileProvider = NetworkTileProvider(
-        httpClient: RetryClient(
-          IOClient(
-            HttpClient()
-              ..maxConnectionsPerHost = 6
-              ..idleTimeout = const Duration(seconds: 30)
-              ..connectionTimeout = const Duration(seconds: 15),
+        httpClient: TileHttpClient(
+          RetryClient(
+            IOClient(
+              HttpClient()
+                ..maxConnectionsPerHost = 6
+                ..idleTimeout = const Duration(seconds: 30)
+                ..connectionTimeout = const Duration(seconds: 15),
+            ),
           ),
         ),
       );
