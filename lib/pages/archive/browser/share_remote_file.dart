@@ -119,39 +119,31 @@ Future<void> shareLocalFile(BuildContext context, String localPath) async {
     return;
   }
 
+  if (result.status == ShareResultStatus.unavailable) {
+    // The sheet ran and the platform will not say what came of it. Keep the
+    // raw answer, and let nothing below claim it went out.
+    LogService.caught('[Share] no share result for $localPath: ${result.raw}');
+  }
+
   if (!context.mounted) return;
 
   // `share` reports a dismissal and a missing result by *returning*, not by
-  // throwing, so a `catch` alone cannot tell them from a success - which is how
-  // tapping outside the sheet, or double-tapping Share on Android (the plugin
-  // answers `unavailable` to a second call while one is pending), used to be
-  // reported as "Shared".
-  switch (result.status) {
-    case ShareResultStatus.success:
-      context.showNotification(
-        clipboardOk ? l10n.shareSharedAndCopied : l10n.shareSharedNoClipboard,
-        type: QNotificationType.good,
-      );
-    case ShareResultStatus.dismissed:
-      // The user changed their mind. Not a success and not a failure, so the
-      // copy is the only thing left worth saying.
-      if (clipboardOk) {
-        context.showNotification(
-          l10n.shareCopied,
-          type: QNotificationType.good,
-        );
-      }
-    case ShareResultStatus.unavailable:
-      // The sheet ran and the platform will not say what came of it. Say
-      // nothing rather than claim it went out, and keep the raw answer.
-      LogService.caught(
-        '[Share] no share result for $localPath: ${result.raw}',
-      );
-      if (clipboardOk) {
-        context.showNotification(
-          l10n.shareCopied,
-          type: QNotificationType.good,
-        );
-      }
+  // throwing, so a `catch` alone cannot tell either from a success - which is
+  // how tapping outside the sheet, or double-tapping Share on Android (the
+  // plugin answers `unavailable` to a second call while one is pending), used
+  // to be reported as "Shared".
+  //
+  // Both non-successes say the same thing to the user, because nothing went
+  // out and the copy is all that is left worth mentioning. A switch
+  // expression rather than arms with their own notifications: the next
+  // `ShareResultStatus` should break the build here too.
+  final String? message = switch (result.status) {
+    ShareResultStatus.success =>
+      clipboardOk ? l10n.shareSharedAndCopied : l10n.shareSharedNoClipboard,
+    ShareResultStatus.dismissed ||
+    ShareResultStatus.unavailable => clipboardOk ? l10n.shareCopied : null,
+  };
+  if (message != null) {
+    context.showNotification(message, type: QNotificationType.good);
   }
 }

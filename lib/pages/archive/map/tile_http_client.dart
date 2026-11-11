@@ -1,6 +1,31 @@
-import 'package:http/http.dart';
+import 'dart:io' show HttpClient;
 
-/// Keeps a tile server's mid-response hang-up visible to `errorTileCallback`.
+import 'package:http/http.dart';
+import 'package:http/io_client.dart';
+import 'package:http/retry.dart';
+
+/// The client the map's tiles are fetched with, wrapper and all.
+///
+/// Built here rather than at the call site so that the ordering is next to the
+/// reason for it: [TileHttpClient] has to be outermost, or the rename below
+/// does not survive `RetryClient` re-issuing a request.
+///
+/// Dart's `HttpClient` leaves `maxConnectionsPerHost` unbounded, so one pan
+/// fires a hundred simultaneous TLS handshakes and the tile CDN drops the
+/// overflow mid-handshake. Measured against this network: ~33 parallel
+/// connections get through, the rest time out. Six per host, reused.
+TileHttpClient tileHttpClient() => TileHttpClient(
+  RetryClient(
+    IOClient(
+      HttpClient()
+        ..maxConnectionsPerHost = 6
+        ..idleTimeout = const Duration(seconds: 30)
+        ..connectionTimeout = const Duration(seconds: 15),
+    ),
+  ),
+);
+
+/// Keeps a tile source's mid-response hang-up visible to `errorTileCallback`.
 ///
 /// flutter_map 8 decides a failed tile request was *its own* doing by looking
 /// for the words `closed` or `cancel` in a `ClientException`'s message, and
@@ -15,21 +40,34 @@ import 'package:http/http.dart';
 /// it, the `mapSourceNotAnswering` notice never appears, and the user is left
 /// with blank squares and nothing saying the source is the reason. flutter_map
 /// 7 rethrew every exception at that point, which is why the notice worked
-/// before this bump.
+/// before that bump. `silenceExceptions` is not a lever: the words are tested
+/// above where that flag is read.
 ///
-/// The heuristic is there for tiles aborted when a layer is disposed early, and
-/// that cannot reach us twice over: an abort arrives as
-/// `RequestAbortedException`, caught one branch earlier, and
-/// `NetworkTileProvider.dispose` closes only a client it created itself, which
-/// this is not. So every `closed` that gets this far is the server's.
+/// The heuristic is there for tiles aborted when a layer is disposed, and that
+/// cannot reach us twice over: an abort arrives as `RequestAbortedException`,
+/// caught one branch earlier, and `NetworkTileProvider.dispose` closes only a
+/// client it created itself, which this is not. So every `closed` that gets
+/// this far is the server's.
 ///
-/// Timeouts, refusals and DNS failures never needed this: `IOClient` turns a
-/// `SocketException` into a `ClientException` whose message says `timed out` or
-/// `refused`, which the heuristic does not match.
+/// **Which is why the page closes this client in `dispose` and nowhere else.**
+/// `IOClient.close()` is `HttpClient.close(force: true)`, so closing it fails
+/// every request in flight with a message containing `closed` - renamed by this
+/// very class, therefore no longer swallowed, therefore counted. A pan has
+/// dozens in flight, and eight failures inside five seconds raise the notice:
+/// closing on a tile-source switch would announce that the source is not
+/// answering at the moment the user switched away from it. By `dispose` the
+/// layer has already turned those requests into `RequestAbortedException`.
+///
+/// Timeouts, refusals and DNS failures never needed any of this: `IOClient`
+/// turns a `SocketException` into a `ClientException` whose message says
+/// `timed out` or `refused`, which the heuristic does not match.
 ///
 /// Nothing here is logged on purpose. One dropped tile is ordinary and a dead
 /// source drops a screenful at a time, which is how a single loop has drowned
 /// real errors in `LogService` before; the notice is the report, and it counts.
+///
+/// `test/flutter_map_tile_error_guard_test.dart` is what notices if the words
+/// upstream ever change.
 class TileHttpClient extends BaseClient {
   TileHttpClient(this._inner);
 
@@ -37,13 +75,15 @@ class TileHttpClient extends BaseClient {
 
   @override
   Future<StreamedResponse> send(BaseRequest request) async {
-    // A hang-up before the headers arrive throws from `send`; one during the
+    // A hang-up before the headers arrive rejects the future; one during the
     // body arrives on the stream, which flutter_map consumes itself through
-    // `consolidateStreamedResponseBytes`. Both have to be renamed.
+    // `consolidateStreamedResponseBytes`. Both are gated by the same test, so
+    // anything else keeps its own exception and its own stack.
     final response = await _inner
         .send(request)
         .onError<ClientException>(
           (error, stack) => Error.throwWithStackTrace(renamed(error), stack),
+          test: readsAsAborted,
         );
     return StreamedResponse(
       response.stream.handleError(
@@ -73,8 +113,10 @@ class TileHttpClient extends BaseClient {
   /// Drops the original sentence rather than quoting it: the trigger words are
   /// *in* that sentence, so quoting it would keep flutter_map swallowing the
   /// error. Nothing is lost that was being reported before - the old path
-  /// reported the failure as a count, not as text.
-  static ClientException renamed(ClientException error) => readsAsAborted(error)
-      ? ClientException('the tile source ended the response early', error.uri)
-      : error;
+  /// reported this failure as a count, never as text.
+  ///
+  /// Call it only for an error [readsAsAborted] accepts; both call sites pass
+  /// that as `test`.
+  static ClientException renamed(ClientException error) =>
+      ClientException('the tile source ended the response early', error.uri);
 }

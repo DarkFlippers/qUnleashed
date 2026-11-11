@@ -139,8 +139,12 @@ class PushService {
   /// its own tests, not part of a lockfile bump.
   ///
   /// There is deliberately no `default`: the next status the plugin adds
-  /// should break the build, the way this one did, rather than fold into
-  /// something plausible on its own.
+  /// breaks the build, the way this one did, rather than folding into
+  /// something plausible on its own. That is the language's doing, not a
+  /// convention - a switch expression over an enum has to be exhaustive. If
+  /// someone ever adds a `_` arm and takes that away, the backstop is
+  /// `push_denied_cause_test.dart`'s written-out mapping, which is built over
+  /// `AuthorizationStatus.values` and so goes red on a new status either way.
   @visibleForTesting
   static PermissionOutcome outcomeOf(AuthorizationStatus status) {
     return switch (status) {

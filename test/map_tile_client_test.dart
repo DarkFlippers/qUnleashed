@@ -14,7 +14,8 @@ class _FailsToConnect extends BaseClient {
 }
 
 /// Answers, then fails while the body is being read - which is where dart:io
-/// reports a server that hung up mid-response.
+/// reports a server that hung up mid-response, and flutter_map reads the body
+/// itself rather than letting the client do it.
 class _FailsMidBody extends BaseClient {
   _FailsMidBody(this.error);
 
@@ -25,10 +26,24 @@ class _FailsMidBody extends BaseClient {
       StreamedResponse(Stream<List<int>>.error(error), 200);
 }
 
+class _Ok extends BaseClient {
+  @override
+  Future<StreamedResponse> send(BaseRequest request) async => StreamedResponse(
+    Stream<List<int>>.value(const [1, 2, 3]),
+    200,
+    contentLength: 3,
+    request: request,
+    headers: const {'content-type': 'image/png'},
+    reasonPhrase: 'OK',
+  );
+}
+
 /// The two sentences dart:io actually produces for a hang-up, which `IOClient`
-/// passes through as the `ClientException` message verbatim.
+/// passes through as the `ClientException` message verbatim, and the one an
+/// aborted request used to arrive as.
 const headerDrop = 'Connection closed before full header was received';
 const bodyDrop = 'Connection closed while receiving data';
+const matching = [headerDrop, bodyDrop, 'Request was cancelled'];
 
 Future<Object> _errorFrom(Client client) async {
   try {
@@ -46,23 +61,20 @@ void main() {
     // whose message contains `closed` or `cancel` with a transparent tile and
     // no callback, so a renamed message is the difference between the
     // "source is not answering" notice appearing and blank squares.
-    test('the renamed error no longer matches the heuristic', () {
-      for (final message in [headerDrop, bodyDrop, 'Request was cancelled']) {
-        final renamed = TileHttpClient.renamed(ClientException(message));
+    // `flutter_map_tile_error_guard_test.dart` is what notices if those words
+    // change upstream.
+    test('these messages match the heuristic and their renames do not', () {
+      for (final message in matching) {
+        final original = ClientException(message);
         expect(
-          TileHttpClient.readsAsAborted(renamed),
-          isFalse,
-          reason: 'flutter_map would swallow "${renamed.message}"',
-        );
-      }
-    });
-
-    test('the original messages do match it, or there is nothing to fix', () {
-      for (final message in [headerDrop, bodyDrop, 'Request was cancelled']) {
-        expect(
-          TileHttpClient.readsAsAborted(ClientException(message)),
+          TileHttpClient.readsAsAborted(original),
           isTrue,
           reason: 'flutter_map keys off "closed" and "cancel"',
+        );
+        expect(
+          TileHttpClient.readsAsAborted(TileHttpClient.renamed(original)),
+          isFalse,
+          reason: 'flutter_map would swallow the rename of "$message"',
         );
       }
     });
@@ -71,13 +83,14 @@ void main() {
       final error = await _errorFrom(
         TileHttpClient(_FailsToConnect(ClientException(headerDrop))),
       );
+      // Both assertions earn their place: `readsAsAborted` answers false for
+      // anything that is not a `ClientException`, so without the first one a
+      // rename into some other type would pass.
       expect(error, isA<ClientException>());
       expect(TileHttpClient.readsAsAborted(error), isFalse);
     });
 
     test('a hang-up during the body is renamed too', () async {
-      // This one arrives on the response stream rather than from `send`,
-      // because flutter_map reads the body itself.
       final error = await _errorFrom(
         TileHttpClient(_FailsMidBody(ClientException(bodyDrop))),
       );
@@ -85,11 +98,9 @@ void main() {
       expect(TileHttpClient.readsAsAborted(error), isFalse);
     });
 
-    test('the request uri survives the rename', () async {
-      final renamed = TileHttpClient.renamed(
-        ClientException(headerDrop, Uri.parse('http://tiles/9/1/2.png')),
-      );
-      expect(renamed.uri, Uri.parse('http://tiles/9/1/2.png'));
+    test('the request uri survives the rename', () {
+      final uri = Uri.parse('http://tiles/9/1/2.png');
+      expect(TileHttpClient.renamed(ClientException(headerDrop, uri)).uri, uri);
     });
   });
 
@@ -115,10 +126,8 @@ void main() {
     });
 
     test('a successful response is relayed whole', () async {
-      final client = TileHttpClient(_Ok());
-      final response = await client.send(
-        Request('GET', Uri.parse('http://t/1')),
-      );
+      final response = await TileHttpClient(_Ok())
+          .send(Request('GET', Uri.parse('http://t/1')));
       expect(response.statusCode, 200);
       expect(response.contentLength, 3);
       expect(response.headers['content-type'], 'image/png');
@@ -126,16 +135,4 @@ void main() {
       expect(await response.stream.toBytes(), [1, 2, 3]);
     });
   });
-}
-
-class _Ok extends BaseClient {
-  @override
-  Future<StreamedResponse> send(BaseRequest request) async => StreamedResponse(
-    Stream<List<int>>.value(const [1, 2, 3]),
-    200,
-    contentLength: 3,
-    request: request,
-    headers: const {'content-type': 'image/png'},
-    reasonPhrase: 'OK',
-  );
 }

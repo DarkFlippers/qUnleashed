@@ -152,23 +152,6 @@ void main() {
       AuthorizationStatus.notDetermined: PermissionOutcome.unknown,
     };
 
-    test('the table covers the enum', () {
-      // Fails when `firebase_messaging` adds a status, which is the event
-      // this file wants to hear about: the plugin added `deniedPermanently`
-      // in 16.7.1 and the only thing that noticed was the analyzer.
-      //
-      // `toSet()` on both sides is load-bearing, not habit: the table's
-      // order and the enum's declaration order differ, and `matcher`
-      // compares a `Set` expectation unordered where an `Iterable` one is
-      // pairwise. `expected.keys.toList()` would fail today, for a reason
-      // that has nothing to do with coverage.
-      expect(
-        expected.keys.toSet(),
-        AuthorizationStatus.values.toSet(),
-        reason: 'a new AuthorizationStatus needs a decision, not a default',
-      );
-    });
-
     for (final entry in expected.entries) {
       test('${entry.key.name} is ${entry.value.name}', () {
         expect(PushService.outcomeOf(entry.key), entry.value);
@@ -176,12 +159,17 @@ void main() {
     }
 
     test('the mapping again, written out rather than read off the table', () {
-      // The per-entry tests above take both their name and their
-      // expectation from `expected`, so moving a row relabels them and
-      // stays green. This one is written over `AuthorizationStatus.values`
-      // instead, which is the only thing that states the granted/unknown
-      // half twice: the `warrantsNotice` test below cannot tell those two
-      // apart, because neither draws a notice.
+      // This is the test that holds, and the one to keep if the rest ever
+      // look redundant. The per-entry cases above take both their name and
+      // their expectation from `expected`, so moving a row inside the table
+      // relabels them and stays green; this map is built over
+      // `AuthorizationStatus.values` and compared against a literal, so it
+      // fails for a moved row, for a wrong outcome, and for a status the
+      // plugin adds - the table gaining a key it does not expect.
+      //
+      // Which also makes it the backstop for `outcomeOf`'s exhaustiveness: a
+      // `_` arm added to that switch would keep the build green, and this is
+      // what still goes red the day a new status arrives.
       final outcomes = {
         for (final s in AuthorizationStatus.values)
           s.name: PushService.outcomeOf(s).name,
@@ -192,23 +180,20 @@ void main() {
         'denied': 'denied',
         'notDetermined': 'unknown',
         'deniedPermanently': 'denied',
-      });
+      }, reason: 'a new AuthorizationStatus needs a decision, not a default');
     });
 
     test('only a denial is put in front of the user', () {
-      // `warrantsNotice` is the single predicate every surface asks, so the
-      // mapping only matters inasmuch as it feeds that answer.
-      final notices = {
-        for (final s in AuthorizationStatus.values)
-          s.name: PushService.outcomeOf(s).warrantsNotice,
-      };
-      expect(notices, {
-        'authorized': false,
-        'provisional': false,
-        'denied': true,
-        'notDetermined': false,
-        'deniedPermanently': true,
-      });
+      // `warrantsNotice` is the predicate every surface actually asks, and
+      // `permission_notice_test.dart` already pins it per outcome - so this
+      // states only the composition, in one line rather than a fourth copy
+      // of the status list.
+      expect(
+        AuthorizationStatus.values
+            .where((s) => PushService.outcomeOf(s).warrantsNotice)
+            .map((s) => s.name),
+        unorderedEquals(['denied', 'deniedPermanently']),
+      );
     });
   });
 }
