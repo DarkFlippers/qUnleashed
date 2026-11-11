@@ -384,9 +384,27 @@ import 'ratchet.dart';
 /// like a fresh install. A folder that did not *stick* is the other half, and
 /// `persistSetting` already answers that one with a `warn`. Desktop only, and
 /// at most once per pick.
+/// **`pages/archive` is 24**, for the share sheet. Two calls, one operation,
+/// and neither is commentary.
+///
+/// `shareLocalFile`'s catch is the one that was reporting nowhere: the file
+/// carried no logging import at all, and its only report was a notification
+/// behind `context.mounted` - so a user who left the page while the share
+/// sheet was up took the failure with them, and the causes worth having back
+/// are ours. A `FileUriExposedException` for a path outside the Android file
+/// provider is a packaging bug on this side; the `ArgumentError` that
+/// `ShareParams` validates with is a programming one.
+///
+/// The second is not a throw at all. `share_plus` reports a missing result by
+/// *returning* `ShareResultStatus.unavailable` - the platform declining to
+/// say whether the share happened, which Android also answers to a second
+/// `share` while one is pending. The app used to call that a success; it now
+/// says nothing, which makes this line the only thing that answers "I tapped
+/// share and nothing happened". At most one per tap, and the body carries the
+/// raw status rather than a path the user chose.
 const Map<String, int> kBudget = {
   'services': 26,
-  'pages/archive': 23,
+  'pages/archive': 24,
   'pages/tools': 11,
   'pages/flibler': 0,
   'pages/apps': 1,

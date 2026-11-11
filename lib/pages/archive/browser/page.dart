@@ -1654,7 +1654,6 @@ class _FileManagerPageState extends State<FileManagerPage>
                 context,
                 _ctrl,
                 _ctrl.childPath(e.name),
-                displayName: e.name,
                 expectedSize: e.size,
               );
             },
