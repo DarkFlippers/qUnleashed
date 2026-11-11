@@ -114,11 +114,44 @@ class PushService {
   /// `provisional` is iOS delivering quietly without having asked, which
   /// is not a refusal and not something to offer a settings link for.
   /// `notDetermined` has not been answered at all.
-  static PermissionOutcome _outcomeOf(AuthorizationStatus status) {
+  ///
+  /// `deniedPermanently` is Android 13+ refusing to prompt again, and it folds
+  /// into `denied` for the reason the enum itself gives: `PermissionOutcome`
+  /// has no `permanentlyDenied`, because the route out of each is the same
+  /// settings page (see the doc on `PermissionOutcome`). Settings → Push
+  /// offers that route under the label `Turn on`
+  /// (`pages/option/pages/push.dart`), which opens app settings rather than
+  /// re-asking. `probes.dart` folds the foreground-service plugin's own
+  /// `NotificationPermission.permanently_denied` the same way and says so in
+  /// the same words; `permission_handler`'s `permanentlyDenied` is folded a
+  /// few lines below that, but for a different reason - there it is the only
+  /// refusal that plugin reports unambiguously.
+  ///
+  /// The fold preserves the value this returns, not what the app knows: the
+  /// Android plugin answers 3 for this status where 16.4.1 answered 0, and 0
+  /// was already `denied`, so no surface changes. What is thrown away is the
+  /// difference between a refusal the OS will re-ask about and one it will
+  /// not.
+  ///
+  /// What the distinction *could* buy is the other half: plain `denied` on
+  /// Android now means the OS may still prompt, so that branch could re-ask
+  /// instead of sending the user to settings. That is a behaviour change with
+  /// its own tests, not part of a lockfile bump.
+  ///
+  /// There is deliberately no `default`: the next status the plugin adds
+  /// breaks the build, the way this one did, rather than folding into
+  /// something plausible on its own. That is the language's doing, not a
+  /// convention - a switch expression over an enum has to be exhaustive. If
+  /// someone ever adds a `_` arm and takes that away, the backstop is
+  /// `push_denied_cause_test.dart`'s written-out mapping, which is built over
+  /// `AuthorizationStatus.values` and so goes red on a new status either way.
+  @visibleForTesting
+  static PermissionOutcome outcomeOf(AuthorizationStatus status) {
     return switch (status) {
       AuthorizationStatus.authorized => PermissionOutcome.granted,
       AuthorizationStatus.provisional => PermissionOutcome.granted,
       AuthorizationStatus.denied => PermissionOutcome.denied,
+      AuthorizationStatus.deniedPermanently => PermissionOutcome.denied,
       AuthorizationStatus.notDetermined => PermissionOutcome.unknown,
     };
   }
@@ -160,7 +193,7 @@ class PushService {
       );
       permissions.record(
         AppPermission.pushNotifications,
-        _outcomeOf(settings.authorizationStatus),
+        outcomeOf(settings.authorizationStatus),
       );
 
       await messaging.setForegroundNotificationPresentationOptions(
@@ -457,8 +490,12 @@ class PushService {
     try {
       final status =
           (await messaging.getNotificationSettings()).authorizationStatus;
-      if (status != AuthorizationStatus.authorized &&
-          status != AuthorizationStatus.provisional) {
+      // Through `outcomeOf` rather than a pair of `!=`, so that this reader
+      // keeps the promise the comment on that method makes: a status the
+      // plugin adds later breaks the build here too, instead of folding
+      // silently into "not authorised". It asks the same question - only
+      // `authorized` and `provisional` map to `granted`.
+      if (outcomeOf(status) != PermissionOutcome.granted) {
         LogService.info(
           '[Push] notifications not authorised; topics unchanged',
         );

@@ -1158,6 +1158,10 @@ class FileManagerController extends ChangeNotifier {
             _downloads.remove(remotePath);
           });
 
+  /// The name this writes under is the name a share sheet shows: no platform
+  /// the app shares on carries a filename of its own, so the receiving app
+  /// reads the path's last segment. `share_remote_file.dart` says why at
+  /// length; change the shared name here.
   Future<String?> _downloadToCache(String remotePath, int expectedSize) =>
       _transfer(
         dir: dirname(remotePath),

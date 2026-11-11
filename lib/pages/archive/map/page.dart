@@ -2,7 +2,6 @@ import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
-import 'dart:io' show HttpClient;
 import 'dart:math' as math;
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
@@ -10,14 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:http/io_client.dart';
-import 'package:http/retry.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import 'controller.dart';
 import 'data/settings.dart';
+import 'tile_http_client.dart';
 import '../../../components/navigation.dart';
 import '../../../components/archive/models/pin.dart';
 import '../../../components/filelist/empty_view.dart';
@@ -73,6 +71,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   // TileLayer state disposes it when the source (and so the layer key) changes.
   String? _tileSource;
   NetworkTileProvider? _tileProvider;
+  TileHttpClient? _tileClient;
 
   _MapMode _mode = _MapMode.browse;
   MapPickTarget? _pickTarget;
@@ -97,6 +96,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   void dispose() {
     _notice?.close();
     _tileQuietTimer?.cancel();
+    // `NetworkTileProvider` closes only a client it created itself, and this
+    // one is passed in, so without this the chain down to `HttpClient` and its
+    // keep-alive sockets is simply abandoned. Safe here and nowhere earlier:
+    // the layer has already aborted its pending tiles, and those arrive as
+    // `RequestAbortedException` rather than as a failure to count.
+    _tileClient?.close();
     _settings.removeListener(_onChanged);
     _controller.removeListener(_onChanged);
     _controller.dispose();
@@ -723,16 +728,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       // fires a hundred simultaneous TLS handshakes and the tile CDN drops the
       // overflow mid-handshake. Measured against this network: ~33 parallel
       // connections get through, the rest time out. Six per host, reused.
-      _tileProvider = NetworkTileProvider(
-        httpClient: RetryClient(
-          IOClient(
-            HttpClient()
-              ..maxConnectionsPerHost = 6
-              ..idleTimeout = const Duration(seconds: 30)
-              ..connectionTimeout = const Duration(seconds: 15),
-          ),
-        ),
-      );
+      // The outgoing client is deliberately *not* closed here, only in
+      // `dispose`: closing it fails the dozens of requests a pan leaves in
+      // flight with a message this app renames and therefore counts, which
+      // would raise "source is not answering" about the source the user just
+      // switched away from. `tile_http_client.dart` says it at length. Its
+      // sockets go on their own after `idleTimeout`.
+      _tileClient = tileHttpClient();
+      _tileProvider = NetworkTileProvider(httpClient: _tileClient);
     }
     return _tileProvider!;
   }

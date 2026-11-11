@@ -18,6 +18,7 @@
 // `debugSetUnavailable` exists for that. With it the branch is reachable, and
 // the two assertions below are both falsifiable: the denial is named, *and*
 // the build sentence is gone while it is.
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/option/pages/push.dart';
@@ -124,5 +125,75 @@ void main() {
 
     expect(find.textContaining('not signed for push'), findsOneWidget);
     expect(find.text('Notifications are turned off'), findsNothing);
+  });
+
+  group('every authorization status maps to one outcome', () {
+    // The arms of `outcomeOf` are a product decision - two statuses mean
+    // usable, two mean refused, one means nothing has been answered - and
+    // until this group existed nothing executable said so. `flutter analyze`
+    // only requires the switch to be *exhaustive*, so changing any single arm
+    // to a different `PermissionOutcome` passed the analyzer, all 2523 tests
+    // and the format gate together. That is how `deniedPermanently` could
+    // have been pointed at `granted` by a slip and shipped.
+    //
+    // So the table is deliberately complete rather than one case for the
+    // status that prompted it. A `switch` over the enum here would defeat
+    // the point: it would track whatever the function does.
+    const expected = <AuthorizationStatus, PermissionOutcome>{
+      AuthorizationStatus.authorized: PermissionOutcome.granted,
+      // iOS delivering quietly without having asked. Not a refusal.
+      AuthorizationStatus.provisional: PermissionOutcome.granted,
+      AuthorizationStatus.denied: PermissionOutcome.denied,
+      // Android 13+ refusing to prompt again. Folds into `denied` because
+      // the route out of both is the same settings page.
+      AuthorizationStatus.deniedPermanently: PermissionOutcome.denied,
+      // Never answered - and `unknown` draws no notice, which is the whole
+      // of #351: a notice raised on a guess states the wrong cause.
+      AuthorizationStatus.notDetermined: PermissionOutcome.unknown,
+    };
+
+    for (final entry in expected.entries) {
+      test('${entry.key.name} is ${entry.value.name}', () {
+        expect(PushService.outcomeOf(entry.key), entry.value);
+      });
+    }
+
+    test('the mapping again, written out rather than read off the table', () {
+      // This is the test that holds, and the one to keep if the rest ever
+      // look redundant. The per-entry cases above take both their name and
+      // their expectation from `expected`, so moving a row inside the table
+      // relabels them and stays green; this map is built over
+      // `AuthorizationStatus.values` and compared against a literal, so it
+      // fails for a moved row, for a wrong outcome, and for a status the
+      // plugin adds - the table gaining a key it does not expect.
+      //
+      // Which also makes it the backstop for `outcomeOf`'s exhaustiveness: a
+      // `_` arm added to that switch would keep the build green, and this is
+      // what still goes red the day a new status arrives.
+      final outcomes = {
+        for (final s in AuthorizationStatus.values)
+          s.name: PushService.outcomeOf(s).name,
+      };
+      expect(outcomes, {
+        'authorized': 'granted',
+        'provisional': 'granted',
+        'denied': 'denied',
+        'notDetermined': 'unknown',
+        'deniedPermanently': 'denied',
+      }, reason: 'a new AuthorizationStatus needs a decision, not a default');
+    });
+
+    test('only a denial is put in front of the user', () {
+      // `warrantsNotice` is the predicate every surface actually asks, and
+      // `permission_notice_test.dart` already pins it per outcome - so this
+      // states only the composition, in one line rather than a fourth copy
+      // of the status list.
+      expect(
+        AuthorizationStatus.values
+            .where((s) => PushService.outcomeOf(s).warrantsNotice)
+            .map((s) => s.name),
+        unorderedEquals(['denied', 'deniedPermanently']),
+      );
+    });
   });
 }

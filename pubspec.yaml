@@ -45,11 +45,68 @@ dependencies:
   protobuf: ^6.0.0
   fixnum: ^1.1.1
   crypto: ^3.0.7
-  pasteboard: ^0.5.0
-  archive: ^4.0.0
+  pasteboard: ^0.6.0
+  # The ceiling buys one thing, and it is not the obvious one. 4.6.0 carries
+  # eight *BREAKING CHANGE* lines inside a minor. Three of them are one
+  # change: `throwOnError` now gates every damage report and defaults to
+  # `verify`, which defaults to false. The other five are unrelated and the
+  # migration has to budget for them too - `CompressionType` gains `lzma` and
+  # `xz`, zip `lastModTime` moves to seconds since epoch, `lastModDateTime`
+  # becomes local, `OutputStream` grows `writeRange`/`reserve`/`readInto`, and
+  # `extractFileToDisk` calls its callback after the entry is written.
+  #
+  # Measured on the firmware installer's own call - `GZipDecoder().decodeBytes`
+  # then `TarDecoder().decodeBytes` - on dart:io under the pinned Dart 3.13.1,
+  # at the version main ships, the one taken here, and the one held off. The
+  # web decoders report damage these miss, so the table is dart:io's:
+  #
+  #                            4.0.9        4.5.2        4.6.0
+  #   truncated, no flags      silent       silent       silent
+  #   truncated, verify        silent       silent       THROWS
+  #   truncated, decodeStream  true (!)     false        false
+  #   bad gzip CRC, no flags   THROWS       THROWS       silent, full length
+  #   bad gzip CRC, verify     THROWS       THROWS       THROWS
+  #
+  # So the loss at 4.6.0 is row four: a bit-rotted download that throws today
+  # with no flags decodes clean there. That is the whole of the hold. A
+  # truncated archive has been silently partial at every version, including
+  # the one in production - that is a pre-existing hole, not a 4.6.0
+  # regression, and `archive-4.5.2/lib/src/codecs/gzip_decoder.dart` says so
+  # in the doc comment on the method the installer calls.
+  #
+  # Row three is why this bump is worth taking rather than reverting: at 4.0.9
+  # `decodeStream` returns true for a truncated gzip, and from 4.5.2 it
+  # returns false. The gate for a half-downloaded firmware update becomes
+  # buildable here and was not before - reading the bool is not enough on its
+  # own, though, because a *corrupted* stream still comes out of `decodeStream`
+  # as a throw rather than a false. The gate has to take both answers.
+  #
+  # 4.6.0 is then the version to migrate *to*, not away from, once all seven
+  # decode sites pass flags - two of them live in the `dartufbt` submodule, so
+  # it is a PR in another repository plus a bump here. It also changes what
+  # `ZipDecoder` hands back for an unreadable local header
+  # (named-with-no-content, where 4.0.x and 4.5.x give a nameless entry),
+  # which
+  # `atp_unpack_test.dart` asserts on and a comment in `atp_source.dart`
+  # describes. A migration with its own tests, not a lockfile move.
+  archive: '>=4.0.0 <4.6.0'
   markdown: ^7.3.0
   flutter_html: ^3.0.0-beta.2
   flutter_html_table: ^3.0.0-beta.2
+  # Not used directly: this is a ceiling on flutter_html's behalf, written as a
+  # dependency because that is the form that keeps the conflict visible. A
+  # `dependency_overrides` entry would pin it just as well, but an override
+  # opts the package out of version solving entirely, so a later flutter_html
+  # that required 0.15.7+ would be handed 0.15.6 in silence instead of failing
+  # to resolve. flutter_html 3.0.0 -
+  # the newest release as of November 2026 - reaches into
+  # `package:html/src/query_selector.dart`
+  # behind an `// ignore: implementation_imports` for a top-level
+  # `matches(Element, String)`. html 0.15.7 deleted it, keeping only a method
+  # over a parsed `SelectorGroup`, so the patch bump fails *compilation* of
+  # every test that loads a widget tree: "Method not found: 'matches'".
+  # Lift this when flutter_html publishes a fix, or when flutter_html goes.
+  html: '>=0.15.6 <0.15.7'
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0
   re_editor: ^0.10.0
@@ -57,9 +114,9 @@ dependencies:
   diffutil_dart: ^5.0.0
   file_picker: ^8.1.2
   ffi: ^2.1.3
-  flutter_map: ^7.0.2
+  flutter_map: ^8.3.2
   http: ^1.6.0
-  latlong2: ^0.9.1
+  latlong2: ^0.10.1
   geolocator: ^13.0.1
   path_provider: ^2.1.4
   package_info_plus: ^8.1.0
@@ -99,9 +156,14 @@ dependencies:
   logging: ^1.3.0
   window_manager: ^0.5.1
   xterm: ^4.0.0
-  share_plus: ^10.1.4
+  share_plus: ^12.0.2
   firebase_core: ^4.11.0
-  firebase_messaging: ^16.4.1
+  # 16.7.1 rather than 16.4.1 because `push_service.dart` switches on
+  # `AuthorizationStatus.deniedPermanently`, which arrives with
+  # `firebase_messaging_platform_interface` 4.10.0. 16.4.1 *allows* that
+  # interface - its constraint is `^4.9.0` - but does not require it, so the
+  # old floor named a version this code does not compile against.
+  firebase_messaging: ^16.7.1
   shared_preferences: ^2.5.5
   flutter_foreground_task: ^9.2.2
   # Pinned exactly, and 9.30.0 is the floor: it fixed a native worker leaked

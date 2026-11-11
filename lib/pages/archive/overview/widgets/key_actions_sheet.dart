@@ -219,8 +219,7 @@ class KeyActionsSheet {
         ActionItem(
           icon: shareIcon,
           label: shareLabel,
-          onTap: () =>
-              shareLocalFile(context, k.localPath!, displayName: k.name),
+          onTap: () => shareLocalFile(context, k.localPath!),
         ),
       );
     } else if (k.onDevice && connected) {
@@ -426,7 +425,7 @@ class KeyActionsSheet {
       );
       return;
     }
-    await shareLocalFile(context, path, displayName: k.name);
+    await shareLocalFile(context, path);
   }
 
   static Future<void> _download(
