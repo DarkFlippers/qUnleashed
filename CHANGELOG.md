@@ -10,3 +10,4 @@
 - Archive: the map now continues past the left and right edges of the world instead of ending in blank space (by @mishamyte | PR #492)
 - Archive: the map pans with the arrow keys wherever there is a keyboard (by @mishamyte | PR #492)
 - Android: the release also builds the App Bundle Google Play requires, alongside the per-ABI and universal APKs, which stay the download to sideload (by @mishamyte | PR #491)
+- iOS: the build carries the privacy manifest the App Store requires, so the listing can state what the app reads and what it sends - crash and diagnostic reports, the device identifier Firebase issues, and the file, user-defaults and elapsed-time APIs it uses - and can state that the location it reads for the map is never sent off the device (by @mishamyte | PR #496)
