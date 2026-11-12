@@ -608,6 +608,37 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ env.ASSET_RETENTION }}
 
+      # `pod install` writes `ios/Podfile.lock` and `macos/Podfile.lock`, and
+      # this job is the only place in this project's automation that runs it:
+      # both build scripts refuse a non-Darwin host outright, and no job on a
+      # pull request builds iOS or macOS at all. So when the locks are not in
+      # git - which is where this commit leaves them, and why - a release run
+      # is the only thing that can produce a pair to commit. This hands them
+      # out so that decision can be made from real files.
+      #
+      # Deliberately the last steps in the job, and deliberately
+      # `continue-on-error`. Everything above has already produced the DMG and
+      # the IPA, and the asset upload above carries no `if:` - so it defaults
+      # to `success()`, and a diagnostic step failing ahead of it would skip
+      # the upload, skip `publish`, and lose a release that was already built.
+      # That is the hazard the Sentry step above guards against the same way.
+      #
+      # `!cancelled()` rather than `success()`: a run where macOS resolved and
+      # iOS then failed is exactly when the resolved lock is worth having.
+      # `warn` rather than `error` on a missing file, because a step whose only
+      # output is a diagnostic must not be the thing that reddens a release.
+      - name: Upload the resolved Podfile.lock files
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: podfile-locks
+          path: |
+            ios/Podfile.lock
+            macos/Podfile.lock
+          if-no-files-found: warn
+          retention-days: ${{ env.ASSET_RETENTION }}
+
   publish:
     name: Publish GitHub release
     outputs:

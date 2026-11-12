@@ -97,6 +97,29 @@ app.*.map.json
 /ios/Runner/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
 
+# The CocoaPods lock files. Committing them is the usual advice and it does not
+# work here: nothing in this project can regenerate them except a release run.
+# Both build scripts refuse a non-Darwin host, no job on a pull request builds
+# iOS or macOS, and CocoaPods is a macOS-only toolchain in practice - so the
+# moment a plugin bump moves a pod constraint, the committed snapshot is wrong
+# and `pod install` refuses to reconcile it. That is not hypothetical: #492
+# moved firebase_core 4.11.0 -> 4.15.2, whose podspec asks for
+# `Firebase/CoreOnly ~> 12.19.3` while the snapshot pinned `= 12.15.0`, and
+# every dev build since failed on it - a plain `pod install` keeps a locked
+# version for a transitive pod even when the development pod above it changed,
+# which is what CocoaPods means by "you should run `pod update`".
+#
+# What is lost is narrow. `pubspec.lock` still pins every plugin to an exact
+# version, and each plugin's podspec pins the pods it needs, so what floats is
+# only a third-party pod's patch range inside a `~>` it already declared.
+# What is gained is a release that does not break on every plugin bump.
+#
+# The release job uploads the pair it resolved as `podfile-locks`, so this is
+# reversible from real files rather than from a guess: commit that pair and
+# drop these two lines.
+/ios/Podfile.lock
+/macos/Podfile.lock
+
 # The native crash database, which sentry-native writes beside the executable
 # unless told otherwise - so a `flutter run` from here creates it in the repo
 # root. It holds an installation id and any crash not yet sent. Ignored as well
