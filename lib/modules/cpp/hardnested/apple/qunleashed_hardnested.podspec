@@ -20,6 +20,27 @@ bundled minlzlib.
   s.source_files     = 'qunleashed_hardnested_unity.c'
   s.requires_arc     = false
 
+  # This framework compiles a call to `mach_absolute_time()`, which is one of
+  # Apple's required reason APIs. `util_posix.c`, which the unity file
+  # #includes, carries a pre-10.12 `clock_gettime` fallback that uses it - and
+  # that branch never runs on our deployment targets, because
+  # `_civet_safe_clock_gettime` calls the real `clock_gettime` whenever it is
+  # non-NULL, which on iOS 12 and macOS 10.15 is always. Declared anyway,
+  # because Apple's check is a static scan of the binary and the symbol is in
+  # it either way.
+  #
+  # `35F9.1` is honest for it: the shim subtracts its own first reading, so
+  # what leaves the function is an elapsed time and never an absolute mach
+  # value - which is the condition that reason attaches to sending the number
+  # off-device.
+  #
+  # In this pod's own manifest and not the app's, because both Podfiles say
+  # `use_frameworks!` so this is its own dynamic framework, and Apple's rule
+  # is per binary. `test/privacy_manifest_test.dart` keeps the two in step.
+  s.resource_bundles = {
+    'qunleashed_hardnested_privacy' => ['PrivacyInfo.xcprivacy'],
+  }
+
   s.ios.dependency 'Flutter'
   s.ios.deployment_target = '12.0'
   s.osx.dependency 'FlutterMacOS'

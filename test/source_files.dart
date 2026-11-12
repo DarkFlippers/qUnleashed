@@ -20,15 +20,35 @@ import 'package:flutter_test/flutter_test.dart';
 /// Takes the pathspec because `test/local_defines_test.dart` wants the same
 /// question asked of a different glob, and had a verbatim copy of this
 /// function until it did. The pathspec is the only part that differs.
-List<String> gitVisibleFiles(String pathspec) {
+List<String> gitVisibleFiles(String pathspec) => gitVisibleFilesIn([pathspec]);
+
+/// The same question of several pathspecs at once.
+///
+/// `git ls-files` takes as many as it is given, and on Windows a process spawn
+/// is the expensive part - `test/privacy_manifest_test.dart` wanted nine
+/// globs and paid nine spawns for them before this existed.
+List<String> gitVisibleFilesIn(List<String> pathspecs) =>
+    _gitLsFiles(['--cached', '--others', '--exclude-standard'], pathspecs);
+
+/// Tracked files matching [pathspecs], looking inside the submodules.
+///
+/// `git ls-files` lists a submodule's path and none of its contents, because a
+/// gitlink has no files of its own in this index; `--recurse-submodules` is
+/// what reaches them, and it is **not** combinable with `--others` (git says
+/// "unsupported mode"). So this sees tracked files only - which for a
+/// submodule is what is wanted anyway, and is the point: walking those
+/// directories from disk instead picks up whatever the last build left behind,
+/// which made one guard's coverage depend on the machine it ran on.
+List<String> gitTrackedFilesRecursing(List<String> pathspecs) =>
+    _gitLsFiles(['--recurse-submodules'], pathspecs);
+
+List<String> _gitLsFiles(List<String> modes, List<String> pathspecs) {
   final result = Process.runSync('git', [
     'ls-files',
     '-z',
-    '--cached',
-    '--others',
-    '--exclude-standard',
+    ...modes,
     '--',
-    pathspec,
+    ...pathspecs,
   ]);
   expect(result.exitCode, 0, reason: 'git ls-files failed: ${result.stderr}');
   return (result.stdout as String)

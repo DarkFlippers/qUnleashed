@@ -535,6 +535,104 @@ store-facing paperwork and it is not resolved: `MANAGE_EXTERNAL_STORAGE`
 requires a Play declaration form, an approved use case and a demo video, and
 nothing here defends it yet.
 
+## The privacy manifest
+
+`ios/Runner/PrivacyInfo.xcprivacy` is the second statement to Apple, and since
+1 May 2024 the harder one: App Store Connect **rejects** an upload whose
+manifest does not describe the required reason APIs the app uses. It is not a
+warning and not a review note - it happens before a human sees the build.
+
+Nothing in this project can see that gate. No job on a pull request builds iOS,
+the release job builds unsigned, and the first machine that checks is Apple's.
+`test/privacy_manifest_test.dart` stands in for it and is the reason to read
+this section before changing the file.
+
+**iOS only, and that is a premise rather than an omission.** Apple's own
+sentence names the platforms: "Describe the reasons your app or third-party SDK
+on iOS, iPadOS, tvOS, visionOS, or watchOS uses these APIs." macOS is absent
+from that list, and this project ships macOS as a DMG outside the Mac App Store
+anyway - which is also why two real calls in the submodules are not gaps, see
+below.
+
+Two halves, and they fail differently.
+
+**The data half** - `NSPrivacyTracking`, `NSPrivacyTrackingDomains`,
+`NSPrivacyCollectedDataTypes` - feeds the privacy report and has to agree with
+the App Privacy answers in App Store Connect. What is declared today:
+
+| | |
+|---|---|
+| Crash data, performance data, other diagnostic data | Sentry, on by default with one switch that turns it off ([ADR 0013](adr/0013-observability-with-sentry.md) §1). `tracesSampleRate` is 1.0. Not linked to an identity and not used for tracking: there are no accounts and `sendDefaultPii` is false (§6.1). |
+| Device id | Firebase's installation id, which `firebase_core` init alone sends, plus the FCM token if iOS ever gains a push entitlement - it has none today, and no `remote-notification` background mode either, so no APNs token can be issued. |
+| **Precise location, deliberately absent** | The app reads location and never sends it. §6.2's scrubber replaces decimal coordinates of four or more places before any event leaves - deliberately narrow, and its own dartdoc says what that misses - and §6.4 masks `FlutterMap` in the replay for exactly this reason. Declaring it would be a false statement in the stricter direction. |
+
+**The API half** - `NSPrivacyAccessedAPITypes` - is the one that rejects an
+upload. Apple's rule is per binary: each executable or dynamic library that
+uses a required reason API needs a manifest in *its own* bundle, and the same
+page says a third-party SDK "can't rely on the privacy manifest files for apps
+that link the third-party SDK". Both Podfiles say `use_frameworks!`, so every
+development pod is its own dynamic framework and answers for itself - which is
+why `qunleashed_hardnested` ships one of its own, through `resource_bundles` in
+its podspec.
+
+So two of the app's three entries are **conservative**: the uses behind them are
+real, but they are in binaries the app's manifest does not formally answer for,
+and no Apple text promises it covers them.
+
+| Category | Reason | Why |
+|---|---|---|
+| `UserDefaults` | `CA92.1` | `flutter_foreground_task` and `universal_ble` both reach `UserDefaults.standard` and ship no declaration of their own. Conservative, and the only one of the three with a named cause this project can watch. `CA92.1` and not `1C8F.1`, which is for an App Group: this app has no entitlements file at all. |
+| `SystemBootTime` | `35F9.1` | The engine declares `35F9.1` itself, and `sentry_flutter` wraps a Cocoa SDK with its own manifest; this entry is conservative cover for both. The call this repository owns is `lib/modules/cpp/hardnested/util_posix.c`, and it is declared **in the pod's manifest**, not this one, because that is the framework it lands in. |
+| `FileTimestamp` | `C617.1` | Every first-party `File.stat()` and `lastModified()` read goes through `dart:io`, so the symbol is in `Flutter.framework` - which declares this category itself, with `0A2A.1` and `C617.1`. Declared here as well, conservatively. `C617.1` covers metadata of files in the app container; `DDA9.1` was rejected because it forbids sending anything derived off-device, which a log line cannot promise. `0A2A.1` is not available to an app - Apple allows it only to third-party SDKs, which is how the engine declares it and this app may not. |
+
+**What is actually guarded, and why that is the half worth guarding.**
+`test/privacy_manifest_test.dart` reads `.flutter-plugins-dependencies` - the
+file `flutter pub get` writes - walks the iOS half of every plugin Flutter
+resolved, and pins the set of plugins that use a required reason API and
+declare none themselves. Today that set is exactly three:
+
+| finding | answered by |
+|---|---|
+| `flutter_foreground_task:UserDefaults` | the app's `CA92.1` |
+| `universal_ble:UserDefaults` | the app's `CA92.1` |
+| `device_info_plus:DiskSpace` | nothing, deliberately - see below |
+
+This is the half that moves. This repository's own Apple code uses exactly one
+such API and now ships a manifest beside it, in the pod that compiles it; the
+plugin set changes on every dependency bump, and a bump is how `CA92.1` came to
+be needed at all. A fourth entry fails the test with the plugin's name, instead
+of arriving as a rejected upload months later. The two rules that keep it
+honest are both derived rather than listed: a plugin whose iOS podspec declares
+no `source_files` compiles nothing into the app and is skipped - which is
+flipperlib's position, and stops being true the day it gains native iOS code -
+and `Package.swift` is read as the build manifest it is rather than as product
+code.
+
+**One category is used and declared nowhere, and it is not ours to declare.**
+`device_info_plus` 11.5.0 reads `NSFileSystemSize` and `NSFileSystemFreeSize`
+unconditionally in `FPPDeviceInfoPlusPlugin.m`, and ships a manifest whose
+`NSPrivacyAccessedAPITypes` is an empty array. That call **is** reached on iOS:
+`lib/modules/extensions/super_native_extensions/lib/src/drag_interaction/long_press_handler.dart`
+awaits `DeviceInfoPlugin().deviceInfo` with no platform guard on every
+long-press drag, and only reads the result under `if (deviceInfo is
+AndroidDeviceInfo)` - so on iOS the value is fetched and thrown away. The
+sibling call in `super_context_menu` is guarded with
+`defaultTargetPlatform == TargetPlatform.android` and shows what the fix looks
+like.
+
+No disk-space reason is declared here, because none of Apple's four describes
+fetching a number and discarding it, and the symbol is in
+`device_info_plus.framework` rather than the app's binary. Three ways out, in
+the order they are worth trying: guard that call in our fork of
+`super_native_extensions` (a pull request there plus a submodule bump here);
+`device_info_plus` 13, which the `win32` 6 chain will bring, may declare it;
+failing both, declaring `85F4.1` or `E174.1` is a statement whoever submits has
+to be willing to make. If Apple's scanner attributes the symbol to the app, the
+first upload names it.
+
+`file_picker` 8.3.7 ships an empty manifest too, and has no required reason API
+call to declare, so it is not in the same position.
+
 ## What is not automated yet
 
 Honest list, so nobody waits for something that is not coming.
@@ -558,6 +656,7 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/release_body.sh` | What a release page says: the whole changelog for a release, what is new since the previous dev build for a dev one. Its tests are beside it. |
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease, the cycle opener and the two milestone jobs. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
+| `ios/Runner/PrivacyInfo.xcprivacy` | The app's privacy manifest, wired into the Runner target's `Resources` phase. `test/privacy_manifest_test.dart` guards both halves. |
 | `android/app/build.gradle.kts` | The Sentry Android Gradle Plugin's configuration: the R8 mapping's UUID, which ships in the APK, and what the plugin is told not to do — including send anything. |
 | `.github/actions/upload-debug-symbols/` | Every debug file that leaves a build job: the Dart plugin's upload, and `upload_r8_mapping.sh` with its own pinned `sentry-cli`. Both report into the job summary, and neither can fail a release — a Sentry fault must not discard one that is already built. |
 | `.github/scripts/verify_apks.sh` | The opposite trade, deliberately: it *can* fail a release, because what it checks is the APK rather than the upload. A mapping that did not reach Sentry can be sent again from the same commit; an APK that shipped with no UUID in it can never be addressed, so only a rebuild fixes it. |
