@@ -65,31 +65,39 @@ void answerFolderPick({
 ///
 /// `PlatformFile` is an `abstract base class`, so this extends it rather than
 /// implementing it, and `base` requires this class to be `final` in turn. Only
-/// `path` and [name] answer: production reads the first, which the base class
-/// derives from [uri], and the second for one log line. Everything else
-/// throws, and that is the point - the bytes of a pick are read through
-/// `readPickedFile`, which stats and reads the path itself, so a test that
-/// started reaching for them would be a regression rather than a surprise.
+/// [path] and [name] answer: production reads the first, and the second for
+/// one log line. Everything else throws, and that is the point - the bytes of
+/// a pick are read through `readPickedFile`, which stats and reads the path
+/// itself, so a test that started reaching for them would be a regression
+/// rather than a surprise.
+///
+/// **[path] is answered verbatim rather than derived from a [Uri]**, which the
+/// base class would otherwise do for us. Deriving it made this host-dependent
+/// and cost a red CI run: `Uri.file('C:/tmp/fw.tgz')` is absolute on Windows
+/// and *relative* on Linux, a relative file URI carries no scheme, and
+/// `PlatformFile.path` answers null for any scheme but `file:` - so a fixture
+/// that named a file locally named nothing on the runner. Handing the string
+/// back untouched is also what the plugin does with what the platform sent.
 ///
 /// `AndroidPlatformFile` from the `android_file_picker` dev dependency would
 /// also do, and would read bytes for real.
 final class StubPickedFile extends PlatformFile {
-  StubPickedFile({required String path, required this.name})
-    : uri = Uri.file(path);
+  StubPickedFile({required this.path, required this.name});
 
   /// A file the platform returned without a usable path.
   ///
-  /// `PlatformFile.path` answers null for any scheme but `file:`, which is how
-  /// a Storage Access Framework pick Android could not resolve to disk
-  /// arrives - the outcome a page reports and then forgets.
-  StubPickedFile.unusable({required this.name})
-    : uri = Uri.parse('content://stub/unusable');
+  /// Android reports one for a Storage Access Framework pick it could not
+  /// resolve to disk - the outcome a page reports and then forgets.
+  StubPickedFile.unusable({required this.name}) : path = null;
 
   @override
-  final Uri uri;
+  final String? path;
 
   @override
   final String name;
+
+  @override
+  Uri get uri => throw UnsupportedError('a stub picked file has no uri');
 
   /// Typed by override inference, so that naming `XFile` does not make
   /// `cross_file` a direct dependency of a test.

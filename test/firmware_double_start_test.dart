@@ -56,7 +56,7 @@ void main() {
     StubFilePicker park(Completer<void> browsing) {
       final picker = StubFilePicker(
         gate: browsing,
-        files: [StubPickedFile(path: 'C:/tmp/fw.tgz', name: 'fw.tgz')],
+        files: [StubPickedFile(path: '/tmp/fw.tgz', name: 'fw.tgz')],
       );
       FilePickerPlatform.instance = picker;
       return picker;
