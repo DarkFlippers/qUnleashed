@@ -15,6 +15,7 @@ import 'package:qunleashed/pages/tools/plotter/page.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 
 import 'firmware_fixture.dart';
+import 'picker_fakes.dart';
 
 void main() {
   late Directory dir;
@@ -44,7 +45,7 @@ void main() {
   testWidgets('the plotter says how big the pick was, and what fits', (
     tester,
   ) async {
-    FilePicker.platform = _OversizedPicker(bigPath);
+    FilePickerPlatform.instance = _oversizedPicker(bigPath);
     final (device, _) = mountedDevice();
 
     await tester.pumpWidget(wrapWithDevice(const PulsePlotterPage(), device));
@@ -65,8 +66,8 @@ void main() {
     // dialog is released in the `finally` below it. A refusal that latched
     // the button would be a worse bug than the one being fixed - the page
     // would need restarting to try a smaller file.
-    final picker = _OversizedPicker(bigPath);
-    FilePicker.platform = picker;
+    final picker = _oversizedPicker(bigPath);
+    FilePickerPlatform.instance = picker;
     final (device, _) = mountedDevice();
 
     await tester.pumpWidget(wrapWithDevice(const PulsePlotterPage(), device));
@@ -75,7 +76,7 @@ void main() {
     await _tapOpen(tester);
     await _tapOpen(tester);
 
-    expect(picker.opened, 2);
+    expect(picker.calls, 2);
 
     await closeDevice(tester, device);
   });
@@ -102,33 +103,9 @@ Future<void> _tapOpen(WidgetTester tester) async {
 }
 
 /// Hands back one real, oversized file.
-class _OversizedPicker extends FilePicker {
-  _OversizedPicker(this.path);
-
-  final String path;
-
-  int opened = 0;
-
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 30,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async {
-    opened++;
-    // `size` is deliberately a lie, and a small one: the cap has to come from
-    // the file, not from what the pick claims about it.
-    return FilePickerResult([
-      PlatformFile(name: 'clip.mp4', size: 1, path: path),
-    ]);
-  }
-}
+///
+/// The plotter reads the bytes itself - `readPickedFile` stats and reads the
+/// path - so the stand-in only has to name one.
+StubFilePicker _oversizedPicker(String path) => StubFilePicker(
+  files: [StubPickedFile(path: path, name: 'clip.mp4')],
+);

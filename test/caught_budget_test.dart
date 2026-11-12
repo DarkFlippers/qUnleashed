@@ -153,8 +153,8 @@ import 'ratchet.dart';
 /// `describe` rather than a sentence of its own. The file pick is Android's
 /// `unknown_path`, the one in the incident. The three folder picks cannot be:
 /// `getDirectoryPath` swallows its own `PlatformException` on Android and iOS
-/// and answers null, so what reaches them is a desktop refusal - no `zenity`
-/// on the path - or a missing plugin.
+/// and answers null, so what reaches them is a desktop refusal - a Linux
+/// portal that will not answer - or a missing plugin.
 ///
 /// The line is also the only thing that can tell those apart, because all four
 /// show `commonPickFailed` and it deliberately does not guess at a cause. The

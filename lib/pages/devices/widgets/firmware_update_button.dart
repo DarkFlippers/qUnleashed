@@ -228,9 +228,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     final FirmwareSource source;
     if (_isCustom) {
-      final FilePickerResult? result;
+      final PlatformFile? file;
       try {
-        result = await FilePicker.platform.pickFiles(
+        file = await FilePicker.pickFile(
           dialogTitle: l10n.fwuPickArchiveTitle,
           type: FileType.custom,
           allowedExtensions: const ['tgz', 'gz', 'tar'],
@@ -255,17 +255,16 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         return;
       }
       // Cancelled. Genuinely nothing to report.
-      if (result == null) return;
+      if (file == null) return;
       // Separate from the cancel above, because it is not one: a file *was*
-      // chosen and came back without a usable path. `files.single` would also
-      // throw on an empty or multi-element list, which this answers instead of
-      // discarding as above.
-      final files = result.files;
-      final picked = files.length == 1 ? files.single.path : null;
+      // chosen and came back without a usable path. `PlatformFile.path` is
+      // null for any URI that is not a `file:` one, which is how a Storage
+      // Access Framework pick Android could not resolve to disk arrives.
+      final picked = file.path;
       if (picked == null) {
         LogService.warn(
-          '[Firmware] the picker returned ${files.length} file(s) and no '
-          'usable path; nothing was flashed',
+          '[Firmware] the picker returned ${file.name} with no usable path; '
+          'nothing was flashed',
         );
         if (!mounted) return;
         QNotification.show(

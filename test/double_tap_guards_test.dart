@@ -21,6 +21,7 @@ import 'package:qunleashed/pages/tools/plotter/page.dart';
 import 'package:qunleashed/services/archive/storage.dart';
 
 import 'firmware_fixture.dart';
+import 'picker_fakes.dart';
 
 /// One gesture must not run an action twice. #244.
 ///
@@ -591,8 +592,14 @@ void main() {
   group('picking a file to plot', () {
     testWidgets('opens one dialog for two presses', (tester) async {
       final browsing = Completer<void>();
-      final picker = _ParkedPicker(browsing);
-      FilePicker.platform = picker;
+      // Nothing usable comes back: the plot is not what this is about, and a
+      // pick with no path is the one outcome the page reports and then
+      // forgets.
+      final picker = StubFilePicker(
+        gate: browsing,
+        files: [StubPickedFile.unusable(name: 'ir.ir')],
+      );
+      FilePickerPlatform.instance = picker;
       final (device, _) = mountedDevice();
 
       await tester.pumpWidget(wrapWithDevice(const PulsePlotterPage(), device));
@@ -607,7 +614,7 @@ void main() {
       await tester.tap(open);
       await tester.pump();
 
-      expect(picker.opened, 1);
+      expect(picker.calls, 1);
 
       browsing.complete();
       await tester.pumpAndSettle();
@@ -831,37 +838,6 @@ class _ParkedInfraredApi implements InfraredBackendApi {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// A file picker held open for as long as the dialog would be.
-class _ParkedPicker extends FilePicker {
-  _ParkedPicker(this.browsing);
-
-  final Completer<void> browsing;
-
-  int opened = 0;
-
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 30,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async {
-    opened++;
-    await browsing.future;
-    // Nothing usable: the plot is not what this is about, and a null path is
-    // the one outcome the page reports and then forgets.
-    return FilePickerResult([PlatformFile(name: 'ir.ir', size: 0)]);
-  }
 }
 
 /// A context that is never mounted, for the paths that only ask that.

@@ -16,7 +16,7 @@ import 'paths.dart';
 /// Downloads says nothing about where the user keeps key dumps. Until a place
 /// has been used it opens in the folder its kind of file most likely lives
 /// in, and never at the root, which is where a picker with no starting folder
-/// lands on Linux - `zenity` and `kdialog` open in the working directory, and
+/// lands on Linux - a Linux portal opens in the working directory, and
 /// an app started from a launcher is often running in `/`.
 ///
 /// `test/picker_memory_test.dart` holds that no picker under `lib/` opens

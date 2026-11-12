@@ -1,4 +1,11 @@
 // The eighth ratchet, and the second whose budget is zero everywhere.
+// **This rule can no longer be broken, and that is worth knowing.**
+// `file_picker` 13.0.0 removed `withData` and `withReadStream` from `pickFiles`
+// outright - 12.0.0 had deprecated them - so the argument this counts cannot be
+// written any more, and the budget stays at zero whatever anybody does. Kept
+// rather than deleted because the bound is the cheapest possible tripwire if a
+// version brings such a parameter back under any name. Where the risk went
+// instead is below.
 //
 // QUNLEASHED-E: a user picked a 116 MB file in an importer that called
 // `pickFiles(withData: true)`. On Android that makes the plugin load the whole

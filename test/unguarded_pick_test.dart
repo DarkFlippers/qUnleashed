@@ -53,6 +53,7 @@ import 'package:qunleashed/services/logging.dart';
 import 'archive_fakes.dart';
 import 'firmware_fixture.dart';
 import 'kept_lines.dart';
+import 'picker_fakes.dart';
 
 /// The failure the plugin actually reports, and the one that shipped the bug.
 ///
@@ -74,11 +75,7 @@ void main() {
     recordKeptLines();
     (device, _) = mountedDevice();
     storage = ListingFlipper();
-    // Set and not restored, as `oversized_pick_test.dart` does it, and not
-    // laziness: `FilePicker.platform` is a `late` field with no value off a
-    // real platform, so *reading* it to put it back is what throws. Safe
-    // because every test that installs a picker does so before it pumps.
-    FilePicker.platform = _RefusingPicker();
+    FilePickerPlatform.instance = StubFilePicker(failure: _refused);
   });
 
   /// Opens the browser, then the FAB sheet, then taps Upload files.
@@ -130,23 +127,4 @@ void main() {
     // `warn` or `error` a broken provider would page somebody per tap.
     expect(keptLevels, [KeptLevel.caught]);
   });
-}
-
-/// Rejects every pick, the way the Android delegate does.
-class _RefusingPicker extends FilePicker {
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 30,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async => throw _refused;
 }

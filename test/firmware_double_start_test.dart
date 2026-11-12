@@ -13,6 +13,7 @@ import 'package:qunleashed/pages/devices/firmware/update_tracker.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_update_button.dart';
 
 import 'firmware_fixture.dart';
+import 'picker_fakes.dart';
 
 /// Starting a firmware update twice.
 ///
@@ -28,40 +29,6 @@ import 'firmware_fixture.dart';
 /// It has to be the custom branch. The remote branch reaches `publish()` with no
 /// await in between, so `_inProgress` already covered it - a first draft of this
 /// drove the remote path and passed with the fix reverted, proving nothing.
-class _ParkedPicker extends FilePicker {
-  _ParkedPicker(this.chosen, this.browsing);
-
-  /// The path the user eventually picks.
-  final String chosen;
-
-  /// Held open for as long as the dialog would be, which is the window the bug
-  /// lived in.
-  final Completer<void> browsing;
-
-  int opened = 0;
-
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 30,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async {
-    opened++;
-    await browsing.future;
-    return FilePickerResult([
-      PlatformFile(path: chosen, name: 'fw.tgz', size: 1),
-    ]);
-  }
-}
 
 void main() {
   group('starting a custom firmware update', () {
@@ -86,9 +53,12 @@ void main() {
     /// continuations to the real event loop, so completing it from the body
     /// resumes the dialog only *after* the body has finished - and every
     /// assertion in between reads a state that has not happened yet.
-    _ParkedPicker park(Completer<void> browsing) {
-      final picker = _ParkedPicker('C:/tmp/fw.tgz', browsing);
-      FilePicker.platform = picker;
+    StubFilePicker park(Completer<void> browsing) {
+      final picker = StubFilePicker(
+        gate: browsing,
+        files: [StubPickedFile(path: '/tmp/fw.tgz', name: 'fw.tgz')],
+      );
+      FilePickerPlatform.instance = picker;
       return picker;
     }
 
@@ -141,7 +111,7 @@ void main() {
       await tester.pump();
 
       expect(
-        picker.opened,
+        picker.calls,
         1,
         reason:
             'the second press must be refused while the dialog is open - '
@@ -197,7 +167,7 @@ void main() {
       final target = find.byType(ProgressButton);
       await tester.tap(target);
       await tester.pump();
-      expect(picker.opened, 1, reason: 'the dialog is up');
+      expect(picker.calls, 1, reason: 'the dialog is up');
 
       // The user picks, the install fails, the widget reports it.
       browsing.complete();
@@ -218,7 +188,7 @@ void main() {
       await tester.tap(target);
       await tester.pump();
       expect(
-        picker.opened,
+        picker.calls,
         2,
         reason: 'and pressing it has to open the dialog a second time',
       );
