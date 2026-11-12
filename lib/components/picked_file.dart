@@ -44,9 +44,12 @@ Future<int> ensurePickedFileFits(String path, {required int limit}) async {
 
 /// Reads a file the user picked, or throws [PickedFileTooLarge].
 ///
-/// Pick with `withData: false` - the default - and read the bytes here.
-/// `withData: true` has the platform load the whole file *and* hand it back
-/// across the method channel, so the bytes exist twice before Dart sees them.
+/// Read the bytes here rather than through the pick. `file_picker` 13 has no
+/// way to ask for them any more - `withData` was removed in 13.0.0 - but what
+/// it did is worth keeping written down, because `PlatformFile.readAsBytes`
+/// can still be reached from a call site: it has the platform load the whole
+/// file *and* hand it back across the method channel, so the bytes exist twice
+/// before Dart sees them.
 /// On Android the second copy is the fatal one: `StandardMessageCodec` grows
 /// its buffer by doubling, so a 116 MB pick asked for a single contiguous
 /// 232 MB allocation against a heap the crashing device limited to 256 MB

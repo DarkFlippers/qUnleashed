@@ -122,15 +122,10 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      // `withData: false` (the default); the bytes are read in Dart. See
-      // `readPickedFile` for why. Sentry QUNLEASHED-E.
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         initialDirectory: await pickerStart(PickerPlace.disk),
       );
-      // `files` can be empty on a non-null result, and `single` throws on it -
-      // which the catch below would then report as a read that failed.
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.first;
+      if (file == null) return;
       final path = file.path;
       if (path == null) {
         // Every target this app ships supplies a path, so this is a condition

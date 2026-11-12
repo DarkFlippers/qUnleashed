@@ -1,36 +1,31 @@
 // A multi-select upload that came back with none of the chosen files. #354.
 //
-// `_uploadFromPath` passes `allowMultiple: true`, and on that branch Android's
-// delegate drops an item `FileUtils.openFileStream` cannot open and then calls
-// `finishWithSuccess(files)` anyway (`FilePickerDelegate.java:119-136`). iOS
-// does the same thing a different way: `UIDocumentPickerModeImport` moves each
-// URL into the temp folder and skips the ones the move failed for. So a pick
-// of five files where none could be read answers a non-null result carrying
-// nothing, and `if (result == null || result.files.isEmpty) return;` read that
-// as a cancellation - no toast, no log line, nothing, for a job that did not
-// happen at all.
+// What this file defends is the pair of outcomes: a pick that dropped
+// everything says so, a cancelled one stays silent. Both are reachable and
+// they differ, which is why the three cases are here.
 //
-// **The cancel is the other half of this file**, and the reason it is here
-// rather than left to the shape of the code: splitting the condition is only
-// correct because a cancelled pick is null on both platforms that can drop an
-// item - `finishWithSuccess(null)` for `RESULT_CANCELED` at
-// `FilePickerDelegate.java:207`, `_result(nil)` from
-// `documentPickerWasCancelled` on iOS. If that were wrong, this change would
-// show an error toast on every cancelled pick, which is worse than the silence
-// it replaces. The last case is what fails if the empty result is ever treated
-// as the cancel's equal in the *other* direction - reporting on a null too.
+// **The mechanism underneath them changed, and upstream is why.** It used to
+// be that Android's delegate dropped an item it could not open and reported
+// success anyway, so a pick of five unreadable files answered a result
+// carrying nothing - and the code read that as a cancellation, leaving no
+// toast, no log line and nothing at all for a job that did not happen.
+// `android_file_picker` 2.1.1 made that case fail with `unknown_path` instead;
+// see `_allDropped` below and the comment in `_uploadFromPath`. So the dropped
+// pick is a rejection the call site's `catch` reports, and an empty list means
+// a cancellation and nothing else.
 //
 // What is *not* here is a partial drop - four files uploaded of five chosen,
 // reported as success. It cannot be: the chosen count never crosses the method
 // channel, so nothing on this side can subtract. #354 keeps that half, and the
 // comment in `_uploadFromPath` says so beside the code.
 //
-// Mutations run, with the results: folding `result.files.isEmpty` back into
-// the null check fails the first two cases and leaves the third passing, which
-// is the shape this file is for; deleting the notification fails the first;
-// deleting the `LogService.caught` fails the second.
+// Mutations run, with the results: deleting the `catch` in `_uploadFromPath`
+// fails the first two cases (the rejection reaches the zone instead);
+// returning from the empty branch without the `catch` reporting fails the
+// first; deleting the `LogService.caught` fails the second.
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/archive/browser/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
@@ -41,6 +36,15 @@ import 'archive_fakes.dart';
 import 'firmware_fixture.dart';
 import 'kept_lines.dart';
 import 'picker_fakes.dart';
+
+/// What Android answers for a pick whose every chosen file was unreadable.
+///
+/// `FileUtils.kt`'s `handleFileResult`: `finishWithError("unknown_path",
+/// "Failed to retrieve path.")` for an empty list.
+final _allDropped = PlatformException(
+  code: 'unknown_path',
+  message: 'Failed to retrieve path.',
+);
 
 void main() {
   late DeviceController device;
@@ -54,12 +58,8 @@ void main() {
 
   /// Opens the browser, then the FAB sheet, then taps Upload files.
   ///
-  /// [picker] is installed before the pump and not restored, which
-  /// `StubFilePicker` explains: `FilePicker.platform` is a `late` field with
-  /// no value off a real platform, so reading it to put it back is what
-  /// throws.
-  Future<void> tapUpload(WidgetTester tester, FilePicker picker) async {
-    FilePicker.platform = picker;
+  Future<void> tapUpload(WidgetTester tester, FilePickerPlatform picker) async {
+    FilePickerPlatform.instance = picker;
     await tester.pumpWidget(
       wrapWithDevice(FileManagerPage(client: storage), device),
     );
@@ -73,7 +73,7 @@ void main() {
   testWidgets('a pick that returned none of the chosen files says so', (
     tester,
   ) async {
-    await tapUpload(tester, StubFilePicker(result: FilePickerResult(const [])));
+    await tapUpload(tester, StubFilePicker(failure: _allDropped));
 
     // This also catches a `return` dropped from the branch, and not by luck:
     // `QNotification.show` closes the current card first, so an `_upload([])`
@@ -85,25 +85,25 @@ void main() {
   testWidgets('and leaves a line, which the sentence cannot carry', (
     tester,
   ) async {
-    await tapUpload(tester, StubFilePicker(result: FilePickerResult(const [])));
+    await tapUpload(tester, StubFilePicker(failure: _allDropped));
 
     // The same sentence covers a refused pick and this one, so the line is
     // the only thing that tells a reader of a report which happened.
     expect(keptLines, hasLength(1));
     expect(keptLines.single, contains('[FileManager]'));
-    expect(keptLines.single, contains('none of the chosen files'));
+    expect(keptLines.single, contains('unknown_path'));
     // Kept, not alerted: a provider that will not open the user's own file is
     // nothing anybody can be paged for, while the rate of it is worth reading.
     expect(keptLevels, [KeptLevel.caught]);
   });
 
   testWidgets('a cancelled pick is still silent', (tester) async {
-    // Null, the way both platforms report a cancelled pick.
+    // Empty, which is how every implementation reports a cancelled pick
+    // since 12.0.0 mapped the channel's null to `[]`.
     await tapUpload(tester, StubFilePicker());
 
-    // Nothing on screen and nothing on the record. A null result is the
-    // cancel on both platforms, and a toast per cancelled pick is the
-    // regression this split has to avoid.
+    // Nothing on screen and nothing on the record. A toast per cancelled pick
+    // is the regression the branch above has to avoid.
     expect(find.text(l10nGlobal.commonPickFailed), findsNothing);
     expect(keptLines, isEmpty);
     // The page is still there, which is what makes the two findsNothing above

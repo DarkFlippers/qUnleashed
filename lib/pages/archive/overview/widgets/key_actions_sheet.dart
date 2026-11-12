@@ -461,9 +461,9 @@ class KeyActionsSheet {
     final title = context.l10n.archiveSaveOne(k.fileName);
     final start = await pickerStart(PickerPlace.disk);
     if (!context.mounted) return;
-    String? savedPath;
+    Uri? savedTo;
     try {
-      savedPath = await FilePicker.platform.saveFile(
+      savedTo = await FilePicker.saveFile(
         dialogTitle: title,
         fileName: k.fileName,
         bytes: Uint8List.fromList(bytes),
@@ -478,7 +478,12 @@ class KeyActionsSheet {
       }
       return;
     }
-    if (savedPath == null) return;
+    // `saveFile` answers a `Uri` since 13.0.0, where it was a path. Only a
+    // `file:` one names something `dart:io` can open - Android hands back a
+    // `content:` URI, which is also the platform that has already written the
+    // bytes itself.
+    if (savedTo == null || savedTo.scheme != 'file') return;
+    final savedPath = savedTo.toFilePath();
     await rememberPickedFile(PickerPlace.disk, savedPath);
     final isDesktop =
         io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS;

@@ -1,14 +1,18 @@
 // Stand-ins for `file_picker`, and the channel a folder pick talks to.
 //
-// Four files set `FilePicker.platform` to a one-method fake before this
-// (`double_tap_guards_test.dart`, `firmware_double_start_test.dart`,
-// `oversized_pick_test.dart`, `unguarded_pick_test.dart`), each spelling out
-// the plugin's thirteen-parameter `pickFiles` signature and each repeating why
-// the field is set and not restored. This is where the next one goes: the
-// signature belongs to a package pinned at `^8.1.2`, and `folder_pick.dart`'s
-// own doc expects that major bump - which is one edit here instead of one per
-// copy. The four are not converted in this change; they are the migration
-// after it.
+// Four files each set the picker to a one-method fake before this, spelling
+// out the plugin's thirteen-parameter `pickFiles` signature four times and
+// repeating four times why the field is set and not restored. This is where
+// the next one goes - which is what made the `file_picker` 13 bump one edit
+// here instead of five.
+//
+// What that bump changed, because the shape of these fakes is the shape of the
+// API: `FilePicker` became a class of statics in 11.0.0, so the settable seam
+// is `FilePickerPlatform.instance`, whose token a subclass inherits from the
+// default constructor - no `plugin_platform_interface` mixin and no new dev
+// dependency. `FilePickerResult` is gone: `pickFiles` answers
+// `List<PlatformFile>` and `pickFile` a `PlatformFile?`. And `PlatformFile`
+// can no longer be constructed - see [StubPickedFile].
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
@@ -21,7 +25,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// from `lib/`: a test that asserts the shim talks on this channel would
 /// otherwise agree with the production constant however wrong both were.
 /// `folder_pick_test.dart` closes that loop from the other side by driving the
-/// plugin's own `FilePickerIO` against this same channel.
+/// plugin's own implementation against this same channel - `FilePickerAndroid`
+/// since 12.0.0 split `FilePickerIO` into one package per platform.
 const MethodChannel folderPickChannel = MethodChannel(
   'miguelruivo.flutter.plugins.filepicker',
 );
@@ -56,29 +61,88 @@ void answerFolderPick({
   );
 }
 
-/// The plugin's own implementation, as the code under test sees it.
+/// A file the platform returned, as the code under test sees it.
 ///
-/// Set on `FilePicker.platform` and not put back, the way every picker test in
-/// this suite does it and for the same reason: the field is `late` with no
-/// value off a real platform, so *reading* it to restore it is what throws.
-/// Safe because a test that installs a picker does so before it pumps.
+/// `PlatformFile` is an `abstract base class`, so this extends it rather than
+/// implementing it, and `base` requires this class to be `final` in turn. Only
+/// `path` and [name] answer: production reads the first, which the base class
+/// derives from [uri], and the second for one log line. Everything else
+/// throws, and that is the point - the bytes of a pick are read through
+/// `readPickedFile`, which stats and reads the path itself, so a test that
+/// started reaching for them would be a regression rather than a surprise.
 ///
-/// One class for both methods and all three answers, because the three fakes
-/// this replaced differed by one value each: a folder, a result, or a throw.
-class StubFilePicker extends FilePicker {
-  StubFilePicker({this.folder, this.result, this.failure});
+/// `AndroidPlatformFile` from the `android_file_picker` dev dependency would
+/// also do, and would read bytes for real.
+final class StubPickedFile extends PlatformFile {
+  StubPickedFile({required String path, required this.name})
+    : uri = Uri.file(path);
+
+  /// A file the platform returned without a usable path.
+  ///
+  /// `PlatformFile.path` answers null for any scheme but `file:`, which is how
+  /// a Storage Access Framework pick Android could not resolve to disk
+  /// arrives - the outcome a page reports and then forgets.
+  StubPickedFile.unusable({required this.name})
+    : uri = Uri.parse('content://stub/unusable');
+
+  @override
+  final Uri uri;
+
+  @override
+  final String name;
+
+  /// Typed by override inference, so that naming `XFile` does not make
+  /// `cross_file` a direct dependency of a test.
+  @override
+  get xFile => throw UnsupportedError('a stub picked file has no XFile');
+
+  @override
+  int? lengthSync() => throw UnsupportedError('a stub has no length');
+
+  @override
+  Future<int?> length() => throw UnsupportedError('a stub has no length');
+
+  @override
+  Future<Uint8List> readAsBytes() =>
+      throw UnsupportedError('a stub picked file has no bytes');
+
+  @override
+  Stream<Uint8List> readAsByteStream() =>
+      throw UnsupportedError('a stub picked file has no bytes');
+}
+
+/// A stand-in for the plugin, as the code under test sees it.
+///
+/// Set on `FilePickerPlatform.instance` and not put back: a test that installs
+/// a picker does so before it pumps, and the next test installs its own.
+///
+/// One class for every method and all three answers, because the fakes this
+/// replaced differed by one value each: a folder, some files, or a throw.
+class StubFilePicker extends FilePickerPlatform {
+  StubFilePicker({this.folder, this.files = const [], this.failure, this.gate});
 
   /// What `getDirectoryPath` answers.
   final String? folder;
 
-  /// What `pickFiles` answers. `FilePickerResult(const [])` is the pick where
-  /// the platform dropped every chosen item; null is a cancellation.
-  final FilePickerResult? result;
+  /// What `pickFiles` answers, and whose first entry `pickFile` answers.
+  ///
+  /// An empty list is a cancellation - which since 12.0.0 is all it can be:
+  /// every implementation maps the channel's null to `[]`, and
+  /// `android_file_picker` 2.1.1 made a pick whose files could none of them be
+  /// read fail with `unknown_path` rather than answer empty. #354's case is a
+  /// [failure] now.
+  final List<PlatformFile> files;
 
   /// Thrown by whichever method is called, in place of answering.
   final Object? failure;
 
-  /// How many times either method was called.
+  /// Held before answering, which is a system dialog still on screen.
+  ///
+  /// Build it outside `testWidgets`' `FakeAsync` zone when the test completes
+  /// it from the body, or the continuation lands after the body has run.
+  final Completer<void>? gate;
+
+  /// How many times one of the three methods below was called.
   int calls = 0;
 
   /// The arguments the last `getDirectoryPath` was given, which the desktop
@@ -86,36 +150,60 @@ class StubFilePicker extends FilePicker {
   String? title;
   String? initial;
 
-  @override
-  Future<String?> getDirectoryPath({
-    String? dialogTitle,
-    bool lockParentWindow = false,
-    String? initialDirectory,
-  }) async {
+  /// Counts the call, waits out [gate] and throws [failure], then answers
+  /// [value].
+  ///
+  /// The three overrides below differ by that one expression; without this the
+  /// next thing added to the sequence - `gate` was the last - is three edits
+  /// with nothing checking that they agree.
+  Future<T> _answer<T>(T value) async {
     calls++;
-    title = dialogTitle;
-    initial = initialDirectory;
+    if (gate != null) await gate!.future;
     if (failure != null) throw failure!;
-    return folder;
+    return value;
   }
 
   @override
-  Future<FilePickerResult?> pickFiles({
+  Future<String?> getDirectoryPath({
+    String? dialogTitle,
+    String? initialDirectory,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) {
+    title = dialogTitle;
+    initial = initialDirectory;
+    return _answer(folder);
+  }
+
+  @override
+  Future<List<PlatformFile>> pickFiles({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
     Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 30,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async {
-    calls++;
-    if (failure != null) throw failure!;
-    return result;
-  }
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) => _answer(files);
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) => _answer(files.isEmpty ? null : files.first);
 }

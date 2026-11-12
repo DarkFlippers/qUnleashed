@@ -51,6 +51,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:android_file_picker/android_file_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -269,20 +270,20 @@ void main() {
         // asserts it makes the same call, so the two are pinned to each other
         // rather than to a transcription.
         //
-        // `FilePickerIO` is exported from the package root. If a federated
-        // split moves it, this stops compiling - a loud failure on exactly
-        // the event that matters.
+        // The federated split this used to warn about has happened: 12.0.0
+        // replaced `FilePickerIO` with one package per platform, so this
+        // drives `FilePickerAndroid` from `android_file_picker` - a dev
+        // dependency for this one case. If it moves again, this stops
+        // compiling, which is a loud failure on exactly the event that
+        // matters.
         //
-        // The channel is rebuilt here with the plugin's *host* codec:
-        // `file_picker_io.dart` picks `JSONMethodCodec` from `dart:io`'s
-        // `Platform` at library load, not from `defaultTargetPlatform`, so
-        // under `flutter test` on a desktop machine that is what its call is
-        // encoded with. What this case pins - the method and its arguments -
-        // is the same either way.
+        // The channel is rebuilt here with the plugin's own codec, which is
+        // now the default `StandardMethodCodec`: 8.x's `file_picker_io.dart`
+        // picked `JSONMethodCodec` from `dart:io`'s `Platform` at library
+        // load, and the federated implementations do not.
         final calls = <MethodCall>[];
         const hostChannel = MethodChannel(
           'miguelruivo.flutter.plugins.filepicker',
-          JSONMethodCodec(),
         );
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(hostChannel, (call) async {
@@ -296,11 +297,25 @@ void main() {
               .setMockMethodCallHandler(hostChannel, null),
         );
 
-        await onPlatform(() => FilePickerIO().getDirectoryPath());
+        await onPlatform(
+          // `const AndroidOptions()` because that is what `FilePicker`'s
+          // facade passes - `FilePickerAndroid`'s own parameter default is
+          // `FilePickerAndroidOptions()`, which would send a SAF options map
+          // the app never sends, and `FileUtils.kt` answers a `content://`
+          // tree URI instead of a path when it is non-null.
+          () => FilePickerAndroid().getDirectoryPath(
+            androidOptions: const AndroidOptions(),
+          ),
+        );
 
         expect(calls, hasLength(1));
         expect(calls.single.method, 'dir');
-        expect(calls.single.arguments, <String, dynamic>{});
+        // `{'androidSafOptions': null}` against the shim's `{}`: the Kotlin
+        // reads a missing key and a null one the same way
+        // (`arguments?.get(...) as? HashMap`), and what matters is that
+        // neither is a *map* - a non-null one makes `dir` answer a
+        // `content://` tree URI rather than a filesystem path.
+        expect(calls.single.arguments, {'androidSafOptions': null});
       });
 
       testWidgets('a second pick while one is open answers null', (
@@ -408,7 +423,7 @@ void main() {
           ),
         );
         final plugin = StubFilePicker(folder: '/fallback');
-        FilePicker.platform = plugin;
+        FilePickerPlatform.instance = plugin;
 
         final result = await pick(tester);
 
@@ -433,7 +448,7 @@ void main() {
         // `keptLines.single` elsewhere in this file is why it is worth
         // pinning that this is the shape that produces two.
         handleChannel(failure: MissingPluginException('no dir'));
-        FilePicker.platform = StubFilePicker(failure: _refused);
+        FilePickerPlatform.instance = StubFilePicker(failure: _refused);
 
         final result = await pick(tester);
 
@@ -468,16 +483,17 @@ void main() {
         'picker_last_disk': remembered.path,
       });
       final plugin = StubFilePicker(folder: r'C:\Downloads');
-      FilePicker.platform = plugin;
+      FilePickerPlatform.instance = plugin;
 
       final result = await pick(tester, dialogTitle: 'Choose a folder');
 
       expect(result.path, r'C:\Downloads');
       // The channel is the mobile workaround and nothing else. Linux and
-      // Windows are Dart implementations - zenity, a COM call - that answer
-      // no channel at all, and macOS answers *this* channel under a
-      // `getDirectoryPath` method rather than `dir`, so taking that branch
-      // here would turn every desktop pick into a fall-back.
+      // Windows are Dart implementations - an XDG portal, a COM call - that
+      // answer no channel at all, and macOS, which does answer `dir` on this
+      // channel since `file_picker_darwin` 2.5.1, is left out of the branch
+      // deliberately - see `_pluginHidesFolderFailures`. Taking it on any
+      // desktop would turn every pick there into a fall-back.
       expect(channelCalls, isEmpty);
       expect(plugin.title, 'Choose a folder');
       expect(plugin.initial, remembered.path);
@@ -488,11 +504,13 @@ void main() {
     });
 
     testWidgets('a desktop refusal is reported the same way', (tester) async {
-      // What Linux throws with no `zenity` on the path: a bare `Exception`
-      // from `utils.dart`. It reached the call sites before this and each
-      // reported it; the shim is where that lives now.
+      // What a Linux desktop throws when its portal will not answer: a bare
+      // `Exception`, which is what `file_picker_linux` lets through. It
+      // reached the call sites before this and each reported it; the shim is
+      // where that lives now. The message below is fixture text, not a
+      // claim - `zenity` was what 8.x shelled out to.
       final plugin = StubFilePicker(failure: Exception('zenity not found'));
-      FilePicker.platform = plugin;
+      FilePickerPlatform.instance = plugin;
 
       final result = await pick(tester, what: '[Paint] the export folder pick');
 
@@ -521,7 +539,9 @@ void main() {
       // Reachable in production the same way the unmounted case is, through a
       // route torn down around a dialog that is still up; cheaper to arrange
       // here by leaving the app out of the tree entirely.
-      FilePicker.platform = StubFilePicker(failure: Exception('no zenity'));
+      FilePickerPlatform.instance = StubFilePicker(
+        failure: Exception('no zenity'),
+      );
       String? path;
       var done = false;
       await onPlatform(() async {
@@ -558,7 +578,7 @@ void main() {
       // from the plugin's own call is this platform having no picker at all.
       // Everything else gets the generic sentence, which is what the two file
       // browser sites used to show for every throw.
-      FilePicker.platform = StubFilePicker(
+      FilePickerPlatform.instance = StubFilePicker(
         failure: MissingPluginException('no implementation'),
       );
 

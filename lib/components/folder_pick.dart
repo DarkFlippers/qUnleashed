@@ -12,46 +12,60 @@ export '../services/storage/picker_memory.dart' show PickerPlace;
 
 /// The channel `file_picker` registers on Android and iOS.
 ///
-/// Copied from `file_picker_io.dart` (8.3.7), which builds it with the default
-/// [StandardMethodCodec] off desktop and is the implementation registered for
-/// both platforms (`dartPluginClass: FilePickerIO`). [pickFolder] sends `dir`
-/// with an empty argument map, which is byte for byte what
-/// `FilePickerIO.getDirectoryPath` sends - the plugin ignores `dialogTitle`
-/// and `initialDirectory` on mobile, both being desktop-only.
+/// Taken from the plugin, which since the 12.0.0 federated split declares it
+/// in three places with the default [StandardMethodCodec]: `FilePickerAndroid`
+/// (`android_file_picker` 2.1.5), `FilePickerDarwin` (`file_picker_darwin`
+/// 2.5.1), and `MethodChannelFilePicker` in the platform interface, which
+/// overrides nothing and is a dead default.
+///
+/// [pickFolder] sends `dir` with an empty argument map, and **the empty map is
+/// load-bearing now where it used to be merely equal to the plugin's.** 13.x
+/// sends arguments for `dir`: Darwin the title and the initial directory,
+/// which its native side ignores for a directory panel, and Android
+/// `androidSafOptions` - which flips a branch in `FileUtils.kt`, answering
+/// `data.data.toString()`, a `content://…/tree/…` URI, instead of the
+/// filesystem path `getFullPathFromTreeUri` resolves. Every caller here uses
+/// the answer as a path. The app's own fall-back sends null for it too, since
+/// `FilePicker.getDirectoryPath`'s default is `AndroidOptions` and not
+/// `FilePickerAndroidOptions`, so both halves of this function agree only
+/// while this map stays empty.
 ///
 /// **Reaching past the plugin's Dart layer is the fix**, not a shortcut around
-/// it: `getDirectoryPath` catches every [PlatformException] and answers null
-/// for all of them - printing only `unknown_path`, so `already_active`,
-/// `invalid_format_type` and `unknown_activity` leave no trace at all. From
-/// Dart a refused folder pick and a cancelled one are therefore the same
-/// value, and nothing above it can tell them apart, which is #353. The call
-/// *we* make sees the refusal.
+/// it. `android_file_picker` 2.1.5's `getDirectoryPath` wraps its `dir` call in
+/// `on PlatformException`, prints for `unknown_path` alone and returns null for
+/// every one of them, so `already_active`, `invalid_format_type` and
+/// `unknown_activity` leave no trace at all. From Dart a refused folder pick
+/// and a cancelled one are therefore the same value, and nothing above it can
+/// tell them apart, which is #353. The call *we* make sees the refusal.
 ///
-/// Still true upstream, which is what settled #353's "try upstream first":
-/// 12.0.0 split the plugin into federated packages and the Android
-/// implementation 13.2.0 ships (`android_file_picker`, the repo's
-/// `packages/file_picker_android`) swallows the same exception in the same
-/// shape, on this same channel and method. A version bump would not fix this.
+/// That is what settled #353's "try upstream first", and it survived five
+/// majors: a version bump would not fix this, and the 13.x bump did not.
 ///
-/// `pubspec.yaml` pins `^8.1.2`. Whoever takes that major upgrade should check
-/// the channel name and the `dir` method still hold, and the two halves fail
-/// differently:
+/// At `^13.3.3` the method is still `dir` on both platforms; the argument map
+/// is the thing that moved, which is the paragraph above. The two halves still
+/// fail differently:
 ///
 ///  * **a renamed channel degrades.** `invokeMethod` throws
 ///    [MissingPluginException] before anything native runs, and [pickFolder]
 ///    falls back to the plugin's own call - the fix goes quiet, folder picks
 ///    keep working, and one line says so.
-///  * **a renamed method does not.** `FilePickerPlugin.java:147` calls
-///    `result.notImplemented()` for a type it cannot resolve and then carries
-///    on *without returning*, which latches the delegate for the life of the
-///    process: the fall-back's call then gets `already_active`, which the
-///    plugin swallows, and every folder pick in the app answers null. That is
-///    why `test/folder_pick_test.dart` pins the method name against the
-///    plugin's own call rather than against a copy of it - nothing in a
-///    compile can.
+///  * **a renamed method used not to.** `FilePickerPlugin.java` called
+///    `result.notImplemented()` for a type it could not resolve and then
+///    carried on *without returning*, which latched the delegate for the life
+///    of the process: the fall-back's call then got `already_active`, which
+///    the plugin swallows, and every folder pick in the app answered null.
+///    `FilePickerPlugin.kt`'s `else ->` branch now returns, so a renamed
+///    method degrades like a renamed channel. `test/folder_pick_test.dart`
+///    pins the method name against the plugin's own call anyway, rather than
+///    against a copy of it - nothing in a compile can, and the latch is one
+///    upstream change away from coming back.
 ///
-/// **What would retire this file**: `getDirectoryPath` rethrowing the way
-/// `pickFiles` already does, upstream or in a fork. Then the five sites could
+/// **What would retire this file**: two upstream behaviours, not one.
+/// `getDirectoryPath` rethrowing the way `pickFiles` already does - and `dir`
+/// answering a path whatever `androidSafOptions` says, because while that
+/// argument changes the kind of string that comes back, a copy of the call is
+/// the only way to be sure which kind this app gets. Either in the plugin or
+/// in a fork. Then the five sites could
 /// go back to the plugin's own call - with their own `try` each, which is what
 /// `picker_guard_test.dart`'s first rule is for. A fork was weighed and not
 /// taken: it removes the two copied constants and costs a repository tracking
@@ -64,16 +78,25 @@ const MethodChannel _pluginChannel = MethodChannel(_pluginChannelName);
 
 /// Whether the plugin's own folder pick hides its failures on this platform.
 ///
-/// Android and iOS, the two platforms [FilePickerIO] is registered for.
+/// Android and iOS, the two platforms whose implementations catch and answer
+/// null - `android_file_picker` and `file_picker_darwin`, which replaced the
+/// single `FilePickerIO` in 12.0.0.
 ///
-/// The other targets need no workaround, for three different reasons. Linux
-/// and Windows are Dart implementations that let a failure out - a missing
-/// `zenity` throws a bare `Exception`, Windows throws from its COM call.
-/// macOS answers *this* channel (`FilePickerMacOS` holds the same name) but
-/// with a `getDirectoryPath` method rather than `dir`, so taking the channel
-/// branch there would only earn a `FlutterMethodNotImplemented` and the
-/// fall-back; its `getDirectoryPath` does not catch, so a real platform error
-/// does reach [pickFolder].
+/// The other targets need no workaround, for two different reasons. Linux and
+/// Windows are Dart implementations that let a failure out: `file_picker_linux`
+/// 2.0.4 goes through the XDG desktop portal over D-Bus and lets its error
+/// through - the `zenity` this used to name is gone from it - and Windows
+/// throws from its COM call.
+///
+/// macOS is the one that changed shape. It is served by `file_picker_darwin`,
+/// which answers `dir` on both Darwin platforms
+/// (`case "dir", "getDirectoryPath":`), so the channel branch would reach real
+/// native code there rather than earning a [MissingPluginException] and the
+/// fall-back. It is left out all the same: its `getDirectoryPath` rethrows
+/// nothing but `window_not_found`, which `registerWith` cannot produce, so the
+/// swallow is the same - but the case below is native and no Dart call can see
+/// past it, so taking the channel branch would buy a different null rather
+/// than a cause.
 ///
 /// **macOS keeps one case of #353 and nothing here can fix it.**
 /// `handleDirectorySelection` in the Swift plugin answers
@@ -108,12 +131,14 @@ bool get _pluginHidesFolderFailures {
 /// Whether a folder pick is on screen, so a second one is not started.
 ///
 /// The platform allows one picker at a time and says so badly: Android
-/// answers `already_active` (`FilePickerDelegate.java:224`), iOS
-/// `multiple_request` - and iOS *also* clears its pending result handle
-/// before replying, so the second request abandons the future belonging to
-/// the picker the user is actually looking at. Both used to be swallowed into
-/// a null that read as a cancel; surfacing them would report a double tap as
-/// a failed pick, which is a wrong sentence rather than a missing one.
+/// answers `already_active` (`FilePickerDelegate.kt`), iOS `multiple_request`.
+/// iOS used also to clear its pending result handle before replying, so the
+/// second request abandoned the future belonging to the picker the user was
+/// actually looking at; `IOSFilePickerHandler.swift` in `file_picker_darwin`
+/// 2.5.1 answers the *second* caller and leaves the first's result alone
+/// unless its picker is stale. Both are swallowed into a null that reads as a
+/// cancel; surfacing them would report a double tap as a failed pick, which is
+/// a wrong sentence rather than a missing one.
 ///
 /// Not an `_isPicking` on one page, because the platform's limit is
 /// app-wide - `flibler/project/page.dart`'s button, for one, is enabled
@@ -188,7 +213,7 @@ Future<String?> pickFolder(
         );
       }
     }
-    final picked = await FilePicker.platform.getDirectoryPath(
+    final picked = await FilePicker.getDirectoryPath(
       dialogTitle: dialogTitle,
       initialDirectory: await pickerStart(place),
     );
@@ -203,9 +228,9 @@ Future<String?> pickFolder(
           // on this platform", and a missing implementation is the one failure
           // it describes correctly - the `fm` in the name is where it was
           // first needed, not what it means. Everything else gets
-          // `commonPickFailed`, including a desktop pick with no `zenity` on
-          // the path: naming the missing tool would be a new string, which is
-          // the translation branch's call (ADR 0016).
+          // `commonPickFailed`, including a Linux desktop whose portal will
+          // not answer: saying which piece is missing would be a new string,
+          // which is the translation branch's call (ADR 0016).
           e is MissingPluginException
               ? context.l10n.fmFolderPickUnsupported
               : context.l10n.commonPickFailed,

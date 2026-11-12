@@ -9,10 +9,10 @@
 // sensible before it has one.
 //
 // The rule at the top is what keeps the tenth picker from regressing it: a
-// `FilePicker.platform` call that does not pass `initialDirectory` opens
-// wherever the system likes, and nothing else in the suite would notice. A
-// folder pick goes through `pickFolder`, which takes a required `place:` and
-// so is held by the compiler instead.
+// picker call that does not pass `initialDirectory` opens wherever the system
+// likes, and nothing else in the suite would notice. A folder pick goes
+// through `pickFolder`, which takes a required `place:` and so is held by the
+// compiler instead.
 import 'dart:io' as io;
 
 import 'package:analyzer/dart/ast/ast.dart';
@@ -27,8 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'kept_lines.dart';
 import 'ratchet.dart';
 
-/// Every `FilePicker.platform` call in [unit], and whether it says where to
-/// open.
+/// Every picker call in [unit], and whether it says where to open.
 class _PickerVisitor extends RecursiveAstVisitor<void> {
   _PickerVisitor(this.unit);
 
@@ -111,9 +110,9 @@ void main() {
             'and, once the pick succeeds, `rememberPickedFile(place, path)`. '
             'A folder pick is `pickFolder(..., place: ...)`, which does both.',
       );
-      // The vacuity guard: six `FilePicker.platform` calls when this went in
-      // - ten picker surfaces, the five folder picks sharing one call through
-      // `pickFolder` - and a walk that found none would pass the rule above.
+      // The vacuity guard: six picker calls when this went in - ten picker
+      // surfaces, the five folder picks sharing one call through `pickFolder`
+      // - and a walk that found none would pass the rule above.
       // The floor is exact on purpose: losing a single site to a matcher that
       // stopped matching fails here rather than passing quietly.
       expect(total, greaterThanOrEqualTo(6));
@@ -127,21 +126,19 @@ void main() {
       List<int> unplacedIn(String source) => _visit(parseUnit(source)).unplaced;
 
       expect(
-        unplacedIn('f() async => FilePicker.platform.pickFiles();'),
+        unplacedIn('f() async => FilePicker.pickFiles();'),
         hasLength(1),
         reason: 'a call with no initialDirectory at all must count',
       );
       expect(
         unplacedIn(
-          'f() async => FilePicker.platform.pickFiles(initialDirectory: null);',
+          'f() async => FilePicker.pickFiles(initialDirectory: null);',
         ),
         hasLength(1),
         reason: 'initialDirectory: null is the same call, spelled longer',
       );
       expect(
-        unplacedIn(
-          "f() async => FilePicker.platform.pickFiles(initialDirectory: 'x');",
-        ),
+        unplacedIn("f() async => FilePicker.pickFiles(initialDirectory: 'x');"),
         isEmpty,
         reason: 'a folder that is actually passed must not count',
       );

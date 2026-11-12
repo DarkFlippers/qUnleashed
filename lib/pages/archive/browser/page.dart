@@ -739,12 +739,11 @@ class _FileManagerPageState extends State<FileManagerPage>
   /// grounds that `unawaited_futures` covers it - and that lint fires only in
   /// an `async` body, which a tap closure is not. #23 has the gap.
   Future<void> _uploadFromPath() async {
-    final FilePickerResult? result;
+    final List<PlatformFile> picked;
     try {
-      result = await FilePicker.platform.pickFiles(
-        allowMultiple: true,
-        withData: false,
-        withReadStream: false,
+      // `pickFiles`, which picks several: this is the one surface that means
+      // it.
+      picked = await FilePicker.pickFiles(
         initialDirectory: await pickerStart(PickerPlace.disk),
       );
     } catch (e, st) {
@@ -753,42 +752,38 @@ class _FileManagerPageState extends State<FileManagerPage>
       // anywhere, reached the zone as a fatal uncaught error, and the app died
       // behind the picker the user was still looking at.
       //
-      // QUNLEASHED-K was Android's `unknown_path`, and only the single-
-      // selection branch of it: `FileUtils.openFileStream` answered null for
-      // the chosen item, so `FilePickerDelegate` failed the whole call. This
-      // pick passes `allowMultiple: true`, where the same delegate drops the
-      // unreadable item and reports success instead - so a multi-select never
-      // arrives here, and `skipped` below cannot see it either, because what
-      // it counts is a file returned with a null path.
+      // QUNLEASHED-K was Android's `unknown_path`: `FileUtils.openFileStream`
+      // answered null for the chosen item, so the delegate failed the whole
+      // call.
       //
-      // The all-dropped case is answered below. A *partial* drop is not, and
-      // cannot be from this side: the chosen count never crosses the method
-      // channel, so nothing here can subtract. #354 keeps that half, which
-      // wants the delegate to report selected-versus-returned.
+      // **#354's case now arrives here too, and that is upstream's doing.**
+      // It used to be a success carrying no files, which read as a cancel;
+      // `android_file_picker` 2.1.1 changed `handleFileResult` to answer
+      // `unknown_path` when none of the chosen files can be read, so a pick
+      // the platform emptied is a rejection and this catch reports it. The
+      // sentence a user sees is the one #354 asked for, by a different route.
+      //
+      // A *partial* drop is still not answered and cannot be from this side:
+      // the chosen count never crosses the method channel, so nothing here can
+      // subtract. #354 keeps that half, which wants the delegate to report
+      // selected-versus-returned.
       _pickFailed('the file pick failed: ${LogService.describe(e, st)}');
       return;
     }
-    if (result == null) return;
-    // Not a cancellation, whatever it looks like. A cancelled pick is null on
-    // both platforms that can drop an item - Android's delegate answers
-    // `finishWithSuccess(null)` for `RESULT_CANCELED`
-    // (`FilePickerDelegate.java:207`) and iOS calls `_result(nil)` from
-    // `documentPickerWasCancelled` - so a non-null result carrying no files is
-    // a pick where every chosen item was dropped. `finishWithSuccess(files)`
-    // runs on an empty list all the same, and `files.isEmpty` used to return
-    // from here beside the cancel, which is what made it silent. #354.
-    if (result.files.isEmpty) {
-      _pickFailed('the file pick returned none of the chosen files');
-      return;
-    }
+    // Empty is the cancellation, and in 13.x it is only that. Every
+    // implementation maps the channel's null to `[]`, and on Android nothing
+    // else can produce an empty list any more - `handleFileResult` errors
+    // instead, which is the previous branch's business. So returning here is
+    // not the silence #354 was about.
+    if (picked.isEmpty) return;
     final paths = [
-      for (final f in result.files)
-        if (f.path != null) f.path!,
+      for (final file in picked)
+        if (file.path != null) file.path!,
     ];
     if (paths.isNotEmpty) {
       await rememberPickedFile(PickerPlace.disk, paths.first);
     }
-    await _upload(paths, skipped: result.files.length - paths.length);
+    await _upload(paths, skipped: picked.length - paths.length);
   }
 
   /// Records [line] and tells the user the pick failed.

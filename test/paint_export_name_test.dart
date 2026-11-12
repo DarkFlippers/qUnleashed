@@ -15,9 +15,9 @@
 // retiring rather than repeating.
 //
 // The pick is answered at the plugin's channel and not through a
-// `FilePicker.platform` fake, because `defaultTargetPlatform` is Android under
+// `FilePickerPlatform.instance` fake, because `defaultTargetPlatform` is Android under
 // `flutter_test` and that is the branch `pickFolder` takes there: a fake on
-// `FilePicker.platform` would never be reached, and an *unregistered* channel
+// `FilePickerPlatform.instance` would never be reached, and an *unregistered* channel
 // does not answer at all, so the pick would simply hang.
 //
 // Mutations run: dropping `_lastExportName = name` fails the second case and

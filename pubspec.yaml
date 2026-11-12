@@ -112,15 +112,15 @@ dependencies:
   re_editor: ^0.10.0
   re_highlight: ^0.0.3
   diffutil_dart: ^5.0.0
-  file_picker: ^8.1.2
+  file_picker: ^13.3.3
   ffi: ^2.1.3
   flutter_map: ^8.3.2
   http: ^1.6.0
   latlong2: ^0.10.1
   geolocator: ^13.0.1
   path_provider: ^2.1.4
-  package_info_plus: ^8.1.0
-  device_info_plus: ^11.5.0
+  package_info_plus: ^10.2.2
+  device_info_plus: ^13.3.0
   url_launcher: ^6.3.1
   # The floor is not about notifications. `flutter_local_notifications_linux`
   # pinned `dbus: ^0.7.8` through 8.0.1 and 8.0.2 widened it to
@@ -156,7 +156,7 @@ dependencies:
   logging: ^1.3.0
   window_manager: ^0.5.1
   xterm: ^4.0.0
-  share_plus: ^12.0.2
+  share_plus: ^13.3.1
   firebase_core: ^4.11.0
   # 16.7.1 rather than 16.4.1 because `push_service.dart` switches on
   # `AuthorizationStatus.deniedPermanently`, which arrives with
@@ -173,6 +173,13 @@ dependencies:
   sentry_flutter: 9.30.1
 
 dev_dependencies:
+  # Only `test/folder_pick_test.dart` imports this, and only to call the
+  # plugin's own Android implementation against a mock channel: that is what
+  # pins the `dir` method name and its argument map, which `folder_pick.dart`
+  # copies. It replaced the `FilePickerIO` that test used to drive, which
+  # `file_picker` 12.0.0 split into one package per platform. `file_picker`
+  # brings it transitively; declared here because a test imports it directly.
+  android_file_picker: ^2.1.5
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

@@ -23,9 +23,9 @@
 // one line *above* it.
 //
 // A guard rather than a budget, because this one has no legacy to drain. Ten
-// `FilePicker.platform` calls sat under `lib/` when it went in, in seven
-// files; six already caught for themselves and the four that did not moved in
-// the same change, so zero was both the current count and the target.
+// picker calls sat under `lib/` when it went in, in seven files; six already
+// caught for themselves and the four that did not moved in the same change, so
+// zero was both the current count and the target.
 //
 // **#353 made it six calls in six files.** The five folder picks are one call
 // now, in `components/folder_pick.dart`: the plugin's `getDirectoryPath`
@@ -154,11 +154,11 @@ class _RethrowVisitor extends RecursiveAstVisitor<void> {
 /// Two blind spots remain, both false negatives, and neither is empty by
 /// accident:
 ///
-///  * **A picker reached through a local.** `final p = FilePicker.platform;`
-///    then `await p.pickFiles()` is invisible to [isPickerCall], with or
-///    without a `try`. Resolving it needs types, and this runs on the parsed
-///    unit; the unit test below pins the current answer so the gap is at least
-///    written down.
+///  * **A picker reached through a local.** `final p = FilePicker.pickFiles;`
+///    then `await p()` is invisible to [isPickerCall], with or without a
+///    `try` - it is not a `MethodInvocation` on the class at all. Resolving it
+///    needs types, and this runs on the parsed unit; the unit test below pins
+///    the current answer so the gap is at least written down.
 ///  * **A picker wrapped one level down**, in a helper that every caller awaits
 ///    inside a `try`. That is a real way to be safe and this counts it anyway,
 ///    which is the stricter direction. Zero is reachable because all six sites
@@ -410,10 +410,7 @@ void main() {
         unguardedPickersIn(parseUnit(source), 'lib/pages/x.dart');
 
     test('the shape that shipped the bug', () {
-      expect(
-        linesIn('f() async => FilePicker.platform.pickFiles();'),
-        hasLength(1),
-      );
+      expect(linesIn('f() async => FilePicker.pickFiles();'), hasLength(1));
     });
 
     test('every method on the picker, not just the one that crashed', () {
@@ -427,26 +424,20 @@ void main() {
       // left to it is the desktop half of that shim and a second one would
       // most likely be a site going back to the swallow.
       expect(
-        linesIn('f() async => FilePicker.platform.getDirectoryPath();'),
+        linesIn('f() async => FilePicker.getDirectoryPath();'),
         hasLength(1),
       );
-      expect(
-        linesIn('f() async => FilePicker.platform.saveFile();'),
-        hasLength(1),
-      );
+      expect(linesIn('f() async => FilePicker.saveFile();'), hasLength(1));
     });
 
     test('a prefixed import, which a name check would miss', () {
-      expect(
-        linesIn('f() async => fp.FilePicker.platform.pickFiles();'),
-        hasLength(1),
-      );
+      expect(linesIn('f() async => fp.FilePicker.pickFiles();'), hasLength(1));
     });
 
     test('awaited inside a try that catches, which is the whole point', () {
       expect(
         linesIn(
-          'f() async { try { await FilePicker.platform.pickFiles(); }'
+          'f() async { try { await FilePicker.pickFiles(); }'
           ' catch (e) {} }',
         ),
         isEmpty,
@@ -461,14 +452,14 @@ void main() {
       // handler produces - which is how the incident was reached.
       expect(
         linesIn(
-          'f() { try { FilePicker.platform.pickFiles().then(g); }'
+          'f() { try { FilePicker.pickFiles().then(g); }'
           ' catch (e) {} }',
         ),
         hasLength(1),
       );
       expect(
         linesIn(
-          'f() { try { unawaited(FilePicker.platform.pickFiles()); }'
+          'f() { try { unawaited(FilePicker.pickFiles()); }'
           ' catch (e) {} }',
         ),
         hasLength(1),
@@ -481,7 +472,7 @@ void main() {
       // flag this way - so it was the likeliest next write.
       expect(
         linesIn(
-          'f() async { try { await FilePicker.platform.pickFiles(); }'
+          'f() async { try { await FilePicker.pickFiles(); }'
           ' finally { g(); } }',
         ),
         hasLength(1),
@@ -491,7 +482,7 @@ void main() {
     test('a catch that rethrows is not a guard', () {
       expect(
         linesIn(
-          'f() async { try { await FilePicker.platform.getDirectoryPath(); }'
+          'f() async { try { await FilePicker.getDirectoryPath(); }'
           ' catch (e) { report(e); rethrow; } }',
         ),
         hasLength(1),
@@ -503,7 +494,7 @@ void main() {
       // clause can be shown to catch one.
       expect(
         linesIn(
-          'f() async { try { await FilePicker.platform.pickFiles(); }'
+          'f() async { try { await FilePicker.pickFiles(); }'
           ' on FormatException catch (e) {} }',
         ),
         hasLength(1),
@@ -511,7 +502,7 @@ void main() {
       // Narrow first and catch-all second is the plotter's shape, and counts.
       expect(
         linesIn(
-          'f() async { try { await FilePicker.platform.pickFiles(); }'
+          'f() async { try { await FilePicker.pickFiles(); }'
           ' on FormatException catch (e) {} catch (e) {} }',
         ),
         isEmpty,
@@ -524,14 +515,14 @@ void main() {
       expect(
         linesIn(
           'f() async { try {} catch (e)'
-          ' { await FilePicker.platform.pickFiles(); } }',
+          ' { await FilePicker.pickFiles(); } }',
         ),
         hasLength(1),
       );
       expect(
         linesIn(
           'f() async { try {} finally'
-          ' { await FilePicker.platform.pickFiles(); } }',
+          ' { await FilePicker.pickFiles(); } }',
         ),
         hasLength(1),
       );
@@ -542,7 +533,7 @@ void main() {
       // returned - and the onTap that shipped the bug is exactly this.
       expect(
         linesIn(
-          'f() { try { g(() => FilePicker.platform.pickFiles()); }'
+          'f() { try { g(() => FilePicker.pickFiles()); }'
           ' catch (e) {} }',
         ),
         hasLength(1),
@@ -553,7 +544,7 @@ void main() {
       expect(
         linesIn(
           'f() async { if (x) { try { for (final y in z)'
-          ' { await FilePicker.platform.pickFiles(); } } catch (e) {} } }',
+          ' { await FilePicker.pickFiles(); } } catch (e) {} } }',
         ),
         isEmpty,
       );
@@ -564,7 +555,7 @@ void main() {
       // answer: that try is on the stack when the body runs.
       expect(
         linesIn(
-          'f() { g(() async { try { await FilePicker.platform.pickFiles(); }'
+          'f() { g(() async { try { await FilePicker.pickFiles(); }'
           ' catch (e) {} }); }',
         ),
         isEmpty,
@@ -572,12 +563,12 @@ void main() {
     });
 
     test('not a comment, and not another API that picks something', () {
-      expect(linesIn('// FilePicker.platform.pickFiles()\nf() {}'), isEmpty);
-      expect(linesIn('f() async => FilePicker.pickFiles();'), isEmpty);
+      expect(linesIn('// FilePicker.pickFiles()\nf() {}'), isEmpty);
+      expect(linesIn('f() async => FileChooser.pickFiles();'), isEmpty);
     });
 
     test('the shim is the one file that may ask the plugin', () {
-      const call = 'f() async => FilePicker.platform.getDirectoryPath();';
+      const call = 'f() async => FilePicker.getDirectoryPath();';
       expect(pluginFolderPicksIn(parseUnit(call), 'lib/pages/x.dart'), [1]);
       expect(
         pluginFolderPicksIn(parseUnit(call), 'lib/components/folder_pick.dart'),
@@ -586,7 +577,7 @@ void main() {
       // The other methods are the first rule's business, not this one's.
       expect(
         pluginFolderPicksIn(
-          parseUnit('f() async => FilePicker.platform.pickFiles();'),
+          parseUnit('f() async => FilePicker.pickFiles();'),
           'lib/pages/x.dart',
         ),
         isEmpty,
@@ -596,7 +587,7 @@ void main() {
       expect(
         pluginFolderPicksIn(
           parseUnit(
-            'f() async { try { await FilePicker.platform.getDirectoryPath(); }'
+            'f() async { try { await FilePicker.getDirectoryPath(); }'
             ' catch (e) { report(e); } }',
           ),
           'lib/pages/x.dart',
@@ -648,10 +639,7 @@ void main() {
       // about where the call sits.
       expect(linesIn('f() async => p.pickFiles();'), isEmpty);
       expect(
-        linesIn(
-          'f() async { final p = FilePicker.platform;'
-          ' await p.pickFiles(); }',
-        ),
+        linesIn('f() async { final p = FilePicker.pickFiles; await p(); }'),
         isEmpty,
       );
     });

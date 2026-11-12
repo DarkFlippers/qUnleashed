@@ -562,15 +562,12 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _onImport() async {
     try {
-      // `withData: false` (the default); the bytes are read in Dart. See
-      // `readPickedFile` for why. Sentry QUNLEASHED-E.
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.any,
         initialDirectory: await pickerStart(PickerPlace.paint),
       );
-      if (result == null || result.files.isEmpty) return;
+      if (file == null) return;
 
-      final file = result.files.first;
       final path = file.path;
       // Checked once, for every branch below. Every target this app ships
       // supplies a path.
