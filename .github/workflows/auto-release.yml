@@ -494,8 +494,28 @@ jobs:
       # `DEVELOPER_DIR` is overwritten because an inherited one would override
       # `xcode-select` for every later tool and leave this a silent no-op.
       #
-      # `shell: bash` is stated, as `:1014` in this file says it should be:
-      # without it the step runs without `pipefail` and `-u`.
+      # Its first line is taken in the shell and not with `| head -n 1`, which
+      # is what this step shipped with and what killed the release on
+      # `2ca67ade`: `head` exits once it has the line it wanted, and the next
+      # write finds the pipe closed. `xcodebuild` answers that worse than the
+      # `sed` this repository warns about elsewhere - `derive_version.sh`,
+      # `check_arb_locales.sh`, and the `sed -n '1,60p'` in
+      # `summarize_l10n_failure.sh`, which is the fullest write-up of the trap.
+      # Rather than dying of SIGPIPE it raises `NSFileHandleOperationException`,
+      # prints a backtrace and aborts with 134, and `pipefail` makes that the
+      # step's own status. Neither Apple platform built on that push.
+      #
+      # It is a race - it had passed on every push since it shipped - which is
+      # the argument for removing the pipe rather than hardening around it:
+      # `xcodebuild -version` prints two lines, and whether its second write
+      # lands before `head`'s first read is the runner's business, not ours.
+      #
+      # `${have%%$'\n'*}` is a bashism, so `shell: bash` below is now
+      # load-bearing for reading the version and not only for the `pipefail`
+      # that `ci.yml`'s "Check nothing edits a translation by hand" explains.
+      # It supplies `-e` and `-o pipefail`; the `-u` comes from this step's own
+      # `set` line, which is also why `pipefail` here is belt-and-braces - the
+      # script has no pipeline left.
       #
       # A floor, not an equality - Apple wants that SDK or newer - but a
       # bounded one: `2[6-9]` appears in the `case` list, the version check
@@ -531,7 +551,8 @@ jobs:
           pick="${found[${#found[@]}-1]}"
           sudo xcode-select -s "$pick"
           echo "DEVELOPER_DIR=$pick" >> "$GITHUB_ENV"
-          have="$(xcodebuild -version | head -n 1)"
+          have="$(xcodebuild -version)"
+          have="${have%%$'\n'*}"
           case "$have" in
             "Xcode 2"[6-9]|"Xcode 2"[6-9].*) ;;
             *)
