@@ -241,8 +241,10 @@ fi
 # not exist, green, with a warning nobody connects to the quotes.
 sentry_block="$(sed -n '/^sentry:$/,/^[^[:space:]]/p' "$pubspec")"
 read_slug() {
-  sed -nE "s/^[[:space:]]+$1:[[:space:]]*[\"']?([A-Za-z0-9._-]+)[\"']?[[:space:]]*(#.*)?\$/\1/p" \
-    <<<"$sentry_block" | head -n 1
+  local found
+  found="$(sed -nE "s/^[[:space:]]+$1:[[:space:]]*[\"']?([A-Za-z0-9._-]+)[\"']?[[:space:]]*(#.*)?\$/\1/p" \
+    <<<"$sentry_block")"
+  printf '%s\n' "${found%%$'\n'*}"
 }
 org="$(read_slug org)"
 project="$(read_slug project)"

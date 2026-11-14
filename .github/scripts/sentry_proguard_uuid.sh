@@ -49,11 +49,16 @@ SENTRY_UUID_ASSET_BUNDLE="base/$SENTRY_UUID_ASSET"
 # or an asset with no usable value - because both are one problem with one fix
 # and each caller has its own way of saying so.
 #
-# `|| true` because `head` closing the pipe early SIGPIPEs `unzip`, which
+# `|| true` because `unzip -p` exits non-zero when the entry is absent, which
 # `pipefail` turns into a failed command and `errexit` into the caller
-# abandoning its work with no message at all. Today's properties file is a few
-# hundred bytes and cannot reach that; a gate and an uploader are the last two
-# places to leave it standing.
+# abandoning its work with no message at all - and absence is one of the two
+# shapes this is documented to answer with silence.
+#
+# It needed that for a second reason until the pipeline lost its last stage:
+# `| head -n 1` SIGPIPEs `unzip` when it closes the pipe early, and the
+# properties file being a few hundred bytes was the only thing keeping that
+# theoretical. The first line is taken in the shell now, and
+# `lint_workflows.sh` fails any `.github` script that re-acquires the shape.
 sentry_proguard_uuid() {
   # Its own statement, before the pipeline, because the `|| true` below would
   # otherwise swallow it: under `set -u` an unbound `$2` inside the pipeline
@@ -63,7 +68,8 @@ sentry_proguard_uuid() {
   # prevent, so the arity is checked where nothing can catch it.
   local archive="${1?sentry_proguard_uuid needs an archive}"
   local entry="${2?sentry_proguard_uuid needs the entry to read, and it differs between an APK and a bundle}"
-  unzip -p "$archive" "$entry" 2>/dev/null \
-    | sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" \
-    | head -n 1 || true
+  local found
+  found="$(unzip -p "$archive" "$entry" 2>/dev/null \
+    | sed -nE "s/^io\.sentry\.ProguardUuids=($SENTRY_UUID_RE)\$/\1/p" || true)"
+  printf '%s\n' "${found%%$'\n'*}"
 }

@@ -18,7 +18,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 if [[ -z "$VERSION_NAME" ]]; then
-  VERSION_NAME="$(sed -nE 's/^version:[[:space:]]*([0-9A-Za-z._-]+).*/\1/p' "$ROOT_DIR/pubspec.yaml" | head -n 1)"
+  VERSION_NAME="$(sed -nE 's/^version:[[:space:]]*([0-9A-Za-z._-]+).*/\1/p' "$ROOT_DIR/pubspec.yaml")"
+  VERSION_NAME="${VERSION_NAME%%$'\n'*}"
   VERSION_NAME="${VERSION_NAME%%+*}"
 fi
 

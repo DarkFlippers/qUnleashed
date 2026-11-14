@@ -51,3 +51,26 @@ if grep -nE "&& *(0|false|'') *\|\|" .github/workflows/*.yml .github/actions/*/a
   echo "::error::A GitHub expression yields a falsy literal before ||, so the || branch always wins. Quote it ('0') or invert the condition." >&2
   exit 1
 fi
+
+# A pipeline whose last stage exits early kills the stage before it with
+# SIGPIPE, `pipefail` makes that the command's status and `errexit` the
+# script's - so the producer's failure becomes the step's, with the producer's
+# message nowhere. `xcodebuild -version | head -n 1` cost an unpublished
+# release that way on 2ca67ade: `head` took its line, `xcodebuild` found the
+# pipe closed on its second write, raised `NSFileHandleOperationException` and
+# aborted with 134.
+#
+# This repository had warned about the shape in prose four times by then -
+# `derive_version.sh`, `check_arb_locales.sh`, `summarize_l10n_failure.sh` and
+# the step itself - which is the argument ADR 0004 makes for a ratchet instead.
+#
+# Textual, and that bound is honest: it catches the spellings people reach for
+# and not a `while read … break`, which is the same trap with no keyword to
+# grep. `^[^#]*` keeps it off the prose above, which quotes what it forbids.
+# Add a case here when a new early-exit consumer turns up, not an exemption.
+if grep -nE "^[^#]*\| *(head|grep +-m|sed +-n +['\"]?[0-9]+q)" \
+    .github/workflows/*.yml .github/actions/*/action.yml \
+    .github/scripts/*.sh .github/scripts/build/*.sh; then
+  echo "::error::A pipeline ends in a consumer that exits early, so the producer dies of SIGPIPE and pipefail reports it as the step's own failure. Capture the output and take what you need in the shell - \"\${v%%\$'\\n'*}\" - or make the producer stop on its own, as derive_version.sh does." >&2
+  exit 1
+fi
