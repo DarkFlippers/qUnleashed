@@ -1,3 +1,90 @@
+qUnleashed -- a Flipper Zero companion app for Unleashed firmware
+Copyright (C) 2026 DarkFlippers and the qUnleashed contributors
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option)
+any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+Public License below for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+======================================================================
+ADDITIONAL PERMISSION UNDER GNU GPL VERSION 3, SECTION 7
+======================================================================
+
+As an additional permission under section 7 of the GNU General Public
+License version 3, the copyright holders of qUnleashed give you
+permission to convey the Program, and works based on the Program, through
+application distribution platforms operated by third parties -- including
+but not limited to the Apple App Store, Apple TestFlight, Google Play and
+the Microsoft Store -- notwithstanding the additional restrictions that
+the operators of those platforms impose on recipients of the work, and to
+link the Program with, and distribute it together with, the platform
+libraries, frameworks and code-signing material that distribution through
+those platforms requires.
+
+This additional permission does not relieve you of any other obligation
+under this License.  In particular, the Corresponding Source must still
+be made available to recipients as required by sections 4, 5 and 6, and
+the Program remains licensed to recipients under the GNU General Public
+License version 3 or later, together with this permission.
+
+If you modify a copy of the Program, you may extend this permission to
+your version, but you are not obliged to do so.  If you do not wish to
+extend it, delete this section from your version.
+
+
+======================================================================
+TRADEMARKS AND NAMING  (GNU GPL VERSION 3, SECTION 7(e) AND 7(d))
+======================================================================
+
+The names "qUnleashed" and "DarkFlippers", the qUnleashed logo, and any
+confusingly similar name or mark, are NOT licensed under the GNU General
+Public License.  Sections 7(d) and 7(e) of that License permit the terms
+in this section.
+
+If you convey a modified version of this work, or convey this work
+through an application distribution platform under the permission above,
+you must:
+
+  (a) remove the names and the logo listed above from your version, from
+      its user interface, and from any store listing, package identifier,
+      icon, screenshot or promotional material for it;
+
+  (b) choose a name and identifier that are not confusingly similar to
+      them -- in particular, you must not reuse the application
+      identifier "com.darkflippers.qunleashed" or a variation of it; and
+
+  (c) not state or imply that your version originates from, is endorsed
+      by, is official, or is supported by the qUnleashed project or the
+      DarkFlippers project.
+
+You remain free to state accurately, in plain prose, that your version is
+derived from or based on qUnleashed, and to link to the upstream project.
+
+Nothing in this section restricts your freedom to use, study, modify,
+share or sell the software itself.  It restricts only the use of the
+project's names and marks, which the GNU General Public License does not
+grant in the first place.
+
+"Flipper Zero" and "Flipper Devices" are trademarks of their respective
+owners.  This project is not affiliated with, authorised by, or endorsed
+by Flipper Devices Inc.
+
+
+======================================================================
+The full text of the GNU General Public License version 3 follows.
+It is reproduced verbatim and is not modified by the terms above.
+======================================================================
+
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
